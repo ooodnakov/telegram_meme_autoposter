@@ -1,0 +1,22 @@
+services:
+  telegram_meme:
+    # image: python:3.12-slim
+    restart: always
+    networks:
+      - proxy
+    volumes:
+      - ./telegram_auto_poster:/app
+    build: .
+    # start bash and run the script
+
+    command: ["bash","/app/run_bg.sh"]
+
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+networks:
+  proxy:
+    external: true
+    name: proxy

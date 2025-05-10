@@ -1,0 +1,5 @@
+tel_log.log
+telegram_auto_poster/tel*
+telegram_auto_poster/photos/*
+config.ini
+ooodnakov.session*
