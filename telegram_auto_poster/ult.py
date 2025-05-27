@@ -387,7 +387,8 @@ async def Photo(update: Update, context) -> None:
     chat_id = update.effective_chat.id
     if update.message.photo:
         file_id = update.message.photo[-1].file_id
-        file_path = f"downloaded_image_{chat_id}_{file_id}.jpg"
+        message_id = update.message.message_id
+        file_path = f"downloaded_image_{chat_id}_{file_id}_{message_id}.jpg"
         f = await context.bot.get_file(file_id)
         await f.download_to_drive(file_path)
         logger.info(f"Photo from chat {chat_id} has downloaded!")
@@ -395,7 +396,8 @@ async def Photo(update: Update, context) -> None:
     elif update.message.video:
         logger.info(f"Video from chat {chat_id} has started downloading!")
         file_id = update.message.video.file_id
-        file_path = f"downloaded_video_{chat_id}_{file_id}.mp4"
+        message_id = update.message.message_id
+        file_path = f"downloaded_video_{chat_id}_{file_id}_{message_id}.mp4"
         f = await context.bot.get_file(file_id)
         await f.download_to_drive(file_path)
         logger.info(f"Video from chat {chat_id} has been downloaded!")

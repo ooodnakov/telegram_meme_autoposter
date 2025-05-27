@@ -1,6 +1,7 @@
 tel_log.log
 telegram_auto_poster/tel*
 telegram_auto_poster/photos/*
+telegram_auto_poster/videos/*
 config.ini
 ooodnakov.session*
 .vscode/*
