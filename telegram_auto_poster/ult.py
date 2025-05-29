@@ -2,8 +2,8 @@ import asyncio
 import configparser
 import json
 import os
-import sys
 import random
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -123,7 +123,7 @@ async def add_watermark_to_video(input_filename, output_filename) -> str:
     v_w, v_h = await _probe_video_size(input_filename)
 
     # 2. Рассчитываем конечную ширину водяного знака
-    wm_w = int(v_w * 0.2)
+    wm_w = int(min(v_w, v_h) * random.randint(15, 25) / 100)
 
     # 3. Случайные координаты левого верхнего угла, чтобы знак полностью помещался
     max_x = max(v_w - wm_w, 0)
@@ -134,7 +134,16 @@ async def add_watermark_to_video(input_filename, output_filename) -> str:
     # 5. Строим фильтр:
     #    [1] – картинка: масштабируем, переводим в RGBA, задаём альфу
     #    затем накладываем на [0] (видео)
-    filter_complex = f"[1]scale={wm_w}:-1[wm];[0][wm]overlay=x={pos_x}:y={pos_y}"
+
+    # Define diagonal bouncing movement for watermark
+    speed = 100
+    filter_complex = (
+        f"[1]scale={wm_w}:{wm_w}[wm];"
+        f"[0][wm]overlay=x='if(gt(mod(t*{speed},2*({v_w}-{wm_w})),({v_w}-{wm_w})), "
+        f"2*({v_w}-{wm_w})-mod(t*{speed},2*({v_w}-{wm_w})), mod(t*{speed},2*({v_w}-{wm_w})))':"
+        f"y='if(gt(mod(t*{speed},2*({v_h}-{wm_w})),({v_h}-{wm_w})), "
+        f"2*({v_h}-{wm_w})-mod(t*{speed},2*({v_h}-{wm_w})), mod(t*{speed},2*({v_h}-{wm_w})))'"
+    )
     cmd = [
         "ffmpeg",
         "-y",
@@ -153,13 +162,14 @@ async def add_watermark_to_video(input_filename, output_filename) -> str:
         "-filter_complex",
         filter_complex,
         "-c:v",
-        "mpeg4",
-        # "-preset",
-        # "slow",
-        # "-crf",
-        # "10",
-        "-q:v",
-        "6",
+        # "mpeg4",
+        # "-q:v",
+        # "6",
+        "libx264",
+        "-preset",
+        "slow",  # Balances speed and compression efficiency
+        "-crf",
+        "18",  # Lower CRF means better quality; 18 is visually lossless
         "-c:a",
         "copy",  # аудио не перекодируем
         output_filename,
