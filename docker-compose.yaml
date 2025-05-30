@@ -6,11 +6,13 @@ services:
     networks:
       - proxy
     volumes:
-      - ./telegram_auto_poster:/app
+      - ./:/app
+      # - ./data:/app/data
     build: .
     # start bash and run the script
-
-    command: ["bash","/app/run_bg.sh"]
+    command: ["bash", "/app/run_bg.sh"]
+    environment:
+      - TZ=Europe/Moscow
 
     deploy:
       resources:

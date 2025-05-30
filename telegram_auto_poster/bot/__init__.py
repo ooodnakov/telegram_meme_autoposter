@@ -1,0 +1,1 @@
+"""Bot package for Telegram Meme Autoposter.""" 

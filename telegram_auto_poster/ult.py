@@ -297,13 +297,6 @@ async def send_batch_command(
         await application.bot.send_message(bot_chat_id, "Empty batch!")
 
 
-async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    for p in os.listdir("downloaded_images"):
-        photo_path = f"downloaded_images/{p}"
-        await client.send_file(luba, photo_path, caption=p)
-        time.sleep(1)
-
-
 async def delete_batch_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
@@ -473,7 +466,6 @@ if __name__ == "__main__":
     application.add_handler(CommandHandler("get", get_chat_id))
     application.add_handler(CommandHandler("send_batch", send_batch_command))
     application.add_handler(CommandHandler("delete_batch", delete_batch_command))
-    application.add_handler(CommandHandler("luba", send_luba_command))
     application.add_handler(CallbackQueryHandler(ok_callback, "/ok"))
     application.add_handler(CallbackQueryHandler(push_callback, "/push"))
     application.add_handler(CallbackQueryHandler(notok_callback, "/notok"))

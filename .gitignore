@@ -1,7 +1,8 @@
 tel_log.log
-telegram_auto_poster/tel*
-telegram_auto_poster/photos/*
-telegram_auto_poster/videos/*
+**/tel/**
+**/photos/**
+**/videos/**
 config.ini
 ooodnakov.session*
 .vscode/*
+**/__pycache__/**
