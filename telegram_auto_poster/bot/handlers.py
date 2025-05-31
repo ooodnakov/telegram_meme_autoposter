@@ -156,7 +156,7 @@ async def send_batch_command(
                     media_group.append(
                         InputMediaPhoto(media=open(temp_path, "rb"), caption=caption)
                     )
-                else:
+                elif ext.lower() in [".mp4", ".avi", ".mov"]:
                     caption = "Новый пак мемов." if i == 0 else None
                     media_group.append(
                         InputMediaVideo(
@@ -165,6 +165,9 @@ async def send_batch_command(
                             supports_streaming=True,
                         )
                     )
+                else:
+                    logger.warning(f"Unsupported file type for batch: {ext}")
+                    continue
 
             if media_group:
                 # Send as a group using bot
@@ -180,6 +183,8 @@ async def send_batch_command(
                 await update.message.reply_text(
                     f"Sent batch of {len(media_group)} files to channel"
                 )
+            else:
+                await update.message.reply_text("No compatible media in batch")
 
         except Exception as e:
             logger.error(f"Error sending batch: {e}")
@@ -348,8 +353,13 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 # Get file from MinIO
                 storage.download_file(object_name, bucket, temp_path)
 
-                # Upload with new name
-                storage.upload_file(temp_path, PHOTOS_BUCKET, new_object_name)
+                # Upload with new name - use the appropriate bucket for videos and photos
+                target_batch_bucket = PHOTOS_BUCKET
+                # For videos, make sure we correctly identify and store in the right bucket
+                if ext.lower() in [".mp4", ".avi", ".mov"] or bucket == VIDEOS_BUCKET:
+                    target_batch_bucket = PHOTOS_BUCKET  # We'll store all batch files in PHOTOS_BUCKET for consistency
+
+                storage.upload_file(temp_path, target_batch_bucket, new_object_name)
 
                 # Delete original
                 storage.delete_file(object_name, bucket)
