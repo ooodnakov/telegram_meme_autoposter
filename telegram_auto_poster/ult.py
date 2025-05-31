@@ -4,8 +4,6 @@ import json
 import os
 import random
 import sys
-import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from random import randint
 
@@ -128,8 +126,8 @@ async def add_watermark_to_video(input_filename, output_filename) -> str:
     # 3. Случайные координаты левого верхнего угла, чтобы знак полностью помещался
     max_x = max(v_w - wm_w, 0)
     max_y = max(v_h - wm_w, 0)  # высоту подгоним пропорционально, поэтому тоже wm_w
-    pos_x = random.randint(0, max_x)
-    pos_y = random.randint(0, max_y)
+    random.randint(0, max_x)
+    random.randint(0, max_y)
 
     # 5. Строим фильтр:
     #    [1] – картинка: масштабируем, переводим в RGBA, задаём альфу
@@ -309,7 +307,7 @@ async def delete_batch_command(
 async def notok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Disapprove the message
     caption = update.effective_message.caption
-    photo_name = filename = get_file_name(caption)
+    photo_name = get_file_name(caption)
     await update.effective_message.edit_caption(
         f"Post disapproved with media {photo_name}!",
         reply_markup=None,

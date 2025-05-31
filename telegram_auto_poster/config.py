@@ -1,5 +1,6 @@
 import configparser
 
+
 def load_config():
     config = configparser.ConfigParser()
     config.read("config.ini")
@@ -14,6 +15,7 @@ def load_config():
         "bot_chat_id": config["Bot"]["bot_chat_id"],
     }
 
+
 SELECTED_CHATS = [
     "@rand2ch",
     "@grotesque_tg",
@@ -24,4 +26,4 @@ SELECTED_CHATS = [
     "@dsasdadsasda",
 ]
 
-LUBA_CHAT = "@Shanova_uuu" 
+LUBA_CHAT = "@Shanova_uuu"

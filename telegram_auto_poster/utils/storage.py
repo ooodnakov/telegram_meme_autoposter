@@ -1,7 +1,5 @@
 import os
-import io
 import tempfile
-from pathlib import Path
 from minio import Minio
 from minio.error import S3Error
 from loguru import logger

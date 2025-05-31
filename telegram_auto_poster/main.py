@@ -1,5 +1,4 @@
 import asyncio
-import signal
 from pathlib import Path
 
 from .utils.logger import setup_logger

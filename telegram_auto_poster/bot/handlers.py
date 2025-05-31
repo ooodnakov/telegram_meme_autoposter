@@ -195,8 +195,8 @@ async def send_batch_command(
                 if os.path.exists(temp_file):
                     try:
                         os.unlink(temp_file)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Error deleting temp file: {e}")
     else:
         await context.bot.send_message(
             chat_id=context.bot_data["chat_id"], text="Empty batch!"
