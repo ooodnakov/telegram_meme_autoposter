@@ -11,7 +11,8 @@ RUN apt-get update && \
     wget \
     ffmpeg \
     htop \
-    git
+    git \
+    curl
 
 # Set the working directory in the container
 WORKDIR /app
@@ -30,7 +31,7 @@ COPY ./requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
-RUN mkdir -p /app/photos /app/videos
+RUN mkdir -p /app/photos /app/videos /app/tmp
 
 # Make the startup script executable
 COPY ./run_bg.sh /app/run_bg.sh

@@ -5,6 +5,7 @@ services:
     restart: always
     networks:
       - proxy
+      - teleg_net
     volumes:
       - ./:/app
       # - ./data:/app/data
@@ -13,13 +14,47 @@ services:
     command: ["bash", "/app/run_bg.sh"]
     environment:
       - TZ=Europe/Moscow
-
+      - MINIO_HOST=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+    depends_on:
+      - minio
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
+
+  minio:
+    image: minio/minio:latest
+    container_name: telegram_minio
+    restart: always
+    networks:
+      - teleg_net
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
 networks:
   proxy:
     external: true
     name: proxy
+  teleg_net:
+    external: true
+    driver: bridge
+
+volumes:
+  minio_data:
+    driver: local
