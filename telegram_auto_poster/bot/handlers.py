@@ -68,32 +68,42 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if storage.file_exists(object_name, PHOTOS_BUCKET):
         await update.message.reply_text("Post approved!")
 
-        # Use client.send_file to send from MinIO to Telegram
-        client = get_client(context)
-        if client:
-            # Get file extension
-            ext = get_file_extension(object_name)
-            # Create temp file with correct extension
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-            temp_file_path = temp_file.name
-            temp_file.close()
+        # Download to temp file with correct extension
+        ext = get_file_extension(object_name)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        temp_file_path = temp_file.name
+        temp_file.close()
 
+        try:
             # Download file from MinIO to temp file
             storage.download_file(object_name, PHOTOS_BUCKET, temp_file_path)
 
-            # Send file with Telegram client
-            await client.send_file(
-                target_channel,
-                temp_file_path,
-                force_document=False,  # Ensure it's sent as media, not document
-            )
+            # Send photo using bot instead of client
+            if ext.lower() in [".jpg", ".jpeg", ".png"]:
+                await context.bot.send_photo(
+                    chat_id=target_channel, photo=open(temp_file_path, "rb")
+                )
+            elif ext.lower() in [".mp4", ".avi", ".mov"]:
+                await context.bot.send_video(
+                    chat_id=target_channel,
+                    video=open(temp_file_path, "rb"),
+                    supports_streaming=True,
+                )
+            else:
+                await context.bot.send_document(
+                    chat_id=target_channel, document=open(temp_file_path, "rb")
+                )
 
             # Clean up
             os.unlink(temp_file_path)
             storage.delete_file(object_name, PHOTOS_BUCKET)
             logger.info("Created new post!")
-        else:
-            logger.error("Client instance not available!")
+        except Exception as e:
+            logger.error(f"Error sending media: {e}")
+            await update.message.reply_text(f"Error sending media: {str(e)}")
+        finally:
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
     else:
         await update.message.reply_text(
             "No approved post image, it's already disapproved!"
@@ -122,43 +132,71 @@ async def send_batch_command(
     batch_files = storage.list_files(PHOTOS_BUCKET, prefix="batch_")
 
     if batch_files:
-        # Use client.send_file for batch media
-        client = get_client(context)
-        if client:
-            # Create temporary files for batch
-            temp_files = []
+        media_group = []
+        temp_files = []
 
-            try:
-                for object_name in batch_files:
-                    # Get file extension
-                    ext = get_file_extension(object_name)
-                    # Create temp file with correct extension
-                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                    temp_file.close()
+        try:
+            for i, object_name in enumerate(
+                batch_files[:10]
+            ):  # Telegram limits to 10 per group
+                # Get file extension
+                ext = get_file_extension(object_name)
+                # Create temp file with correct extension
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+                temp_file.close()
+                temp_path = temp_file.name
 
-                    storage.download_file(object_name, PHOTOS_BUCKET, temp_file.name)
-                    temp_files.append(temp_file.name)
+                # Download from MinIO
+                storage.download_file(object_name, PHOTOS_BUCKET, temp_path)
+                temp_files.append(temp_path)
 
-                # Send files with Telegram client
-                await client.send_file(
-                    target_channel,
-                    temp_files,
-                    caption="Новый пак мемов.",
-                    force_document=False,  # Ensure it's sent as media, not document
+                # Add to media group based on file type
+                if ext.lower() in [".jpg", ".jpeg", ".png"]:
+                    caption = "Новый пак мемов." if i == 0 else None
+                    media_group.append(
+                        InputMediaPhoto(media=open(temp_path, "rb"), caption=caption)
+                    )
+                else:
+                    caption = "Новый пак мемов." if i == 0 else None
+                    media_group.append(
+                        InputMediaVideo(
+                            media=open(temp_path, "rb"),
+                            caption=caption,
+                            supports_streaming=True,
+                        )
+                    )
+
+            if media_group:
+                # Send as a group using bot
+                await context.bot.send_media_group(
+                    chat_id=target_channel, media=media_group
                 )
-                logger.info(f"Sent batch of {len(batch_files)} files to channel")
 
                 # Delete from MinIO
                 for object_name in batch_files:
                     storage.delete_file(object_name, PHOTOS_BUCKET)
 
-            finally:
-                # Clean up temp files
-                for temp_file in temp_files:
-                    if os.path.exists(temp_file):
+                logger.info(f"Sent batch of {len(media_group)} files to channel")
+                await update.message.reply_text(
+                    f"Sent batch of {len(media_group)} files to channel"
+                )
+
+        except Exception as e:
+            logger.error(f"Error sending batch: {e}")
+            await update.message.reply_text(f"Error sending batch: {str(e)}")
+        finally:
+            # Clean up media files and temp files
+            for handle in media_group:
+                if hasattr(handle.media, "close"):
+                    handle.media.close()
+
+            # Clean up temp files
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    try:
                         os.unlink(temp_file)
-        else:
-            logger.error("Client instance not available!")
+                    except:
+                        pass
     else:
         await context.bot.send_message(
             chat_id=context.bot_data["chat_id"], text="Empty batch!"
@@ -188,32 +226,46 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     # Get all files from downloads bucket
     download_files = storage.list_files(DOWNLOADS_BUCKET)
 
-    client = get_client(context)
-    if client:
-        for object_name in download_files:
-            # Get file extension
-            ext = get_file_extension(object_name)
-            # Create temp file with correct extension
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-            temp_file.close()
+    sent_count = 0
+    for object_name in download_files:
+        # Get file extension
+        ext = get_file_extension(object_name)
+        # Create temp file with correct extension
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        temp_file.close()
+        temp_path = temp_file.name
 
-            try:
-                storage.download_file(object_name, DOWNLOADS_BUCKET, temp_file.name)
+        try:
+            storage.download_file(object_name, DOWNLOADS_BUCKET, temp_path)
 
-                # Send to Luba
-                await client.send_file(
-                    LUBA_CHAT,
-                    temp_file.name,
-                    caption=object_name,
-                    force_document=False,  # Ensure it's sent as media, not document
+            # Send to Luba using bot
+            if ext.lower() in [".jpg", ".jpeg", ".png"]:
+                await context.bot.send_photo(
+                    chat_id=LUBA_CHAT, photo=open(temp_path, "rb"), caption=object_name
                 )
-                await asyncio.sleep(1)
-            finally:
-                # Clean up temp file
-                if os.path.exists(temp_file.name):
-                    os.unlink(temp_file.name)
-    else:
-        logger.error("Client instance not available!")
+            elif ext.lower() in [".mp4", ".avi", ".mov"]:
+                await context.bot.send_video(
+                    chat_id=LUBA_CHAT,
+                    video=open(temp_path, "rb"),
+                    caption=object_name,
+                    supports_streaming=True,
+                )
+            else:
+                await context.bot.send_document(
+                    chat_id=LUBA_CHAT,
+                    document=open(temp_path, "rb"),
+                    caption=object_name,
+                )
+
+            sent_count += 1
+            await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"Error sending to Luba: {e}")
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+    await update.message.reply_text(f"Sent {sent_count} files to Luba")
 
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -237,38 +289,49 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 f"Post approved with media {filename}!", reply_markup=None
             )
 
-            # Use client.send_file for sending media to channel
-            client = get_client(context)
-            if client:
-                # Get file extension
-                ext = get_file_extension(object_name)
-                # Create temp file with correct extension
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-                temp_file.close()
+            # Get file extension
+            ext = get_file_extension(object_name)
+            # Create temp file with correct extension
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+            temp_file.close()
+            temp_path = temp_file.name
 
-                try:
-                    # Get file from MinIO
-                    storage.download_file(object_name, bucket, temp_file.name)
+            try:
+                # Get file from MinIO
+                storage.download_file(object_name, bucket, temp_path)
 
-                    # Send with Telegram client
-                    await client.send_file(
-                        target_channel,
-                        temp_file.name,
+                # Send media using bot
+                if ext.lower() in [".jpg", ".jpeg", ".png"]:
+                    await context.bot.send_photo(
+                        chat_id=target_channel,
+                        photo=open(temp_path, "rb"),
                         caption=caption,
-                        supports_streaming=(
-                            True if ext.lower() in [".mp4", ".avi", ".mov"] else False
-                        ),
-                        force_document=False,  # Ensure it's sent as media, not document
+                    )
+                elif ext.lower() in [".mp4", ".avi", ".mov"]:
+                    await context.bot.send_video(
+                        chat_id=target_channel,
+                        video=open(temp_path, "rb"),
+                        caption=caption,
+                        supports_streaming=True,
+                    )
+                else:
+                    await context.bot.send_document(
+                        chat_id=target_channel,
+                        document=open(temp_path, "rb"),
+                        caption=caption,
                     )
 
-                    # Delete from MinIO
-                    storage.delete_file(object_name, bucket)
-                finally:
-                    # Clean up temp file
-                    if os.path.exists(temp_file.name):
-                        os.unlink(temp_file.name)
-            else:
-                logger.error("Client instance not available!")
+                # Delete from MinIO
+                storage.delete_file(object_name, bucket)
+            except Exception as e:
+                logger.error(f"Error sending media: {e}")
+                await update.effective_message.reply_text(
+                    f"Error sending media: {str(e)}"
+                )
+            finally:
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
         else:
             # Rename for batch (move to batch_ prefix)
             new_object_name = f"batch_{object_name}"
@@ -279,13 +342,14 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             # Create temp file with correct extension
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
             temp_file.close()
+            temp_path = temp_file.name
 
             try:
                 # Get file from MinIO
-                storage.download_file(object_name, bucket, temp_file.name)
+                storage.download_file(object_name, bucket, temp_path)
 
                 # Upload with new name
-                storage.upload_file(temp_file.name, PHOTOS_BUCKET, new_object_name)
+                storage.upload_file(temp_path, PHOTOS_BUCKET, new_object_name)
 
                 # Delete original
                 storage.delete_file(object_name, bucket)
@@ -299,8 +363,8 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
             finally:
                 # Clean up temp file
-                if os.path.exists(temp_file.name):
-                    os.unlink(temp_file.name)
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
     else:
         await update.callback_query.message.reply_text(
             "No approved post media, it's already disapproved!"
@@ -332,39 +396,47 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             f"Post approved with image {filename}!", reply_markup=None
         )
 
-        # Use client.send_file for sending media to channel
-        client = get_client(context)
-        if client:
-            # Get file extension
-            ext = get_file_extension(object_name)
-            # Create temp file with correct extension
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-            temp_file.close()
+        # Get file extension
+        ext = get_file_extension(object_name)
+        # Create temp file with correct extension
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+        temp_file.close()
+        temp_path = temp_file.name
 
-            try:
-                # Get file from MinIO
-                storage.download_file(object_name, bucket, temp_file.name)
+        try:
+            # Get file from MinIO
+            storage.download_file(object_name, bucket, temp_path)
 
-                # Send with Telegram client
-                await client.send_file(
-                    target_channel,
-                    temp_file.name,
-                    caption=caption,
-                    supports_streaming=(
-                        True if ext.lower() in [".mp4", ".avi", ".mov"] else False
-                    ),
-                    force_document=False,  # Ensure it's sent as media, not document
+            # Send media using bot
+            if ext.lower() in [".jpg", ".jpeg", ".png"]:
+                await context.bot.send_photo(
+                    chat_id=target_channel, photo=open(temp_path, "rb"), caption=caption
                 )
-                logger.info(f"Created new post from image {filename}!")
+            elif ext.lower() in [".mp4", ".avi", ".mov"]:
+                await context.bot.send_video(
+                    chat_id=target_channel,
+                    video=open(temp_path, "rb"),
+                    caption=caption,
+                    supports_streaming=True,
+                )
+            else:
+                await context.bot.send_document(
+                    chat_id=target_channel,
+                    document=open(temp_path, "rb"),
+                    caption=caption,
+                )
 
-                # Delete from MinIO
-                storage.delete_file(object_name, bucket)
-            finally:
-                # Clean up temp file
-                if os.path.exists(temp_file.name):
-                    os.unlink(temp_file.name)
-        else:
-            logger.error("Client instance not available!")
+            logger.info(f"Created new post from image {filename}!")
+
+            # Delete from MinIO
+            storage.delete_file(object_name, bucket)
+        except Exception as e:
+            logger.error(f"Error sending media: {e}")
+            await update.effective_message.reply_text(f"Error sending media: {str(e)}")
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
     else:
         await update.callback_query.message.reply_text(
             "No approved post image, it's already disapproved!"
