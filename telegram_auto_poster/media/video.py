@@ -114,7 +114,7 @@ async def add_watermark_to_video(input_filename: str, output_filename: str) -> s
             output_path,
         ]
 
-        logger.info("Running ffmppeg cmd: {}", " ".join(cmd))
+        logger.info(f"Running ffmppeg command on video {input_filename}")
         proc = await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )

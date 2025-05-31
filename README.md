@@ -1,92 +1,79 @@
 # Telegram Meme Autoposter
 
-An automated system that monitors specified Telegram channels for new media content (images and videos), processes them, and forwards selected content to a target channel.
+A system that monitors various Telegram channels for media content (photos/videos), processes them, and forwards approved content to a target channel.
 
 ## Features
 
-- **Media Monitoring**: Automatically monitors selected Telegram channels for new photo and video posts
-- **Content Review**: Posts media to a review bot where users can approve/reject content
-- **Media Processing**: Supports both images and videos
-- **Batch Operations**: Commands for sending and deleting batches of media
-- **Docker Support**: Fully containerized application with Docker and Docker Compose
-- **MinIO Integration**: Uses MinIO for storage of media files
+- Monitors multiple source channels for new media content
+- Adds watermarks to images with configurable positioning
+- Processes video content
+- Allows admin approval or rejection of content
+- Supports batching multiple approved items for posting at once
+- Provides detailed statistics on media processing
+- **NEW: Provides feedback to media submitters when their content is approved or rejected**
+- **NEW: Enhanced admin permission system to control access to admin commands**
+- Stores media in MinIO object storage for efficient processing
 
-## Prerequisites
+## User Features
 
-- Python 3.12+
-- Docker and Docker Compose
-- Telegram API credentials (API ID and Hash)
-- Telegram Bot Token
+Users can now interact with the bot in the following ways:
 
-## Setup
+1. **Submit Content**: Users can send photos and videos directly to the bot
+2. **Receive Feedback**: Users will get notifications when their content is:
+   - Approved and scheduled for posting
+   - Approved and immediately posted
+   - Rejected by the admin
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/telegram_meme_autoposter.git
-   cd telegram_meme_autoposter
+## Admin Features
+
+- `/start` - Initialize the bot
+- `/help` - Display available commands
+- `/sendall` - Send all approved media in the batch to the target channel
+- `/stats` - View bot statistics including processing counts and performance metrics
+- `/reset_stats` - Reset daily statistics
+- `/save_stats` - Force save statistics to disk
+
+All admin commands are protected with permission checks to ensure only authorized users can access them.
+
+## Setup Instructions
+
+1. Clone this repository
+2. Configure environment variables or update the `config.py` file:
+   - `TELEGRAM_BOT_TOKEN` - Telegram bot token
+   - `ADMIN_USER_ID` - Telegram user ID for admin access
+   - `TARGET_CHANNEL_ID` - Channel ID where approved media will be posted
+   - `TELEGRAM_ADMIN_IDS` - Comma-separated list of admin Telegram user IDs
+   - MinIO configuration (host, port, access keys)
+3. Set up MinIO storage server (or use an existing one)
+4. Install dependencies with `pip install -r requirements.txt`
+5. Run the bot with `python -m telegram_auto_poster.main`
+
+### Admin Configuration
+
+You can configure admin users in multiple ways:
+
+1. **Config file**: Add an `admin_ids` field in the `[Bot]` section of your `config.ini` file:
+   ```ini
+   [Bot]
+   admin_ids = 12345678,87654321
    ```
 
-2. **Configure the application**
-   - Copy the example configuration file:
-     ```bash
-     cp config.ini.example config.ini
-     ```
-   - Edit `config.ini` with your Telegram credentials:
-     ```ini
-     [Telegram]
-     api_id = YOUR_API_ID
-     api_hash = YOUR_API_HASH
-     username = YOUR_USERNAME
-     target_channel = @your_target_channel
-     [Bot]
-     bot_token = YOUR_BOT_TOKEN
-     bot_username = @your_bot_username
-     bot_chat_id = YOUR_BOT_CHAT_ID
-     ```
+2. **Environment variable**: Set the `TELEGRAM_ADMIN_IDS` environment variable:
+   ```bash
+   export TELEGRAM_ADMIN_IDS=12345678,87654321
+   ```
 
-3. **Docker Setup**
-   - Make sure Docker and Docker Compose are installed
-   - Run the service:
-     ```bash
-     docker-compose up -d
-     ```
+3. **Default fallback**: If no admin IDs are specified, the bot will use the `bot_chat_id` as the admin ID.
 
-## Usage
+## Architecture
 
-### Bot Commands
+The system consists of the following components:
 
-- `/start` - Start the bot
-- `/get` - Get the current chat ID
-- `/ok` - Approve a media item
-- `/notok` - Reject a media item
-- `/send_batch` - Send a batch of approved media to the target channel
-- `/delete_batch` - Delete a batch of media
-- `/luba` - Send a special meme
-
-### File Structure
-
-- `telegram_auto_poster/` - Main package directory
-  - `bot/` - Telegram bot implementation
-  - `client/` - Telethon client for monitoring channels
-  - `media/` - Media processing logic
-  - `utils/` - Utility functions
-- `photos/` and `videos/` - Directories for storing downloaded media
-- `tmp/` - Directory for temporary files
-
-## Development
-
-### Installing dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### Running locally
-
-```bash
-python -m telegram_auto_poster
-```
-
+1. **Telegram Bot**: Interface for users to submit content and for admins to moderate
+2. **Media Processor**: Adds watermarks to images and processes video content
+3. **Storage System**: MinIO-based storage for original and processed media
+4. **Stats System**: Tracking system for monitoring performance and usage patterns
+5. **Permissions System**: Controls access to admin commands
 
 ## Contributing
 

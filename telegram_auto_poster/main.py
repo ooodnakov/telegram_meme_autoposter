@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from .utils.logger import setup_logger
+from .utils.logger_setup import setup_logger
 from .bot.bot import TelegramMemeBot
 from .client.client import TelegramMemeClient
 

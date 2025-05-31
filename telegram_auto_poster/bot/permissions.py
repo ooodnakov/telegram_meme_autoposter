@@ -1,0 +1,62 @@
+from loguru import logger
+from telegram import Update
+from telegram.ext import ContextTypes
+from ..config import load_config
+
+
+async def check_admin_rights(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> bool:
+    """
+    Check if the user has admin rights to execute a command.
+
+    Args:
+        update: The update object from Telegram
+        context: The context object from Telegram
+
+    Returns:
+        bool: True if the user has admin rights, False otherwise
+    """
+    try:
+        # Get user ID
+        user_id = update.effective_user.id
+
+        # First check if admin_ids in bot_data
+        if hasattr(context, "bot_data") and "admin_ids" in context.bot_data:
+            admin_ids = context.bot_data["admin_ids"]
+            if user_id in admin_ids:
+                logger.debug(f"User {user_id} has admin rights (from bot_data)")
+                return True
+
+        # If not found in bot_data, get admin IDs from config
+        config = load_config()
+        admin_ids = config.get("admin_ids", [])
+
+        # If admin_ids is a single value, convert to list
+        if not isinstance(admin_ids, list):
+            admin_ids = [admin_ids]
+
+        # Check if user is in admin list
+        if user_id in admin_ids:
+            logger.debug(f"User {user_id} has admin rights (from config)")
+            return True
+
+        # Fall back to bot_chat_id for backward compatibility
+        if not admin_ids:
+            if "bot_chat_id" in config and user_id == int(config["bot_chat_id"]):
+                logger.debug(f"User {user_id} has admin rights (from bot_chat_id)")
+                return True
+
+        # User does not have admin rights
+        logger.warning(
+            f"User {user_id} attempted to use admin command without permission"
+        )
+        await update.message.reply_text(
+            "You don't have permission to use this command."
+        )
+        return False
+
+    except Exception as e:
+        logger.error(f"Error checking admin rights: {e}")
+        await update.message.reply_text("An error occurred while checking permissions.")
+        return False

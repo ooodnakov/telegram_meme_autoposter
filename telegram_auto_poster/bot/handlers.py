@@ -1,23 +1,35 @@
-import os
 import asyncio
+import os
 import tempfile
-from typing import Optional, Tuple, Dict, Any
+import time
+from typing import Optional, Tuple
+
+from loguru import logger
 from telegram import (
-    Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputMediaPhoto,
     InputMediaVideo,
+    Update,
 )
+from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes
-from telegram.error import TimedOut, NetworkError, BadRequest
-from loguru import logger
 
+from telegram_auto_poster.utils import (
+    MediaError,
+    MinioError,
+    TelegramMediaError,
+    cleanup_temp_file,
+    download_from_minio,
+    send_media_to_telegram,
+)
+
+from ..client.client import client_instance
+from ..config import LUBA_CHAT, load_config
 from ..media.photo import add_watermark_to_image
 from ..media.video import add_watermark_to_video
-from ..config import LUBA_CHAT, load_config
-from ..client.client import client_instance
-from ..utils.storage import storage, PHOTOS_BUCKET, VIDEOS_BUCKET, DOWNLOADS_BUCKET
+from ..utils.stats import stats
+from ..utils.storage import DOWNLOADS_BUCKET, PHOTOS_BUCKET, VIDEOS_BUCKET, storage
 
 # Load target_channel from config
 config = load_config()
@@ -29,25 +41,6 @@ ERROR_MINIO_DOWNLOAD_FAILED = "Failed to download file from MinIO"
 ERROR_TELEGRAM_SEND_FAILED = "Failed to send media to Telegram"
 ERROR_TEMP_FILE_CREATION = "Failed to create temporary file"
 ERROR_FILE_NOT_SUPPORTED = "File type not supported"
-
-
-# Custom exceptions
-class MinioError(Exception):
-    """Raised when there's an issue with MinIO operations"""
-
-    pass
-
-
-class MediaError(Exception):
-    """Raised when there's an issue with media processing"""
-
-    pass
-
-
-class TelegramMediaError(Exception):
-    """Raised when there's an issue sending media to Telegram"""
-
-    pass
 
 
 # Helper function to get the client from context or global variable
@@ -113,6 +106,7 @@ async def download_from_minio(
             temp_file.close()
         except (IOError, OSError) as e:
             logger.error(f"Failed to create temporary file: {e}")
+            stats.record_error("processing", f"{ERROR_TEMP_FILE_CREATION}: {str(e)}")
             raise MinioError(f"{ERROR_TEMP_FILE_CREATION}: {str(e)}")
 
         try:
@@ -125,12 +119,14 @@ async def download_from_minio(
         except Exception as e:
             logger.error(f"Error downloading file from MinIO: {e}")
             cleanup_temp_file(temp_path)
+            stats.record_error("storage", f"{ERROR_MINIO_DOWNLOAD_FAILED}: {str(e)}")
             raise MinioError(f"{ERROR_MINIO_DOWNLOAD_FAILED}: {str(e)}")
     except MinioError:
         # Re-raise MinioError to be caught by caller
         raise
     except Exception as e:
         logger.error(f"Unexpected error in download_from_minio: {e}")
+        stats.record_error("storage", f"Unexpected error: {str(e)}")
         raise MinioError(f"Unexpected error: {str(e)}")
 
 
@@ -157,6 +153,7 @@ async def send_media_to_telegram(
     """
     if not os.path.exists(file_path):
         logger.error(f"File {file_path} does not exist")
+        stats.record_error("telegram", f"File {file_path} does not exist")
         raise FileNotFoundError(f"File {file_path} does not exist")
 
     try:
@@ -199,6 +196,9 @@ async def send_media_to_telegram(
                         )
                 else:
                     logger.warning(f"Unsupported file type {ext}, sending as document")
+                    stats.record_error(
+                        "processing", f"{ERROR_FILE_NOT_SUPPORTED}: {ext}"
+                    )
                     with open(file_path, "rb") as media_file:
                         return await bot.send_document(
                             chat_id=chat_id,
@@ -215,20 +215,29 @@ async def send_media_to_telegram(
                 logger.warning(
                     f"Network error, retrying in {wait_time}s (attempt {retry_count}/{max_retries}): {e}"
                 )
+                stats.record_error("telegram", f"Network error (retrying): {str(e)}")
                 await asyncio.sleep(wait_time)
             except BadRequest as e:
                 # Bad request errors are usually not retryable
                 logger.error(f"Bad request error when sending media: {e}")
+                stats.record_error(
+                    "telegram", f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}"
+                )
                 raise TelegramMediaError(
                     f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}"
                 )
             except Exception as e:
                 logger.error(f"Unexpected error in send_media_to_telegram: {e}")
+                stats.record_error("telegram", f"Unexpected error: {str(e)}")
                 raise TelegramMediaError(f"Unexpected error: {str(e)}")
 
         # If we've exhausted retries
         if last_error:
             logger.error(f"Failed to send media after {max_retries} retries")
+            stats.record_error(
+                "telegram",
+                f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}",
+            )
             raise TelegramMediaError(
                 f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}"
             )
@@ -238,6 +247,7 @@ async def send_media_to_telegram(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in send_media_to_telegram: {e}")
+        stats.record_error("telegram", f"Unexpected error: {str(e)}")
         raise TelegramMediaError(f"Unexpected error: {str(e)}")
 
 
@@ -272,14 +282,141 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("Привет! Присылай сюда свои мемы)")
 
 
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Display help information about the bot"""
+    logger.info(f"Received /help command from user {update.effective_user.id}")
+
+    # Check if the user is an admin to customize the help message
+    is_admin = False
+    user_id = update.effective_user.id
+
+    if hasattr(context, "bot_data") and "admin_ids" in context.bot_data:
+        admin_ids = context.bot_data["admin_ids"]
+        if user_id in admin_ids:
+            is_admin = True
+
+    # Base help message for all users
+    help_text = [
+        "<b>Предложка для @ooodnakov_memes</b>",
+        "",
+        "<b>Команды пользователя:</b>",
+        "• /start - Запустить бота",
+        "• /help - Показать это сообщение помощи",
+        "",
+        "<b>Как использовать:</b>",
+        "1. Отправьте фото или видео этому боту",
+        "2. Администраторы проверят ваши отправления",
+        "3. Вы получите уведомление, когда ваш контент будет одобрен или отклонен",
+    ]
+
+    # Add admin commands if the user is an admin
+    if is_admin:
+        help_text.extend(
+            [
+                "",
+                "<b>Команды администратора:</b>",
+                "• /stats - Просмотр статистики обработки медиа",
+                "• /reset_stats - Сбросить ежедневную статистику",
+                "• /save_stats - Принудительно сохранить статистику",
+                "• /sendall - Отправить все одобренные медиафайлы из пакета в целевой канал",
+                "• /delete_batch - Удалить текущий пакет медиафайлов",
+                "• /get - Получить текущий ID чата",
+                "",
+                "<b>Проверка контента администратором:</b>",
+                "При проверке контента вы можете использовать кнопки для:",
+                "• Send to batch - Добавить медиа в пакет для последующей отправки",
+                "• Push - Немедленно опубликовать медиа в канале",
+                "• No - Отклонить медиа",
+            ]
+        )
+
+    # Send the help message
+    help_text = "\n".join(help_text)
+    logger.info(help_text)
+    await update.message.reply_text(help_text, parse_mode="HTML")
+
+
 async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     logger.info(f"Received /get chat_id command, returning ID: {chat_id}")
     await update.message.reply_text(f"This chat ID is: {chat_id}")
 
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Command to show bot statistics"""
+    logger.info(f"Received /stats command from user {update.effective_user.id}")
+
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
+
+    try:
+        # Generate statistics report
+        report = stats.generate_stats_report()
+        await update.message.reply_text(report)
+    except Exception as e:
+        logger.error(f"Error generating stats report: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error generating the statistics report."
+        )
+
+
+async def reset_stats_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Command to reset daily statistics"""
+    logger.info(f"Received /reset_stats command from user {update.effective_user.id}")
+
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
+
+    try:
+        # Reset daily statistics
+        result = stats.reset_daily_stats()
+        await update.message.reply_text(result)
+    except Exception as e:
+        logger.error(f"Error resetting stats: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error resetting the statistics."
+        )
+
+
+async def save_stats_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Command to save statistics"""
+    logger.info(f"Received /save_stats command from user {update.effective_user.id}")
+
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
+
+    try:
+        # Save statistics
+        stats.force_save()
+        await update.message.reply_text("Stats saved!")
+    except Exception as e:
+        logger.error(f"Error saving stats: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error saving the statistics."
+        )
+
+
 async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"Received /ok command from user {update.effective_user.id}")
+
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
 
     message_id = str(update.effective_message.message_id)
     object_name = f"{message_id}.jpg"
@@ -297,6 +434,11 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         # Clean up
         storage.delete_file(object_name, PHOTOS_BUCKET)
         logger.info("Created new post!")
+
+        # Record stats
+        media_type = "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
+        stats.record_approved(media_type)
+
     except MinioError as e:
         logger.error(f"MinIO error in ok_command: {e}")
         await update.message.reply_text(get_user_friendly_error_message(e))
@@ -313,14 +455,26 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"Received /notok command from user {update.effective_user.id}")
 
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
+
     try:
         message_id = str(update.effective_message.message_id)
         object_name = f"{message_id}.jpg"
+
+        # Try to determine media type
+        media_type = "photo"  # Default
 
         # Delete from MinIO if exists
         if storage.file_exists(object_name, PHOTOS_BUCKET):
             storage.delete_file(object_name, PHOTOS_BUCKET)
             await update.message.reply_text("Post disapproved!")
+
+            # Record stats
+            stats.record_rejected(media_type)
         else:
             await update.message.reply_text("No post found to disapprove.")
     except Exception as e:
@@ -332,6 +486,12 @@ async def send_batch_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     logger.info(f"Received /send_batch command from user {update.effective_user.id}")
+
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
 
     # Get all files with batch_ prefix from photos bucket
     try:
@@ -345,11 +505,10 @@ async def send_batch_command(
 
         media_group = []
         temp_files = []
+        len(batch_files[:10])  # Telegram limits to 10 per group
 
         try:
-            for i, object_name in enumerate(
-                batch_files[:10]
-            ):  # Telegram limits to 10 per group
+            for i, object_name in enumerate(batch_files[:10]):
                 try:
                     # Use helper function to download from MinIO
                     temp_path, ext = await download_from_minio(
@@ -398,8 +557,12 @@ async def send_batch_command(
                     await update.message.reply_text(
                         f"Sent batch of {len(media_group)} files to channel"
                     )
+
+                    # Record batch sent stats
+                    stats.record_batch_sent(len(media_group))
                 except Exception as e:
                     logger.error(f"Failed to send media group: {e}")
+                    stats.record_error("telegram", f"Failed to send batch: {str(e)}")
                     await update.message.reply_text(
                         "Failed to send media batch. Please try again later."
                     )
@@ -430,6 +593,12 @@ async def delete_batch_command(
 ) -> None:
     logger.info(f"Received /delete_batch command from user {update.effective_user.id}")
 
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
+
     try:
         # Get all files with batch_ prefix from photos bucket
         batch_files = storage.list_files(PHOTOS_BUCKET, prefix="batch_")
@@ -448,6 +617,7 @@ async def delete_batch_command(
                 deleted_count += 1
             except Exception as e:
                 logger.error(f"Error deleting {object_name}: {e}")
+                stats.record_error("storage", f"Failed to delete batch file: {str(e)}")
                 # Continue with other files
 
         await context.bot.send_message(
@@ -461,6 +631,12 @@ async def delete_batch_command(
 
 async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"Received /luba command from user {update.effective_user.id}")
+
+    # Check admin rights
+    from telegram_auto_poster.bot.permissions import check_admin_rights
+
+    if not await check_admin_rights(update, context):
+        return
 
     try:
         # Get all files from downloads bucket
@@ -517,6 +693,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     filename = get_file_name(caption)
     object_name = os.path.basename(filename)
 
+    # Determine media type from filename
+    media_type = "photo" if "photos/" in filename else "video"
+
     # Check if file exists in MinIO
     bucket = PHOTOS_BUCKET if "photos/processed_" in filename else VIDEOS_BUCKET
 
@@ -532,7 +711,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
             # Use helper function to download from MinIO
             temp_path, ext = await download_from_minio(object_name, bucket)
-
+            logger.info(f"Downloaded file {object_name} from {bucket} to {temp_path}")
             try:
                 # Use helper function to send media
                 await send_media_to_telegram(
@@ -542,6 +721,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 # Delete from MinIO
                 storage.delete_file(object_name, bucket)
                 logger.info(f"Suggestion post sent to channel: {filename}")
+
+                # Record stats
+                stats.record_approved(media_type)
             finally:
                 cleanup_temp_file(temp_path)
         else:
@@ -571,6 +753,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     reply_markup=None,
                 )
                 logger.info(f"Added {filename} to batch ({batch_count} total)")
+
+                # Record stats
+                stats.record_added_to_batch(media_type)
             finally:
                 cleanup_temp_file(temp_path)
     except MinioError as e:
@@ -601,6 +786,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     filename = get_file_name(caption)
     object_name = os.path.basename(filename)
 
+    # Determine media type from filename
+    media_type = "photo" if "photos/" in filename else "video"
+
     # Check if file exists in MinIO
     bucket = PHOTOS_BUCKET if "photos/processed_" in filename else VIDEOS_BUCKET
 
@@ -630,6 +818,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
             # Delete from MinIO
             storage.delete_file(object_name, bucket)
+
+            # Record stats
+            stats.record_approved(media_type)
         finally:
             cleanup_temp_file(temp_path)
     except MinioError as e:
@@ -661,6 +852,9 @@ async def notok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         photo_name = get_file_name(caption)
         object_name = os.path.basename(photo_name)
 
+        # Determine media type
+        media_type = "photo" if "photos/" in photo_name else "video"
+
         await update.effective_message.edit_caption(
             f"Post disapproved with media {photo_name}!",
             reply_markup=None,
@@ -672,6 +866,9 @@ async def notok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         if storage.file_exists(object_name, bucket):
             logger.info(f"Removing file from MinIO: {bucket}/{object_name}")
             storage.delete_file(object_name, bucket)
+
+            # Record stats
+            stats.record_rejected(media_type)
         else:
             logger.warning(f"File not found for deletion: {bucket}/{object_name}")
     except Exception as e:
@@ -685,16 +882,171 @@ def get_file_name(caption):
     return caption.split("\n")[-1]
 
 
+async def handle_photo(update, context, chat_id):
+    """Handle photo uploads"""
+    file_id = update.message.photo[-1].file_id
+    message_id = update.message.message_id
+    user_id = update.effective_user.id
+    file_name = f"downloaded_image_{chat_id}_{file_id}_{message_id}.jpg"
+
+    # Record received media
+    stats.record_received("photo")
+
+    temp_path = None
+    try:
+        # Download to temp file with correct extension
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        temp_path = temp_file.name
+        temp_file.close()
+
+        # Download from Telegram
+        start_time = time.time()
+        f = await context.bot.get_file(file_id)
+        await f.download_to_drive(temp_path)
+        download_time = time.time() - start_time
+
+        # Upload to MinIO with user info
+        start_upload_time = time.time()
+        storage.upload_file(
+            temp_path, DOWNLOADS_BUCKET, file_name, user_id=user_id, chat_id=chat_id
+        )
+        upload_time = time.time() - start_upload_time
+
+        logger.info(
+            f"Photo from chat {chat_id} has downloaded and stored in MinIO wiht filename {file_name}"
+        )
+        logger.debug(
+            f"Download time: {download_time:.2f}s, Upload time: {upload_time:.2f}s"
+        )
+
+        # Process the photo (which will handle MinIO operations)
+        await process_photo(
+            "New suggestion in bot",
+            file_name,
+            context.bot_data["chat_id"],
+            context.application,
+        )
+
+        # Send confirmation to user
+        await update.message.reply_text(
+            "Thank you for your submission! We'll review it and let you know if it's approved."
+        )
+    except Exception as e:
+        logger.error(f"Error handling photo: {e}")
+        stats.record_error("processing", f"Error handling photo: {str(e)}")
+        await update.message.reply_text(
+            "There was an error processing your photo. Please try again later."
+        )
+    finally:
+        cleanup_temp_file(temp_path)
+
+
+async def handle_video(update, context, chat_id):
+    """Handle video uploads"""
+    logger.info(f"Video from chat {chat_id} has started downloading!")
+    file_id = update.message.video.file_id
+    message_id = update.message.message_id
+    user_id = update.effective_user.id
+    file_name = f"downloaded_video_{chat_id}_{file_id}_{message_id}.mp4"
+
+    # Record received media
+    stats.record_received("video")
+
+    temp_path = None
+    try:
+        # Download to temp file with correct extension
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+        temp_path = temp_file.name
+        temp_file.close()
+
+        # Download from Telegram
+        start_time = time.time()
+        f = await context.bot.get_file(file_id)
+        await f.download_to_drive(temp_path)
+        download_time = time.time() - start_time
+
+        # Upload to MinIO with user info
+        start_upload_time = time.time()
+        storage.upload_file(
+            temp_path, DOWNLOADS_BUCKET, file_name, user_id=user_id, chat_id=chat_id
+        )
+        upload_time = time.time() - start_upload_time
+
+        logger.info(f"Video from chat {chat_id} has downloaded and stored in MinIO")
+        logger.debug(
+            f"Download time: {download_time:.2f}s, Upload time: {upload_time:.2f}s"
+        )
+
+        # Process the video (which will handle MinIO operations)
+        await process_video(
+            "New suggestion in bot",
+            file_name,
+            context.bot_data["chat_id"],
+            context.application,
+        )
+
+        # Send confirmation to user
+        await update.message.reply_text(
+            "Thank you for your video submission! We'll review it and let you know if it's approved."
+        )
+    except Exception as e:
+        logger.error(f"Error handling video: {e}")
+        stats.record_error("processing", f"Error handling video: {str(e)}")
+        await update.message.reply_text(
+            "There was an error processing your video. Please try again later."
+        )
+    finally:
+        cleanup_temp_file(temp_path)
+
+
+async def notify_user(context, user_id, message, media_type=None):
+    """Send a notification to a user about their submission status
+
+    Args:
+        context: The bot context
+        user_id: The user's Telegram ID
+        message: The message to send
+        media_type: Optional media type for stats tracking
+    """
+    try:
+        await context.bot.send_message(chat_id=user_id, text=message)
+        logger.info(f"Sent notification to user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to send notification to user {user_id}: {e}")
+        stats.record_error("telegram", f"Failed to notify user: {str(e)}")
+
+
 async def process_photo(custom_text: str, name: str, bot_chat_id: str, application):
     """Process a photo by adding watermark and sending to review bot"""
+    start_time = time.time()
     try:
         # Add watermark and upload to MinIO
         processed_name = f"processed_{os.path.basename(name)}"
+
+        # Transfer user metadata from original to processed file
+        user_metadata = storage.get_submission_metadata(os.path.basename(name))
+
         await add_watermark_to_image(name, f"photos/{processed_name}")
+
+        # Copy user metadata to processed file if exists
+        if user_metadata:
+            storage.store_submission_metadata(
+                processed_name,
+                user_metadata["user_id"],
+                user_metadata["chat_id"],
+                user_metadata["media_type"],
+            )
+
+        # Record processing time
+        processing_time = time.time() - start_time
+        stats.record_processed("photo", processing_time)
 
         # Check if processed file exists in MinIO
         if not storage.file_exists(processed_name, PHOTOS_BUCKET):
             logger.error(f"Processed photo not found in MinIO: {processed_name}")
+            stats.record_error(
+                "processing", f"Processed photo not found: {processed_name}"
+            )
             return
 
         keyboard = InlineKeyboardMarkup(
@@ -727,29 +1079,53 @@ async def process_photo(custom_text: str, name: str, bot_chat_id: str, applicati
             logger.info(f"New photo {name} in channel!")
         except Exception as e:
             logger.error(f"Failed to send photo to review channel: {e}")
+            stats.record_error("telegram", f"Failed to send to review: {str(e)}")
             raise TelegramMediaError(f"Failed to send photo to review: {str(e)}")
         finally:
             cleanup_temp_file(temp_path)
     except MinioError as e:
         logger.error(f"MinIO error in process_photo: {e}")
+        stats.record_error("storage", f"MinIO error: {str(e)}")
     except MediaError as e:
         logger.error(f"Media processing error in process_photo: {e}")
+        stats.record_error("processing", f"Media error: {str(e)}")
     except Exception as e:
         logger.error(f"Unexpected error in process_photo: {e}")
+        stats.record_error("processing", f"Unexpected error: {str(e)}")
 
 
-async def process_video(
-    custom_text: str, name: str, bot_chat_id: str, application
-) -> None:
-    """Process a video by adding watermark and sending to review bot"""
+async def process_video(custom_text: str, name: str, bot_chat_id: str, application):
+    """Process a video and send to review bot"""
+    start_time = time.time()
     try:
         # Add watermark and upload to MinIO
         processed_name = f"processed_{os.path.basename(name)}"
-        await add_watermark_to_video(name, f"videos/{processed_name}")
+
+        # Transfer user metadata from original to processed file
+        user_metadata = storage.get_submission_metadata(os.path.basename(name))
+
+        # Add watermark to video and upload to MinIO
+        await add_watermark_to_video(name, processed_name)
+
+        # Copy user metadata to processed file if exists
+        if user_metadata:
+            storage.store_submission_metadata(
+                processed_name,
+                user_metadata["user_id"],
+                user_metadata["chat_id"],
+                user_metadata["media_type"],
+            )
+
+        # Record processing time
+        processing_time = time.time() - start_time
+        stats.record_processed("video", processing_time)
 
         # Check if processed file exists in MinIO
         if not storage.file_exists(processed_name, VIDEOS_BUCKET):
             logger.error(f"Processed video not found in MinIO: {processed_name}")
+            stats.record_error(
+                "processing", f"Processed video not found: {processed_name}"
+            )
             return
 
         keyboard = InlineKeyboardMarkup(
@@ -769,31 +1145,36 @@ async def process_video(
 
         try:
             # Send video using bot
-            await application.bot.send_video(
-                bot_chat_id,
-                video=open(temp_path, "rb"),
-                caption=custom_text
-                + "\nNew video found\n"
-                + f"videos/{processed_name}",
-                supports_streaming=True,
-                reply_markup=keyboard,
-                read_timeout=60,
-                write_timeout=60,
-                connect_timeout=60,
-                pool_timeout=60,
-            )
+            with open(temp_path, "rb") as media_file:
+                await application.bot.send_video(
+                    chat_id=bot_chat_id,
+                    video=media_file,
+                    caption=custom_text
+                    + "\nNew post found\n"
+                    + f"videos/{processed_name}",
+                    supports_streaming=True,
+                    reply_markup=keyboard,
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60,
+                    pool_timeout=60,
+                )
             logger.info(f"New video {name} in channel!")
         except Exception as e:
             logger.error(f"Failed to send video to review channel: {e}")
+            stats.record_error("telegram", f"Failed to send video to review: {str(e)}")
             raise TelegramMediaError(f"Failed to send video to review: {str(e)}")
         finally:
             cleanup_temp_file(temp_path)
     except MinioError as e:
         logger.error(f"MinIO error in process_video: {e}")
+        stats.record_error("storage", f"MinIO error: {str(e)}")
     except MediaError as e:
         logger.error(f"Media processing error in process_video: {e}")
+        stats.record_error("processing", f"Media error: {str(e)}")
     except Exception as e:
         logger.error(f"Unexpected error in process_video: {e}")
+        stats.record_error("processing", f"Unexpected error: {str(e)}")
 
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -808,83 +1189,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.warning(f"Unsupported media type from chat {chat_id}")
     except Exception as e:
         logger.error(f"Error in handle_media: {e}")
+        stats.record_error("processing", f"Error handling media: {str(e)}")
         await update.message.reply_text(
             "Sorry, there was an error processing your media. Please try again later."
         )
-
-
-async def handle_photo(update, context, chat_id):
-    """Handle photo uploads"""
-    file_id = update.message.photo[-1].file_id
-    message_id = update.message.message_id
-    file_name = f"downloaded_image_{chat_id}_{file_id}_{message_id}.jpg"
-
-    temp_path = None
-    try:
-        # Download to temp file with correct extension
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-        temp_path = temp_file.name
-        temp_file.close()
-
-        # Download from Telegram
-        f = await context.bot.get_file(file_id)
-        await f.download_to_drive(temp_path)
-
-        # Upload to MinIO
-        storage.upload_file(temp_path, DOWNLOADS_BUCKET, file_name)
-
-        logger.info(f"Photo from chat {chat_id} has downloaded and stored in MinIO")
-
-        # Process the photo (which will handle MinIO operations)
-        await process_photo(
-            "New suggestion in bot",
-            file_name,
-            context.bot_data["chat_id"],
-            context.application,
-        )
-    except Exception as e:
-        logger.error(f"Error handling photo: {e}")
-        await update.message.reply_text(
-            "There was an error processing your photo. Please try again later."
-        )
-    finally:
-        cleanup_temp_file(temp_path)
-
-
-async def handle_video(update, context, chat_id):
-    """Handle video uploads"""
-    logger.info(f"Video from chat {chat_id} has started downloading!")
-    file_id = update.message.video.file_id
-    message_id = update.message.message_id
-    file_name = f"downloaded_video_{chat_id}_{file_id}_{message_id}.mp4"
-
-    temp_path = None
-    try:
-        # Download to temp file with correct extension
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        temp_path = temp_file.name
-        temp_file.close()
-
-        # Download from Telegram
-        f = await context.bot.get_file(file_id)
-        await f.download_to_drive(temp_path)
-
-        # Upload to MinIO
-        storage.upload_file(temp_path, DOWNLOADS_BUCKET, file_name)
-
-        logger.info(f"Video from chat {chat_id} has downloaded and stored in MinIO")
-
-        # Process the video (which will handle MinIO operations)
-        await process_video(
-            "New suggestion in bot",
-            file_name,
-            context.bot_data["chat_id"],
-            context.application,
-        )
-    except Exception as e:
-        logger.error(f"Error handling video: {e}")
-        await update.message.reply_text(
-            "There was an error processing your video. Please try again later."
-        )
-    finally:
-        cleanup_temp_file(temp_path)

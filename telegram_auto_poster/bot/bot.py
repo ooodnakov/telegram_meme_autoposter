@@ -9,19 +9,31 @@ from telegram import Update
 from loguru import logger
 
 from ..config import load_config
-from .handlers import (
-    start,
-    get_chat_id,
+
+# Import commands from commands.py
+from .commands import (
+    start_command,
+    help_command,
+    get_chat_id_command,
     ok_command,
     notok_command,
     send_batch_command,
     delete_batch_command,
     send_luba_command,
+    stats_command,
+    reset_stats_command,
+    save_stats_command,
+)
+
+# Import callbacks from callbacks.py
+from .callbacks import (
     ok_callback,
     push_callback,
     notok_callback,
-    handle_media,
 )
+
+# Import media handlers from handlers.py
+from .handlers import handle_media
 
 
 class TelegramMemeBot:
@@ -37,8 +49,23 @@ class TelegramMemeBot:
         logger.info("Setting up bot application...")
         self.application = ApplicationBuilder().token(self.bot_token).build()
 
-        # Store bot_chat_id in application's bot_data
+        # Get config
+        config = load_config()
+
+        # Store important information in bot_data
         self.application.bot_data["chat_id"] = self.bot_chat_id
+        self.application.bot_data["target_channel_id"] = config["target_channel"]
+
+        # Store admin IDs
+        if "admin_ids" in config:
+            self.application.bot_data["admin_ids"] = config["admin_ids"]
+            logger.info(f"Configured admin IDs: {config['admin_ids']}")
+        else:
+            # For backward compatibility, use the bot_chat_id as admin
+            self.application.bot_data["admin_ids"] = [int(self.bot_chat_id)]
+            logger.info(
+                f"No admin IDs configured, using chat_id as admin: {self.bot_chat_id}"
+            )
 
         # Test the bot connection
         me = await self.application.bot.get_me()
@@ -46,15 +73,19 @@ class TelegramMemeBot:
 
         # Register command handlers
         logger.info("Registering command handlers...")
-        self.application.add_handler(CommandHandler("start", start))
-        self.application.add_handler(CommandHandler("get", get_chat_id))
+        self.application.add_handler(CommandHandler("start", start_command))
+        self.application.add_handler(CommandHandler("help", help_command))
+        self.application.add_handler(CommandHandler("get", get_chat_id_command))
         self.application.add_handler(CommandHandler("ok", ok_command))
         self.application.add_handler(CommandHandler("notok", notok_command))
-        self.application.add_handler(CommandHandler("send_batch", send_batch_command))
+        self.application.add_handler(CommandHandler("sendall", send_batch_command))
         self.application.add_handler(
             CommandHandler("delete_batch", delete_batch_command)
         )
         self.application.add_handler(CommandHandler("luba", send_luba_command))
+        self.application.add_handler(CommandHandler("stats", stats_command))
+        self.application.add_handler(CommandHandler("reset_stats", reset_stats_command))
+        self.application.add_handler(CommandHandler("save_stats", save_stats_command))
 
         # Register callback handlers - fixed to use exact pattern matching with regex
         logger.info("Registering callback handlers...")

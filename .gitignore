@@ -6,3 +6,5 @@ config.ini
 ooodnakov.session*
 .vscode/*
 **/__pycache__/**
+downloaded_*
+media_stats.json
