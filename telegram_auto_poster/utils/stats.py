@@ -1,9 +1,11 @@
-import time
 import datetime
 import json
 import os
+import time
 from collections import defaultdict, deque
 from threading import RLock
+from typing import Self
+
 from loguru import logger
 
 # Constants
@@ -17,7 +19,7 @@ class MediaStats:
     _instance = None
     _lock = RLock()
 
-    def __new__(cls):
+    def __new__(cls) -> Self:
         """Singleton pattern to ensure only one instance exists"""
         with cls._lock:
             if cls._instance is None:
@@ -25,7 +27,7 @@ class MediaStats:
                 cls._instance._initialized = False
             return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the stats tracking system"""
         if self._initialized:
             return
@@ -100,7 +102,7 @@ class MediaStats:
         # Check if we need to reset daily stats (if last reset was yesterday)
         self._check_daily_reset()
 
-    def _load_stats(self):
+    def _load_stats(self) -> None:
         """Load stats from file if it exists"""
         try:
             if os.path.exists(STATS_FILE):
@@ -124,7 +126,7 @@ class MediaStats:
         except Exception as e:
             logger.error(f"Error loading stats: {e}")
 
-    def _save_stats(self, force=False):
+    def _save_stats(self, force=False) -> None:
         """Save stats to file, but only at certain intervals unless forced"""
         current_time = time.time()
         if force or (current_time - self._last_save_time > self._save_interval):
@@ -147,7 +149,7 @@ class MediaStats:
             except Exception as e:
                 logger.error(f"Error saving stats: {e}")
 
-    def _check_daily_reset(self):
+    def _check_daily_reset(self) -> None:
         """Check if we need to reset daily stats"""
         try:
             last_reset = datetime.datetime.fromisoformat(self.daily_stats["last_reset"])
@@ -165,7 +167,7 @@ class MediaStats:
             # Reset the date if there was an error
             self.daily_stats["last_reset"] = datetime.datetime.now().isoformat()
 
-    def record_received(self, media_type):
+    def record_received(self, media_type: str) -> None:
         """Record that media was received"""
         with self._lock:
             self.daily_stats["media_received"] += 1
@@ -180,7 +182,7 @@ class MediaStats:
 
             self._save_stats()
 
-    def record_processed(self, media_type, processing_time):
+    def record_processed(self, media_type: str, processing_time: float) -> None:
         """Record that media was processed"""
         with self._lock:
             self.daily_stats["media_processed"] += 1
@@ -226,7 +228,7 @@ class MediaStats:
 
             self._save_stats()
 
-    def record_approved(self, media_type):
+    def record_approved(self, media_type: str) -> None:
         """Record that media was approved"""
         with self._lock:
             if media_type == "photo":
@@ -245,7 +247,7 @@ class MediaStats:
 
             self._save_stats()
 
-    def record_rejected(self, media_type):
+    def record_rejected(self, media_type: str) -> None:
         """Record that media was rejected"""
         with self._lock:
             if media_type == "photo":
@@ -264,7 +266,7 @@ class MediaStats:
 
             self._save_stats()
 
-    def record_added_to_batch(self, media_type):
+    def record_added_to_batch(self, media_type: str) -> None:
         """Record that media was added to batch"""
         with self._lock:
             if media_type == "photo":
@@ -276,14 +278,14 @@ class MediaStats:
 
             self._save_stats()
 
-    def record_batch_sent(self, count):
+    def record_batch_sent(self, count: int) -> None:
         """Record that a batch was sent"""
         with self._lock:
-            self.daily_stats["batch_sent"] += 1
-            self.total_stats["batch_sent"] += 1
+            self.daily_stats["batch_sent"] += count
+            self.total_stats["batch_sent"] += count
             self._save_stats()
 
-    def record_error(self, error_type, error_message):
+    def record_error(self, error_type: str, error_message: str) -> None:
         """Record an error"""
         with self._lock:
             if error_type == "processing":
@@ -306,7 +308,7 @@ class MediaStats:
 
             self._save_stats()
 
-    def record_storage_operation(self, operation_type, duration):
+    def record_storage_operation(self, operation_type: str, duration: float) -> None:
         """Record storage operation time (upload/download)"""
         with self._lock:
             if operation_type == "upload":
@@ -435,7 +437,7 @@ class MediaStats:
         busiest_hour, count = max(hour_counts.items(), key=lambda x: x[1])
         return busiest_hour, count
 
-    def generate_stats_report(self):
+    def generate_stats_report(self) -> str:
         """Generate a comprehensive stats report"""
         with self._lock:
             logger.info("Generating stats report")
@@ -505,7 +507,7 @@ class MediaStats:
             self._save_stats(force=True)
             return "Daily statistics have been reset."
 
-    def force_save(self):
+    def force_save(self) -> None:
         """Force save stats to file"""
         with self._lock:
             self._save_stats(force=True)

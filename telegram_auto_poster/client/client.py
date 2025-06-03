@@ -3,7 +3,8 @@ import asyncio
 from loguru import logger
 from telethon import TelegramClient, events, types
 
-from ..config import load_config, SELECTED_CHATS
+from ..config import SELECTED_CHATS, load_config
+from ..utils.stats import stats
 
 # Create a global client variable that can be accessed from other modules
 client_instance = None
@@ -48,6 +49,7 @@ class TelegramMemeClient:
             if isinstance(event.media, types.MessageMediaPhoto):
                 photo = event.media.photo
                 file_path = f"downloaded_image_{event.id}.jpg"
+                stats.record_received("photo")
                 await self.client.download_media(photo, file=file_path)
                 await process_photo(
                     "New post found with image",
@@ -60,6 +62,7 @@ class TelegramMemeClient:
                     logger.info(
                         f"Video with eventid {event.id} has started downloading!"
                     )
+                    stats.record_received("video")
                     video = event.media.document
                     file_path = f"downloaded_video_{event.id}.mp4"
                     await self.client.download_media(video, file=file_path)
