@@ -1,9 +1,10 @@
 import asyncio
 from pathlib import Path
 
-from .utils.logger_setup import setup_logger
 from .bot.bot import TelegramMemeBot
 from .client.client import TelegramMemeClient
+from .utils.logger_setup import setup_logger
+from .utils.stats import stats
 
 # Setup logger
 logger = setup_logger()
@@ -54,6 +55,7 @@ async def main():
             await client.stop()
         if bot:
             await bot.stop()
+        stats.force_save()
         logger.info("Shutdown complete")
 
 
