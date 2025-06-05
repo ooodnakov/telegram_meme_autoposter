@@ -77,10 +77,11 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 user_metadata = storage.get_submission_metadata(file_name)
                 if user_metadata and not user_metadata.get("notified"):
                     user_id = user_metadata["user_id"]
+                    translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
                         user_id,
-                        f"Отличные новости! Ваша {media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
+                        f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
                     )
                     storage.mark_notified(file_name)
             finally:
@@ -113,10 +114,11 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 user_metadata = storage.get_submission_metadata(file_name)
                 if user_metadata and not user_metadata.get("notified"):
                     user_id = user_metadata["user_id"]
+                    translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
                         user_id,
-                        f"Отличные новости! Ваша {media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
+                        f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
                     )
                     storage.mark_notified(file_name)
             finally:
@@ -187,10 +189,11 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             user_metadata = storage.get_submission_metadata(file_name)
             if user_metadata and not user_metadata.get("notified"):
                 user_id = user_metadata["user_id"]
+                translated_media_type = "фото" if media_type == "photo" else "видео"
                 await notify_user(
                     context,
                     user_id,
-                    f"Отличные новости! Ваша {media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
+                    f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
                 )
                 storage.mark_notified(file_name)
                 logger.info(
@@ -251,10 +254,11 @@ async def notok_callback(update, context) -> None:
         user_metadata = storage.get_submission_metadata(file_name)
         if user_metadata and not user_metadata.get("notified"):
             user_id = user_metadata["user_id"]
+            translated_media_type = "фото" if media_type == "photo" else "видео"
             await notify_user(
                 context,
                 user_id,
-                f"Ваша {media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
+                f"Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
             )
             storage.mark_notified(file_name)
             logger.info(f"User {user_id} was notified about rejection of {file_name}")
