@@ -36,6 +36,8 @@ class History(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     category = Column(String(50), nullable=False)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    filename = Column(String(200))
+    source = Column(String(50))
     duration = Column(Float)
     error_type = Column(String(50))
     message = Column(Text)
@@ -134,7 +136,7 @@ class MediaStats:
             self._increment("videos_processed", scope="total")
         self.db.commit()
 
-    def record_approved(self, media_type):
+    def record_approved(self, media_type, filename=None, source=None):
         name = "photos_approved" if media_type == "photo" else "videos_approved"
         self._increment(name)
         self._increment(name, scope="total")
@@ -142,11 +144,13 @@ class MediaStats:
             category="approval",
             timestamp=datetime.datetime.utcnow(),
             media_type=media_type,
+            filename=filename,
+            source=source,
         )
         self.db.add(hist)
         self.db.commit()
 
-    def record_rejected(self, media_type):
+    def record_rejected(self, media_type, filename=None, source=None):
         name = "photos_rejected" if media_type == "photo" else "videos_rejected"
         self._increment(name)
         self._increment(name, scope="total")
@@ -154,6 +158,8 @@ class MediaStats:
             category="rejection",
             timestamp=datetime.datetime.utcnow(),
             media_type=media_type,
+            filename=filename,
+            source=source,
         )
         self.db.add(hist)
         self.db.commit()

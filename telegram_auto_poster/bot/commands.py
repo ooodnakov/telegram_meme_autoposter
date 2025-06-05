@@ -1,4 +1,3 @@
-import os
 import asyncio
 from loguru import logger
 from telegram import Update
@@ -183,7 +182,7 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # Record stats
         media_type = "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
-        stats.record_approved(media_type)
+        stats.record_approved(media_type, filename=object_name, source="ok_command")
 
     except MinioError as e:
         logger.error(f"MinIO error in ok_command: {e}")
@@ -219,7 +218,9 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
-            stats.record_rejected(media_type)
+            stats.record_rejected(
+                media_type, filename=object_name, source="notok_command"
+            )
         else:
             await update.message.reply_text("No post found to disapprove.")
     except Exception as e:
@@ -357,7 +358,9 @@ async def send_batch_command(update, context):
                     await context.bot.send_photo(
                         chat_id=target_channel, photo=open(temp_path, "rb")
                     )
-                    stats.record_approved("photo")
+                    stats.record_approved(
+                        "photo", filename=file_name, source="send_batch_command"
+                    )
 
                     # Notify the user if this is their media
                     user_metadata = storage.get_submission_metadata(file_name)
@@ -410,7 +413,9 @@ async def send_batch_command(update, context):
                         video=open(temp_path, "rb"),
                         supports_streaming=True,
                     )
-                    stats.record_approved("video")
+                    stats.record_approved(
+                        "video", filename=file_name, source="send_batch_command"
+                    )
 
                     # Notify the user if this is their media
                     user_metadata = storage.get_submission_metadata(file_name)

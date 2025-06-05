@@ -60,10 +60,10 @@ services:
     image: 'mariadb:latest'
     restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=tma
-      - MYSQL_DATABASE=tma
-      - MYSQL_USER=tma
-      - MYSQL_PASSWORD=tma
+      - MARIADB_ROOT_PASSWORD=tma
+      - MARIADB_DATABASE=tma
+      - MARIADB_USER=tma
+      - MARIADB_PASSWORD=tma
       - MARIADB_AUTO_UPGRADE=1
     volumes:
       - ./mysql:/var/lib/mysql

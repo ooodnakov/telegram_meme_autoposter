@@ -69,7 +69,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         supports_streaming=True,
                         caption=caption_to_send,
                     )
-                stats.record_approved(media_type)
+                stats.record_approved(
+                    media_type, filename=file_name, source="ok_callback"
+                )
 
                 # Notify original submitter
                 user_metadata = storage.get_submission_metadata(file_name)
@@ -177,7 +179,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             # Delete from MinIO
             storage.delete_file(file_name, bucket)
 
-            stats.record_approved(media_type)
+            stats.record_approved(
+                media_type, filename=file_name, source="push_callback"
+            )
 
             # Notify original submitter
             user_metadata = storage.get_submission_metadata(file_name)
@@ -241,7 +245,7 @@ async def notok_callback(update, context) -> None:
         else:
             logger.warning(f"File not found for deletion: {bucket}/{file_name}")
 
-        stats.record_rejected(media_type)
+        stats.record_rejected(media_type, filename=file_name, source="notok_callback")
 
         # Notify original submitter
         user_metadata = storage.get_submission_metadata(file_name)
