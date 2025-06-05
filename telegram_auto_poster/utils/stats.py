@@ -1,517 +1,409 @@
-import datetime
-import json
 import os
-import time
-from collections import defaultdict, deque
-from threading import RLock
-from typing import Self
+import datetime
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    Float,
+    DateTime,
+    Text,
+    func,
+)
+from sqlalchemy.orm import declarative_base, sessionmaker
 
-from loguru import logger
+from collections import defaultdict
 
-# Constants
-STATS_FILE = "media_stats.json"
-MAX_HISTORY_ITEMS = 1000  # Maximum number of items to keep in history
+Base = declarative_base()
+
+
+class StatsCounter(Base):
+    __tablename__ = "stats_counters"
+    id = Column(Integer, primary_key=True)
+    scope = Column(String(10), nullable=False)  # 'daily' or 'total'
+    name = Column(String(50), nullable=False)
+    value = Column(Integer, default=0, nullable=False)
+
+
+class Metadata(Base):
+    __tablename__ = "metadata"
+    key = Column(String(50), primary_key=True)
+    value = Column(String(100), nullable=False)
+
+
+class History(Base):
+    __tablename__ = "history"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(String(50), nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    duration = Column(Float)
+    error_type = Column(String(50))
+    message = Column(Text)
+    media_type = Column(String(50))
+
+
+# Database connection
+user = os.getenv("DB_MYSQL_USER")
+password = os.getenv("DB_MYSQL_PASSWORD")
+host = os.getenv("DB_MYSQL_HOST", "localhost")
+port = os.getenv("DB_MYSQL_PORT", "3306")
+dbname = os.getenv("DB_MYSQL_NAME")
+DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
+
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine)
+
+Base.metadata.create_all(bind=engine)
 
 
 class MediaStats:
-    """Class for tracking and managing media processing statistics"""
-
     _instance = None
-    _lock = RLock()
 
-    def __new__(cls) -> Self:
-        """Singleton pattern to ensure only one instance exists"""
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super(MediaStats, cls).__new__(cls)
-                cls._instance._initialized = False
-            return cls._instance
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(MediaStats, cls).__new__(cls)
+            cls._instance.db = SessionLocal()
+            cls._instance._init_db()
+        return cls._instance
 
-    def __init__(self) -> None:
-        """Initialize the stats tracking system"""
-        if self._initialized:
+    def _init_db(self):
+        names = [
+            "media_received",
+            "media_processed",
+            "photos_received",
+            "videos_received",
+            "photos_processed",
+            "videos_processed",
+            "photos_approved",
+            "videos_approved",
+            "photos_rejected",
+            "videos_rejected",
+            "photos_added_to_batch",
+            "videos_added_to_batch",
+            "batch_sent",
+            "processing_errors",
+            "storage_errors",
+            "telegram_errors",
+        ]
+        for scope in ("daily", "total"):
+            for name in names:
+                exists = (
+                    self.db.query(StatsCounter)
+                    .filter_by(scope=scope, name=name)
+                    .first()
+                )
+                if not exists:
+                    self.db.add(StatsCounter(scope=scope, name=name, value=0))
+        # ensure daily reset metadata exists
+        meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
+        if not meta:
+            now = datetime.datetime.utcnow().isoformat()
+            self.db.add(Metadata(key="daily_last_reset", value=now))
+        self.db.commit()
+
+    def _increment(self, name, scope="daily", count=1):
+        stat = self.db.query(StatsCounter).filter_by(scope=scope, name=name).first()
+        stat.value += count
+        self.db.commit()
+
+    def record_received(self, media_type):
+        self._increment("media_received")
+        self._increment("media_received", scope="total")
+        if media_type == "photo":
+            self._increment("photos_received")
+            self._increment("photos_received", scope="total")
+        elif media_type == "video":
+            self._increment("videos_received")
+            self._increment("videos_received", scope="total")
+
+    def record_processed(self, media_type, processing_time):
+        self._increment("media_processed")
+        self._increment("media_processed", scope="total")
+        category = f"{media_type}_processing"
+        hist = History(
+            category=category,
+            timestamp=datetime.datetime.utcnow(),
+            duration=processing_time,
+        )
+        self.db.add(hist)
+        if media_type == "photo":
+            self._increment("photos_processed")
+            self._increment("photos_processed", scope="total")
+        elif media_type == "video":
+            self._increment("videos_processed")
+            self._increment("videos_processed", scope="total")
+        self.db.commit()
+
+    def record_approved(self, media_type):
+        name = "photos_approved" if media_type == "photo" else "videos_approved"
+        self._increment(name)
+        self._increment(name, scope="total")
+        hist = History(
+            category="approval",
+            timestamp=datetime.datetime.utcnow(),
+            media_type=media_type,
+        )
+        self.db.add(hist)
+        self.db.commit()
+
+    def record_rejected(self, media_type):
+        name = "photos_rejected" if media_type == "photo" else "videos_rejected"
+        self._increment(name)
+        self._increment(name, scope="total")
+        hist = History(
+            category="rejection",
+            timestamp=datetime.datetime.utcnow(),
+            media_type=media_type,
+        )
+        self.db.add(hist)
+        self.db.commit()
+
+    def record_added_to_batch(self, media_type):
+        name = (
+            "photos_added_to_batch"
+            if media_type == "photo"
+            else "videos_added_to_batch"
+        )
+        self._increment(name)
+        self._increment(name, scope="total")
+
+    def record_batch_sent(self, count):
+        self._increment("batch_sent", count=count)
+        self._increment("batch_sent", scope="total", count=count)
+
+    def record_error(self, error_type, error_message):
+        if error_type == "processing":
+            name = "processing_errors"
+        elif error_type == "storage":
+            name = "storage_errors"
+        else:
+            name = "telegram_errors"
+        self._increment(name)
+        self._increment(name, scope="total")
+        hist = History(
+            category="error",
+            timestamp=datetime.datetime.utcnow(),
+            error_type=error_type,
+            message=error_message,
+        )
+        self.db.add(hist)
+        self.db.commit()
+
+    def record_storage_operation(self, operation_type, duration):
+        if operation_type not in ("upload", "download"):
             return
-
-        self._last_save_time = time.time()
-        self._save_interval = 300  # Save stats every 5 minutes
-        self._initialized = True
-
-        # Daily counters (reset every 24h)
-        self.daily_stats = {
-            "media_received": 0,
-            "media_processed": 0,
-            "photos_received": 0,
-            "videos_received": 0,
-            "photos_processed": 0,
-            "videos_processed": 0,
-            "photos_approved": 0,
-            "videos_approved": 0,
-            "photos_rejected": 0,
-            "videos_rejected": 0,
-            "photos_added_to_batch": 0,
-            "videos_added_to_batch": 0,
-            "batch_sent": 0,
-            "processing_errors": 0,
-            "storage_errors": 0,
-            "telegram_errors": 0,
-            "last_reset": datetime.datetime.now().isoformat(),
-        }
-
-        # Total counters (never reset)
-        self.total_stats = {
-            "media_received": 0,
-            "media_processed": 0,
-            "photos_received": 0,
-            "videos_received": 0,
-            "photos_processed": 0,
-            "videos_processed": 0,
-            "photos_approved": 0,
-            "videos_approved": 0,
-            "photos_rejected": 0,
-            "videos_rejected": 0,
-            "photos_added_to_batch": 0,
-            "videos_added_to_batch": 0,
-            "batch_sent": 0,
-            "processing_errors": 0,
-            "storage_errors": 0,
-            "telegram_errors": 0,
-        }
-
-        # Performance metrics
-        self.performance = {
-            "avg_photo_processing_time": 0,
-            "avg_video_processing_time": 0,
-            "avg_upload_time": 0,
-            "avg_download_time": 0,
-        }
-
-        # Detailed history for analysis
-        self.history = {
-            "photo_processing_times": deque(maxlen=MAX_HISTORY_ITEMS),
-            "video_processing_times": deque(maxlen=MAX_HISTORY_ITEMS),
-            "upload_times": deque(maxlen=MAX_HISTORY_ITEMS),
-            "download_times": deque(maxlen=MAX_HISTORY_ITEMS),
-            "errors": deque(maxlen=MAX_HISTORY_ITEMS),
-            "approvals": deque(maxlen=MAX_HISTORY_ITEMS),
-            "rejections": deque(maxlen=MAX_HISTORY_ITEMS),
-        }
-
-        # Load existing stats if available
-        self._load_stats()
-
-        # Check if we need to reset daily stats (if last reset was yesterday)
-        self._check_daily_reset()
-
-    def _load_stats(self) -> None:
-        """Load stats from file if it exists"""
-        try:
-            if os.path.exists(STATS_FILE):
-                with open(STATS_FILE, "r") as f:
-                    data = json.load(f)
-
-                # Load main stats counters
-                if "daily_stats" in data:
-                    self.daily_stats = data["daily_stats"]
-                if "total_stats" in data:
-                    self.total_stats = data["total_stats"]
-                if "performance" in data:
-                    self.performance = data["performance"]
-
-                # Convert history items back to deque (they're stored as lists in JSON)
-                if "history" in data:
-                    for key, items in data["history"].items():
-                        self.history[key] = deque(items, maxlen=MAX_HISTORY_ITEMS)
-
-                logger.info("Statistics loaded from file")
-        except Exception as e:
-            logger.error(f"Error loading stats: {e}")
-
-    def _save_stats(self, force=False) -> None:
-        """Save stats to file, but only at certain intervals unless forced"""
-        current_time = time.time()
-        if force or (current_time - self._last_save_time > self._save_interval):
-            try:
-                # Convert deque to list for JSON serialization
-                history_dict = {key: list(items) for key, items in self.history.items()}
-
-                data = {
-                    "daily_stats": self.daily_stats,
-                    "total_stats": self.total_stats,
-                    "performance": self.performance,
-                    "history": history_dict,
-                }
-
-                with open(STATS_FILE, "w") as f:
-                    json.dump(data, f, indent=2)
-
-                self._last_save_time = current_time
-                logger.debug("Statistics saved to file")
-            except Exception as e:
-                logger.error(f"Error saving stats: {e}")
-
-    def _check_daily_reset(self) -> None:
-        """Check if we need to reset daily stats"""
-        try:
-            last_reset = datetime.datetime.fromisoformat(self.daily_stats["last_reset"])
-            now = datetime.datetime.now()
-
-            # If the last reset was yesterday or earlier, reset daily stats
-            if last_reset.date() < now.date():
-                logger.info("Resetting daily statistics")
-                for key in self.daily_stats:
-                    if key != "last_reset":
-                        self.daily_stats[key] = 0
-                self.daily_stats["last_reset"] = now.isoformat()
-        except Exception as e:
-            logger.error(f"Error checking daily reset: {e}")
-            # Reset the date if there was an error
-            self.daily_stats["last_reset"] = datetime.datetime.now().isoformat()
-
-    def record_received(self, media_type: str) -> None:
-        """Record that media was received"""
-        with self._lock:
-            self.daily_stats["media_received"] += 1
-            self.total_stats["media_received"] += 1
-
-            if media_type == "photo":
-                self.daily_stats["photos_received"] += 1
-                self.total_stats["photos_received"] += 1
-            elif media_type == "video":
-                self.daily_stats["videos_received"] += 1
-                self.total_stats["videos_received"] += 1
-
-            self._save_stats()
-
-    def record_processed(self, media_type: str, processing_time: float) -> None:
-        """Record that media was processed"""
-        with self._lock:
-            self.daily_stats["media_processed"] += 1
-            self.total_stats["media_processed"] += 1
-
-            if media_type == "photo":
-                self.daily_stats["photos_processed"] += 1
-                self.total_stats["photos_processed"] += 1
-                self.history["photo_processing_times"].append(
-                    {
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "duration": processing_time,
-                    }
-                )
-
-                # Update average processing time
-                times = [
-                    item["duration"] for item in self.history["photo_processing_times"]
-                ]
-                if times:
-                    self.performance["avg_photo_processing_time"] = sum(times) / len(
-                        times
-                    )
-
-            elif media_type == "video":
-                self.daily_stats["videos_processed"] += 1
-                self.total_stats["videos_processed"] += 1
-                self.history["video_processing_times"].append(
-                    {
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "duration": processing_time,
-                    }
-                )
-
-                # Update average processing time
-                times = [
-                    item["duration"] for item in self.history["video_processing_times"]
-                ]
-                if times:
-                    self.performance["avg_video_processing_time"] = sum(times) / len(
-                        times
-                    )
-
-            self._save_stats()
-
-    def record_approved(self, media_type: str) -> None:
-        """Record that media was approved"""
-        with self._lock:
-            if media_type == "photo":
-                self.daily_stats["photos_approved"] += 1
-                self.total_stats["photos_approved"] += 1
-            elif media_type == "video":
-                self.daily_stats["videos_approved"] += 1
-                self.total_stats["videos_approved"] += 1
-
-            self.history["approvals"].append(
-                {
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "media_type": media_type,
-                }
-            )
-
-            self._save_stats()
-
-    def record_rejected(self, media_type: str) -> None:
-        """Record that media was rejected"""
-        with self._lock:
-            if media_type == "photo":
-                self.daily_stats["photos_rejected"] += 1
-                self.total_stats["photos_rejected"] += 1
-            elif media_type == "video":
-                self.daily_stats["videos_rejected"] += 1
-                self.total_stats["videos_rejected"] += 1
-
-            self.history["rejections"].append(
-                {
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "media_type": media_type,
-                }
-            )
-
-            self._save_stats()
-
-    def record_added_to_batch(self, media_type: str) -> None:
-        """Record that media was added to batch"""
-        with self._lock:
-            if media_type == "photo":
-                self.daily_stats["photos_added_to_batch"] += 1
-                self.total_stats["photos_added_to_batch"] += 1
-            elif media_type == "video":
-                self.daily_stats["videos_added_to_batch"] += 1
-                self.total_stats["videos_added_to_batch"] += 1
-
-            self._save_stats()
-
-    def record_batch_sent(self, count: int) -> None:
-        """Record that a batch was sent"""
-        with self._lock:
-            self.daily_stats["batch_sent"] += count
-            self.total_stats["batch_sent"] += count
-            self._save_stats()
-
-    def record_error(self, error_type: str, error_message: str) -> None:
-        """Record an error"""
-        with self._lock:
-            if error_type == "processing":
-                self.daily_stats["processing_errors"] += 1
-                self.total_stats["processing_errors"] += 1
-            elif error_type == "storage":
-                self.daily_stats["storage_errors"] += 1
-                self.total_stats["storage_errors"] += 1
-            elif error_type == "telegram":
-                self.daily_stats["telegram_errors"] += 1
-                self.total_stats["telegram_errors"] += 1
-
-            self.history["errors"].append(
-                {
-                    "timestamp": datetime.datetime.now().isoformat(),
-                    "type": error_type,
-                    "message": error_message,
-                }
-            )
-
-            self._save_stats()
-
-    def record_storage_operation(self, operation_type: str, duration: float) -> None:
-        """Record storage operation time (upload/download)"""
-        with self._lock:
-            if operation_type == "upload":
-                self.history["upload_times"].append(
-                    {
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "duration": duration,
-                    }
-                )
-
-                # Update average upload time
-                times = [item["duration"] for item in self.history["upload_times"]]
-                if times:
-                    self.performance["avg_upload_time"] = sum(times) / len(times)
-
-            elif operation_type == "download":
-                self.history["download_times"].append(
-                    {
-                        "timestamp": datetime.datetime.now().isoformat(),
-                        "duration": duration,
-                    }
-                )
-
-                # Update average download time
-                times = [item["duration"] for item in self.history["download_times"]]
-                if times:
-                    self.performance["avg_download_time"] = sum(times) / len(times)
-
-            self._save_stats()
+        hist = History(
+            category=operation_type,
+            timestamp=datetime.datetime.utcnow(),
+            duration=duration,
+        )
+        self.db.add(hist)
+        self.db.commit()
 
     def get_daily_stats(self):
-        """Get daily stats summary"""
-        with self._lock:
-            # Check if we need to reset first
-            self._check_daily_reset()
-            return dict(self.daily_stats)
+        meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
+        last_reset = datetime.datetime.fromisoformat(meta.value)
+        now = datetime.datetime.utcnow()
+        if last_reset.date() < now.date():
+            # reset daily stats
+            self.db.query(StatsCounter).filter_by(scope="daily").update(
+                {StatsCounter.value: 0}
+            )
+            meta.value = now.isoformat()
+            self.db.commit()
+        stats = {
+            sc.name: sc.value
+            for sc in self.db.query(StatsCounter).filter_by(scope="daily")
+        }
+        stats["last_reset"] = meta.value
+        return stats
 
     def get_total_stats(self):
-        """Get total stats summary"""
-        with self._lock:
-            return dict(self.total_stats)
+        return {
+            sc.name: sc.value
+            for sc in self.db.query(StatsCounter).filter_by(scope="total")
+        }
 
     def get_performance_metrics(self):
-        """Get performance metrics"""
-        with self._lock:
-            return dict(self.performance)
+        pm = {}
+        pm["avg_photo_processing_time"] = (
+            self.db.query(func.avg(History.duration))
+            .filter(History.category == "photo_processing")
+            .scalar()
+            or 0
+        )
+        pm["avg_video_processing_time"] = (
+            self.db.query(func.avg(History.duration))
+            .filter(History.category == "video_processing")
+            .scalar()
+            or 0
+        )
+        pm["avg_upload_time"] = (
+            self.db.query(func.avg(History.duration))
+            .filter(History.category == "upload")
+            .scalar()
+            or 0
+        )
+        pm["avg_download_time"] = (
+            self.db.query(func.avg(History.duration))
+            .filter(History.category == "download")
+            .scalar()
+            or 0
+        )
+        return pm
 
     def get_recent_errors(self, limit=10):
-        """Get most recent errors"""
-        with self._lock:
-            return list(self.history["errors"])[-limit:]
+        rows = (
+            self.db.query(History)
+            .filter_by(category="error")
+            .order_by(History.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "timestamp": r.timestamp.isoformat(),
+                "type": r.error_type,
+                "message": r.message,
+            }
+            for r in rows
+        ]
 
     def get_recent_events(self, event_type, limit=10):
-        """Get most recent events of specified type"""
-        with self._lock:
-            if event_type in self.history:
-                return list(self.history[event_type])[-limit:]
+        mapping = {
+            "photo_processing_times": "photo_processing",
+            "video_processing_times": "video_processing",
+            "upload_times": "upload",
+            "download_times": "download",
+            "errors": "error",
+            "approvals": "approval",
+            "rejections": "rejection",
+        }
+        category = mapping.get(event_type)
+        if not category:
             return []
+        rows = (
+            self.db.query(History)
+            .filter_by(category=category)
+            .order_by(History.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        events = []
+        for r in rows:
+            ev = {"timestamp": r.timestamp.isoformat()}
+            if r.duration is not None:
+                ev["duration"] = r.duration
+            if r.media_type:
+                ev["media_type"] = r.media_type
+            if r.error_type:
+                ev["type"] = r.error_type
+                ev["message"] = r.message
+            events.append(ev)
+        return events
 
     def get_approval_rate_24h(self):
-        """Get approval rate for last 24 hours"""
-        with self._lock:
-            total_processed = (
-                self.daily_stats["photos_processed"]
-                + self.daily_stats["videos_processed"]
-            )
-            total_approved = (
-                self.daily_stats["photos_approved"]
-                + self.daily_stats["videos_approved"]
-            )
-
-            if total_processed == 0:
-                return 0
-            return (total_approved / total_processed) * 100
+        ds = self.get_daily_stats()
+        processed = ds["photos_processed"] + ds["videos_processed"]
+        approved = ds["photos_approved"] + ds["videos_approved"]
+        return (approved / processed * 100) if processed else 0
 
     def get_approval_rate_total(self):
-        """Get all-time approval rate"""
-        with self._lock:
-            total_processed = (
-                self.total_stats["photos_processed"]
-                + self.total_stats["videos_processed"]
-            )
-            total_approved = (
-                self.total_stats["photos_approved"]
-                + self.total_stats["videos_approved"]
-            )
-
-            if total_processed == 0:
-                return 0
-            return (total_approved / total_processed) * 100
+        ts = self.get_total_stats()
+        processed = ts["photos_processed"] + ts["videos_processed"]
+        approved = ts["photos_approved"] + ts["videos_approved"]
+        return (approved / processed * 100) if processed else 0
 
     def get_success_rate_24h(self):
-        """Get success rate for last 24 hours"""
-        with self._lock:
-            total_received = self.daily_stats["media_received"]
-            total_errors = (
-                self.daily_stats["processing_errors"]
-                + self.daily_stats["storage_errors"]
-                + self.daily_stats["telegram_errors"]
-            )
-
-            if total_received == 0:
-                return 100  # No errors if nothing was processed
-            return ((total_received - total_errors) / total_received) * 100
+        ds = self.get_daily_stats()
+        received = ds["media_received"]
+        errors = ds["processing_errors"] + ds["storage_errors"] + ds["telegram_errors"]
+        return ((received - errors) / received * 100) if received else 100
 
     def get_busiest_hour(self):
-        """Get the busiest hour in the last 24 hours"""
-        # Combine all events to find busiest hour
-        hour_counts = defaultdict(int)
-        now = datetime.datetime.now()
+        now = datetime.datetime.utcnow()
         yesterday = now - datetime.timedelta(days=1)
+        rows = (
+            self.db.query(History)
+            .filter(
+                History.category.in_(["approval", "rejection"]),
+                History.timestamp >= yesterday,
+            )
+            .all()
+        )
 
-        for history_type in ["approvals", "rejections"]:
-            for event in self.history[history_type]:
-                try:
-                    timestamp = datetime.datetime.fromisoformat(event["timestamp"])
-                    if timestamp >= yesterday:
-                        hour = timestamp.hour
-                        hour_counts[hour] += 1
-                except (ValueError, KeyError):
-                    continue
-
+        hour_counts = defaultdict(int)
+        for r in rows:
+            hour = r.timestamp.hour
+            hour_counts[hour] += 1
         if not hour_counts:
             return None, 0
-
         busiest_hour, count = max(hour_counts.items(), key=lambda x: x[1])
         return busiest_hour, count
 
-    def generate_stats_report(self) -> str:
+    def generate_stats_report(self):
         """Generate a comprehensive stats report"""
-        with self._lock:
-            logger.info("Generating stats report")
-            # Check if we need to reset first
-            self._check_daily_reset()
-
-            # Calculate approval rates
-            approval_rate_24h = self.get_approval_rate_24h()
-            approval_rate_total = self.get_approval_rate_total()
-
-            # Calculate success rates
-            success_rate_24h = self.get_success_rate_24h()
-
-            # Find busiest hour
-            busiest_hour, count = self.get_busiest_hour() or (None, 0)
-            busiest_hour_display = (
-                f"{busiest_hour}:00-{busiest_hour + 1}:00"
-                if busiest_hour is not None
-                else "N/A"
-            )
-
-            report = [
-                "📊 Statistics Report 📊",
-                "",
-                "📈 Last 24 Hours:",
-                f"• Media Received: {self.daily_stats['media_received']}",
-                f"• Photos Processed: {self.daily_stats['photos_processed']}",
-                f"• Videos Processed: {self.daily_stats['videos_processed']}",
-                f"• Photos Approved: {self.daily_stats['photos_approved']}",
-                f"• Videos Approved: {self.daily_stats['videos_approved']}",
-                f"• Photos Rejected: {self.daily_stats['photos_rejected']}",
-                f"• Videos Rejected: {self.daily_stats['videos_rejected']}",
-                f"• Batches Sent: {self.daily_stats['batch_sent']}",
-                f"• Approval Rate: {approval_rate_24h:.1f}%",
-                f"• Success Rate: {success_rate_24h:.1f}%",
-                f"• Busiest Hour: {busiest_hour_display} ({count} events)",
-                "",
-                "⏱️ Performance Metrics:",
-                f"• Average Photo Processing: {self.performance['avg_photo_processing_time']:.2f}s",
-                f"• Average Video Processing: {self.performance['avg_video_processing_time']:.2f}s",
-                f"• Average Upload Time: {self.performance['avg_upload_time']:.2f}s",
-                f"• Average Download Time: {self.performance['avg_download_time']:.2f}s",
-                "",
-                "🔢 All-Time Totals:",
-                f"• Media Processed: {self.total_stats['media_processed']}",
-                f"• Photos Approved: {self.total_stats['photos_approved']}",
-                f"• Videos Approved: {self.total_stats['videos_approved']}",
-                f"• Overall Approval Rate: {approval_rate_total:.1f}%",
-                f"• Total Batches Sent: {self.total_stats['batch_sent']}",
-                f"• Total Errors: {self.total_stats['processing_errors'] + self.total_stats['storage_errors'] + self.total_stats['telegram_errors']}",
-                "",
-                "Last reset: "
-                + datetime.datetime.fromisoformat(
-                    self.daily_stats["last_reset"]
-                ).strftime("%Y-%m-%d %H:%M:%S"),
-            ]
-
-            return "\n".join(report)
+        daily = self.get_daily_stats()
+        total = self.get_total_stats()
+        perf = self.get_performance_metrics()
+        approval_24h = self.get_approval_rate_24h()
+        approval_total = self.get_approval_rate_total()
+        success_24h = self.get_success_rate_24h()
+        busiest = self.get_busiest_hour()
+        busiest_hour, count = busiest if busiest else (None, 0)
+        busiest_display = (
+            f"{busiest_hour}:00-{busiest_hour + 1}:00"
+            if busiest_hour is not None
+            else "N/A"
+        )
+        report_lines = [
+            "📊 Statistics Report 📊",
+            "",
+            "📈 Last 24 Hours:",
+            f"• Media Received: {daily.get('media_received', 0)}",
+            f"• Photos Processed: {daily.get('photos_processed', 0)}",
+            f"• Videos Processed: {daily.get('videos_processed', 0)}",
+            f"• Photos Approved: {daily.get('photos_approved', 0)}",
+            f"• Videos Approved: {daily.get('videos_approved', 0)}",
+            f"• Photos Rejected: {daily.get('photos_rejected', 0)}",
+            f"• Videos Rejected: {daily.get('videos_rejected', 0)}",
+            f"• Batches Sent: {daily.get('batch_sent', 0)}",
+            f"• Approval Rate: {approval_24h:.1f}%",
+            f"• Success Rate: {success_24h:.1f}%",
+            f"• Busiest Hour: {busiest_display} ({count} events)",
+            "",
+            "⏱️ Performance Metrics:",
+            f"• Average Photo Processing: {perf.get('avg_photo_processing_time', 0):.2f}s",
+            f"• Average Video Processing: {perf.get('avg_video_processing_time', 0):.2f}s",
+            f"• Average Upload Time: {perf.get('avg_upload_time', 0):.2f}s",
+            f"• Average Download Time: {perf.get('avg_download_time', 0):.2f}s",
+            "",
+            "🔢 All-Time Totals:",
+            f"• Media Processed: {total.get('media_processed', 0)}",
+            f"• Photos Approved: {total.get('photos_approved', 0)}",
+            f"• Videos Approved: {total.get('videos_approved', 0)}",
+            f"• Overall Approval Rate: {approval_total:.1f}%",
+            f"• Total Batches Sent: {total.get('batch_sent', 0)}",
+            f"🛑 Total Errors: {total.get('processing_errors', 0) + total.get('storage_errors', 0) + total.get('telegram_errors', 0)}",
+            "",
+            f"Last reset: {daily.get('last_reset', '')}",
+        ]
+        return "\n".join(report_lines)
 
     def reset_daily_stats(self):
         """Manually reset daily stats"""
-        with self._lock:
-            for key in self.daily_stats:
-                if key != "last_reset":
-                    self.daily_stats[key] = 0
-            self.daily_stats["last_reset"] = datetime.datetime.now().isoformat()
-            self._save_stats(force=True)
-            return "Daily statistics have been reset."
+        now_iso = datetime.datetime.utcnow().isoformat()
+        self.db.query(StatsCounter).filter_by(scope="daily").update(
+            {StatsCounter.value: 0}
+        )
+        meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
+        meta.value = now_iso
+        self.db.commit()
+        return "Daily statistics have been reset."
 
-    def force_save(self) -> None:
-        """Force save stats to file"""
-        with self._lock:
-            self._save_stats(force=True)
+    def force_save(self):
+        """Force commit any pending transactions"""
+        self.db.commit()
 
 
-# Create a global instance
 stats = MediaStats()

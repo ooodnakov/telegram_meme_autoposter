@@ -929,7 +929,7 @@ async def handle_photo(update, context, chat_id):
 
         # Send confirmation to user
         await update.message.reply_text(
-            "Thank you for your submission! We'll review it and let you know if it's approved."
+            "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена."
         )
     except Exception as e:
         logger.error(f"Error handling photo: {e}")

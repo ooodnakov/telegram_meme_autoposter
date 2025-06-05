@@ -8,3 +8,4 @@ ooodnakov.session*
 **/__pycache__/**
 downloaded_*
 media_stats.json
+mysql/*
