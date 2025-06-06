@@ -51,12 +51,10 @@ async def check_admin_rights(
         logger.warning(
             f"User {user_id} attempted to use admin command without permission"
         )
-        await update.message.reply_text(
-            "You don't have permission to use this command."
-        )
+        await update.message.reply_text("У вас нет прав на использование этой команды.")
         return False
 
     except Exception as e:
         logger.error(f"Error checking admin rights: {e}")
-        await update.message.reply_text("An error occurred while checking permissions.")
+        await update.message.reply_text("Произошла ошибка при проверке прав доступа.")
         return False

@@ -72,18 +72,25 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 stats.record_approved(
                     media_type, filename=file_name, source="ok_callback"
                 )
+                # Get user metadata
+                user_metadata = storage.get_submission_metadata(file_name)
+
+                # Delete from MinIO
+                storage.delete_file(file_name, bucket)
 
                 # Notify original submitter
-                user_metadata = storage.get_submission_metadata(file_name)
                 if user_metadata and not user_metadata.get("notified"):
-                    user_id = user_metadata["user_id"]
                     translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
-                        user_id,
+                        user_metadata.get("user_id"),
                         f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
+                        reply_to_message_id=user_metadata.get("message_id"),
                     )
                     storage.mark_notified(file_name)
+                    logger.info(
+                        f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
+                    )
             finally:
                 cleanup_temp_file(temp_path)
         else:
@@ -98,6 +105,11 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     target_batch_bucket = PHOTOS_BUCKET  # We'll store all batch files in PHOTOS_BUCKET for consistency
 
                 storage.upload_file(temp_path, target_batch_bucket, new_object_name)
+
+                # Get user metadata
+                user_metadata = storage.get_submission_metadata(new_object_name)
+
+                # Delete from MinIO
                 storage.delete_file(file_name, bucket)
 
                 batch_count = len(
@@ -111,16 +123,18 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 stats.record_added_to_batch(media_type)
                 logger.info(f"Added {file_name} to batch ({batch_count} total)")
                 # Notify original submitter
-                user_metadata = storage.get_submission_metadata(file_name)
                 if user_metadata and not user_metadata.get("notified"):
-                    user_id = user_metadata["user_id"]
                     translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
-                        user_id,
+                        user_metadata.get("user_id"),
                         f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
+                        reply_to_message_id=user_metadata.get("message_id"),
                     )
                     storage.mark_notified(file_name)
+                    logger.info(
+                        f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
+                    )
             finally:
                 cleanup_temp_file(temp_path)
     except MinioError as e:
@@ -178,6 +192,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             )
             logger.info(f"Created new post from image {file_path}!")
 
+            # Get user metadata
+            user_metadata = storage.get_submission_metadata(file_name)
+
             # Delete from MinIO
             storage.delete_file(file_name, bucket)
 
@@ -186,18 +203,17 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             )
 
             # Notify original submitter
-            user_metadata = storage.get_submission_metadata(file_name)
             if user_metadata and not user_metadata.get("notified"):
-                user_id = user_metadata["user_id"]
                 translated_media_type = "фото" if media_type == "photo" else "видео"
                 await notify_user(
                     context,
-                    user_id,
+                    user_metadata.get("user_id"),
                     f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
+                    reply_to_message_id=user_metadata.get("message_id"),
                 )
                 storage.mark_notified(file_name)
                 logger.info(
-                    f"User {user_id} was notified about approval of {file_name}"
+                    f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
                 )
         finally:
             cleanup_temp_file(temp_path)
@@ -243,6 +259,9 @@ async def notok_callback(update, context) -> None:
         )
 
         bucket = PHOTOS_BUCKET if file_path.startswith("photos/") else VIDEOS_BUCKET
+        # Get user metadata
+        user_metadata = storage.get_submission_metadata(file_name)
+        # Delete from MinIO
         if storage.file_exists(file_name, bucket):
             storage.delete_file(file_name, bucket)
         else:
@@ -250,18 +269,19 @@ async def notok_callback(update, context) -> None:
 
         stats.record_rejected(media_type, filename=file_name, source="notok_callback")
 
-        # Notify original submitter
-        user_metadata = storage.get_submission_metadata(file_name)
+        # Notify original submitter using notify_user reply functionality
         if user_metadata and not user_metadata.get("notified"):
-            user_id = user_metadata["user_id"]
             translated_media_type = "фото" if media_type == "photo" else "видео"
             await notify_user(
                 context,
-                user_id,
+                user_metadata.get("user_id"),
                 f"Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
+                reply_to_message_id=user_metadata.get("message_id"),
             )
             storage.mark_notified(file_name)
-            logger.info(f"User {user_id} was notified about rejection of {file_name}")
+            logger.info(
+                f"Notified user {user_metadata.get('user_id')} about rejection of {file_name} from message_id {user_metadata.get('message_id')}"
+            )
     except Exception as e:
         logger.error(f"Error in notok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))

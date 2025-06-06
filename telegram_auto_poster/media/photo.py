@@ -65,9 +65,21 @@ async def add_watermark_to_image(input_filename: str, output_filename: str):
         exif_bytes = piexif.dump(exif_dict)
         base.save(output_path, exif=exif_bytes)
 
-        # Upload the processed file to MinIO
+        # Upload the processed file to MinIO, preserving submission metadata
         output_object = os.path.basename(output_filename)
-        storage.upload_file(output_path, PHOTOS_BUCKET, output_object)
+        original_name = os.path.basename(input_filename)
+        user_meta = storage.get_submission_metadata(original_name)
+        if user_meta:
+            storage.upload_file(
+                output_path,
+                PHOTOS_BUCKET,
+                output_object,
+                user_id=user_meta["user_id"],
+                chat_id=user_meta["chat_id"],
+                message_id=user_meta.get("message_id"),
+            )
+        else:
+            storage.upload_file(output_path, PHOTOS_BUCKET, output_object)
 
         # Delete original file from MinIO if it exists
         if not os.path.exists(input_filename):

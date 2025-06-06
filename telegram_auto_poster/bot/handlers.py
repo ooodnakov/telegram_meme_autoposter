@@ -56,13 +56,17 @@ def get_file_name(caption):
     return caption.split("\n")[-1]
 
 
-async def handle_photo(update, context, chat_id):
+async def handle_photo(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+):
     """Handle photo uploads"""
     file_id = update.message.photo[-1].file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
     file_name = f"downloaded_image_{chat_id}_{file_id}_{message_id}.jpg"
-
+    logger.info(f"file_name {file_name}, message_id {message_id}")
     # Record received media
     stats.record_received("photo")
 
@@ -82,7 +86,12 @@ async def handle_photo(update, context, chat_id):
         # Upload to MinIO with user info
         start_upload_time = time.time()
         storage.upload_file(
-            temp_path, DOWNLOADS_BUCKET, file_name, user_id=user_id, chat_id=chat_id
+            temp_path,
+            DOWNLOADS_BUCKET,
+            file_name,
+            user_id=user_id,
+            chat_id=chat_id,
+            message_id=message_id,
         )
         upload_time = time.time() - start_upload_time
 
@@ -103,19 +112,25 @@ async def handle_photo(update, context, chat_id):
 
         # Send confirmation to user
         await update.message.reply_text(
-            "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена."
+            "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена.",
+            do_quote=True,
         )
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
         stats.record_error("processing", f"Error handling photo: {str(e)}")
         await update.message.reply_text(
-            "There was an error processing your photo. Please try again later."
+            "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже.",
+            do_quote=True,
         )
     finally:
         cleanup_temp_file(temp_path)
 
 
-async def handle_video(update, context, chat_id):
+async def handle_video(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+):
     """Handle video uploads"""
     logger.info(f"Video from chat {chat_id} has started downloading!")
     file_id = update.message.video.file_id
@@ -142,7 +157,12 @@ async def handle_video(update, context, chat_id):
         # Upload to MinIO with user info
         start_upload_time = time.time()
         storage.upload_file(
-            temp_path, DOWNLOADS_BUCKET, file_name, user_id=user_id, chat_id=chat_id
+            temp_path,
+            DOWNLOADS_BUCKET,
+            file_name,
+            user_id=user_id,
+            chat_id=chat_id,
+            message_id=message_id,
         )
         upload_time = time.time() - start_upload_time
 
@@ -161,30 +181,40 @@ async def handle_video(update, context, chat_id):
 
         # Send confirmation to user
         await update.message.reply_text(
-            "Thank you for your video submission! We'll review it and let you know if it's approved."
+            "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет одобрено.",
+            do_quote=True,
         )
     except Exception as e:
         logger.error(f"Error handling video: {e}")
         stats.record_error("processing", f"Error handling video: {str(e)}")
         await update.message.reply_text(
-            "There was an error processing your video. Please try again later."
+            "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже.",
+            do_quote=True,
         )
     finally:
         cleanup_temp_file(temp_path)
 
 
-async def notify_user(context, user_id, message, media_type=None):
+async def notify_user(
+    context, user_id, message, reply_to_message_id=None, media_type=None
+):
     """Send a notification to a user about their submission status
 
     Args:
         context: The bot context
         user_id: The user's Telegram ID
         message: The message to send
+        reply_to_message_id: Optional message_id to reply to
         media_type: Optional media type for stats tracking
     """
     try:
-        await context.bot.send_message(chat_id=user_id, text=message)
-        logger.info(f"Sent notification to user {user_id}")
+        params = {"chat_id": user_id, "text": message}
+        if reply_to_message_id:
+            params["reply_to_message_id"] = reply_to_message_id
+        await context.bot.send_message(**params)
+        logger.info(
+            f"Sent notification to user {user_id} with reply_to {reply_to_message_id}"
+        )
     except Exception as e:
         logger.error(f"Failed to send notification to user {user_id}: {e}")
         stats.record_error("telegram", f"Failed to notify user: {str(e)}")
@@ -209,6 +239,7 @@ async def process_photo(custom_text: str, name: str, bot_chat_id: str, applicati
                 user_metadata["user_id"],
                 user_metadata["chat_id"],
                 user_metadata["media_type"],
+                user_metadata["message_id"],
             )
 
         # Record processing time
@@ -288,6 +319,7 @@ async def process_video(custom_text: str, name: str, bot_chat_id: str, applicati
                 user_metadata["user_id"],
                 user_metadata["chat_id"],
                 user_metadata["media_type"],
+                user_metadata["message_id"],
             )
 
         # Record processing time
@@ -365,11 +397,13 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.error(f"Error in handle_media: {e}")
         stats.record_error("processing", f"Error handling media: {str(e)}")
         await update.message.reply_text(
-            "Sorry, there was an error processing your media. Please try again later."
+            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
+            do_quote=True,
         )
 
         logger.error(f"Error in handle_media: {e}")
         stats.record_error("processing", f"Error handling media: {str(e)}")
         await update.message.reply_text(
-            "Sorry, there was an error processing your media. Please try again later."
+            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
+            do_quote=True,
         )

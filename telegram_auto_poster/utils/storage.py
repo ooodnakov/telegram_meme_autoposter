@@ -94,7 +94,9 @@ class MinioStorage:
             stats.record_error("storage", f"Failed to create bucket {bucket_name}: {e}")
             raise
 
-    def store_submission_metadata(self, object_name, user_id, chat_id, media_type):
+    def store_submission_metadata(
+        self, object_name, user_id, chat_id, media_type, message_id=None
+    ):
         """Store metadata about who submitted media for later feedback
 
         Args:
@@ -102,6 +104,7 @@ class MinioStorage:
             user_id: The Telegram user_id of the submitter
             chat_id: The Telegram chat_id where the media was submitted
             media_type: Type of media ('photo' or 'video')
+            message_id: Optional Telegram message_id of the original submission
         """
         self.submission_metadata[object_name] = {
             "user_id": user_id,
@@ -109,21 +112,38 @@ class MinioStorage:
             "media_type": media_type,
             "timestamp": datetime.datetime.now().isoformat(),
             "notified": False,
+            "message_id": message_id,
         }
         logger.debug(
-            f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}"
+            f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}, message_id={message_id}"
         )
 
     def get_submission_metadata(self, object_name):
-        """Get metadata about a submission
-
-        Args:
-            object_name: Name of the object in MinIO
-
-        Returns:
-            dict or None: Metadata if it exists, None otherwise
-        """
-        return self.submission_metadata.get(object_name)
+        """Get metadata about a submission from in-memory or MinIO object metadata."""
+        # Check in-memory metadata first
+        meta = self.submission_metadata.get(object_name)
+        if meta:
+            return meta
+        # Try to fetch metadata from MinIO across known buckets
+        for bucket in [PHOTOS_BUCKET, VIDEOS_BUCKET, DOWNLOADS_BUCKET]:
+            try:
+                stat = self.client.stat_object(
+                    bucket_name=bucket, object_name=object_name
+                )
+                md = stat.metadata or {}
+                return {
+                    "user_id": int(md.get("user_id")) if md.get("user_id") else None,
+                    "chat_id": int(md.get("chat_id")) if md.get("chat_id") else None,
+                    "media_type": md.get("media_type"),
+                    "message_id": int(md.get("message_id"))
+                    if md.get("message_id")
+                    else None,
+                    # notified state is managed in-memory
+                    "notified": False,
+                }
+            except Exception:
+                continue
+        return None
 
     def mark_notified(self, object_name):
         """Mark that the user has been notified about their submission
@@ -140,7 +160,13 @@ class MinioStorage:
         return False
 
     def upload_file(
-        self, file_path, bucket=None, object_name=None, user_id=None, chat_id=None
+        self,
+        file_path,
+        bucket=None,
+        object_name=None,
+        user_id=None,
+        chat_id=None,
+        message_id=None,
     ):
         """Upload a file to MinIO with timing metrics and optional user metadata.
 
@@ -150,6 +176,7 @@ class MinioStorage:
             object_name: Name for the object in MinIO (default is filename)
             user_id: Optional user_id of the submitter for feedback
             chat_id: Optional chat_id where the submission was made
+            message_id: Optional Telegram message_id of the original submission
 
         Returns:
             bool: True if upload was successful, False otherwise
@@ -178,18 +205,30 @@ class MinioStorage:
             if object_name is None:
                 object_name = os.path.basename(file_path)
 
-            # Upload file
+            # Build MinIO object metadata
+            minio_metadata = {}
+            if user_id is not None:
+                minio_metadata["user_id"] = str(user_id)
+            if chat_id is not None:
+                minio_metadata["chat_id"] = str(chat_id)
+            minio_metadata["media_type"] = media_type
+            if message_id is not None:
+                minio_metadata["message_id"] = str(message_id)
+            # Upload file with metadata
             self.client.fput_object(
-                bucket_name=bucket, object_name=object_name, file_path=file_path
+                bucket_name=bucket,
+                object_name=object_name,
+                file_path=file_path,
+                metadata=minio_metadata,
             )
-
-            # Store submission metadata if user_id is provided
+            logger.debug(
+                f"Uploaded {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
+            )
+            # Store submission metadata in-memory as well
             if user_id and chat_id:
                 self.store_submission_metadata(
-                    object_name, user_id, chat_id, media_type
+                    object_name, user_id, chat_id, media_type, message_id
                 )
-
-            logger.debug(f"Uploaded {file_path} to {bucket}/{object_name}")
 
             duration = time.time() - start_time
             stats.record_storage_operation("upload", duration)
