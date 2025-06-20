@@ -209,7 +209,7 @@ async def notify_user(
     """
     try:
         params = {"chat_id": user_id, "text": message}
-        if reply_to_message_id:
+        if reply_to_message_id and user_id:
             params["reply_to_message_id"] = reply_to_message_id
         await context.bot.send_message(**params)
         logger.info(
