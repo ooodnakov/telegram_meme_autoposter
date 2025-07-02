@@ -302,9 +302,14 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 if ext.lower() in [".mp4", ".avi", ".mov"]:
                     media_type = "video"
 
-                # Use helper function to send media
+                # Отправляем медиа без подписи, включая поддержку потокового
+                # воспроизведения для видео
                 await send_media_to_telegram(
-                    context.bot, LUBA_CHAT, temp_path, media_type, object_name
+                    context.bot,
+                    LUBA_CHAT,
+                    temp_path,
+                    caption=None,
+                    supports_streaming=(media_type == "video"),
                 )
                 sent_count += 1
                 await asyncio.sleep(1)  # Rate limiting
