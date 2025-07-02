@@ -86,6 +86,7 @@ class MediaStats:
             "processing_errors",
             "storage_errors",
             "telegram_errors",
+            "list_operations",
         ]
         for scope in ("daily", "total"):
             for name in names:
@@ -196,7 +197,7 @@ class MediaStats:
         self.db.commit()
 
     def record_storage_operation(self, operation_type, duration):
-        if operation_type not in ("upload", "download"):
+        if operation_type not in ("upload", "download", "list"):
             return
         hist = History(
             category=operation_type,
@@ -204,6 +205,9 @@ class MediaStats:
             duration=duration,
         )
         self.db.add(hist)
+        if operation_type == "list":
+            self._increment("list_operations")
+            self._increment("list_operations", scope="total")
         self.db.commit()
 
     def get_daily_stats(self):
