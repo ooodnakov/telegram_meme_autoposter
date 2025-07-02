@@ -20,4 +20,4 @@ cd /app
 
 # Start the application
 echo "Starting application..."
-python -m telegram_auto_poster.main 
+python -m telegram_auto_poster.main
