@@ -2,13 +2,33 @@ import configparser
 import os
 
 
+REQUIRED_FIELDS = {
+    "Telegram": ["api_id", "api_hash", "username", "target_channel"],
+    "Bot": ["bot_token", "bot_username", "bot_chat_id"],
+}
+
+
 def load_config():
     config = configparser.ConfigParser()
     config.read("config.ini")
 
-    # Load basic configuration from config.ini
+    if not config.has_section("Telegram") or not config.has_section("Bot"):
+        raise RuntimeError("Файл config.ini заполнен некорректно")
+
+    for section, fields in REQUIRED_FIELDS.items():
+        for field in fields:
+            if not config.has_option(section, field) or not config.get(section, field):
+                raise RuntimeError(f"Заполните параметр {field} в секции [{section}]")
+
+    try:
+        api_id = int(config["Telegram"]["api_id"])
+    except ValueError as exc:
+        raise RuntimeError(
+            "Параметр api_id должен быть числом в секции [Telegram]"
+        ) from exc
+
     conf_dict = {
-        "api_id": int(config["Telegram"]["api_id"]),
+        "api_id": api_id,
         "api_hash": config["Telegram"]["api_hash"],
         "username": config["Telegram"]["username"],
         "target_channel": config["Telegram"]["target_channel"],
