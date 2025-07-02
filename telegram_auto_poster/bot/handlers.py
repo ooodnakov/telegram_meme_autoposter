@@ -400,10 +400,3 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
             do_quote=True,
         )
-
-        logger.error(f"Error in handle_media: {e}")
-        stats.record_error("processing", f"Error handling media: {str(e)}")
-        await update.message.reply_text(
-            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
-            do_quote=True,
-        )
