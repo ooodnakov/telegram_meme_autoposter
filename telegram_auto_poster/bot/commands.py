@@ -355,9 +355,10 @@ async def send_batch_command(update, context):
                     )
 
                     # Send to target channel
-                    await context.bot.send_photo(
-                        chat_id=target_channel, photo=open(temp_path, "rb")
-                    )
+                    with open(temp_path, "rb") as f:
+                        await context.bot.send_photo(
+                            chat_id=target_channel, photo=f
+                        )
                     stats.record_approved(
                         "photo", filename=file_name, source="send_batch_command"
                     )
@@ -408,11 +409,12 @@ async def send_batch_command(update, context):
                     )
 
                     # Send to target channel
-                    await context.bot.send_video(
-                        chat_id=target_channel,
-                        video=open(temp_path, "rb"),
-                        supports_streaming=True,
-                    )
+                    with open(temp_path, "rb") as f:
+                        await context.bot.send_video(
+                            chat_id=target_channel,
+                            video=f,
+                            supports_streaming=True,
+                        )
                     stats.record_approved(
                         "video", filename=file_name, source="send_batch_command"
                     )
