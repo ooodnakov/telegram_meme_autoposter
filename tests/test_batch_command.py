@@ -46,8 +46,11 @@ dummy_config_module.load_config = lambda: {}
 sys.modules["telegram_auto_poster.config"] = dummy_config_module
 
 import pytest
+import importlib
 
-from telegram_auto_poster.bot import commands
+from telegram_auto_poster.bot import commands as imported_commands
+
+commands = importlib.reload(imported_commands)
 
 
 @pytest.mark.asyncio
