@@ -47,7 +47,10 @@ sys.modules["telegram_auto_poster.config"] = dummy_config_module
 
 import pytest
 
-from telegram_auto_poster.bot import commands
+import importlib
+from telegram_auto_poster.bot import commands as orig_commands
+
+commands = importlib.reload(orig_commands)
 
 
 @pytest.mark.asyncio
@@ -59,8 +62,8 @@ async def test_send_batch_photo_closes_file_and_cleans(tmp_path, monkeypatch):
         return str(temp_file), ext
 
     monkeypatch.setattr(commands, "download_from_minio", mock_download)
-    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None)
-    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None)
+    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None, raising=False)
+    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None, raising=False)
     monkeypatch.setattr(commands.stats, "record_approved", lambda *a, **k: None)
 
     monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
@@ -101,8 +104,8 @@ async def test_send_batch_video_closes_file_and_cleans(tmp_path, monkeypatch):
         return str(temp_file), ext
 
     monkeypatch.setattr(commands, "download_from_minio", mock_download)
-    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None)
-    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None)
+    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None, raising=False)
+    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None, raising=False)
     monkeypatch.setattr(commands.stats, "record_approved", lambda *a, **k: None)
     monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
 
@@ -132,3 +135,27 @@ async def test_send_batch_video_closes_file_and_cleans(tmp_path, monkeypatch):
     assert file_obj.closed
     assert cleaned["path"] == str(temp_file)
     assert context.bot_data["video_batch"] == []
+
+
+@pytest.mark.asyncio
+async def test_caption_command_sends_keyboard(tmp_path, monkeypatch):
+    from telegram_auto_poster.bot import commands
+
+    temp_file = tmp_path / "photo.jpg"
+    temp_file.write_bytes(b"data")
+
+    monkeypatch.setattr(commands, "download_from_minio", AsyncMock(return_value=(str(temp_file), ".jpg")))
+    monkeypatch.setattr(commands, "generate_captions", AsyncMock(return_value=["a", "b"]))
+    monkeypatch.setattr(commands, "cleanup_temp_file", lambda x: None)
+    monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
+
+    reply = SimpleNamespace(caption="photos/file.jpg", text=None)
+    message = SimpleNamespace(reply_to_message=reply, reply_text=AsyncMock())
+    update = SimpleNamespace(message=message, effective_user=SimpleNamespace(id=1))
+    context = SimpleNamespace(bot_data={}, bot=SimpleNamespace())
+
+    await commands.caption_command(update, context)
+
+    message.reply_text.assert_awaited_once()
+    markup = message.reply_text.call_args.kwargs["reply_markup"]
+    assert len(markup.inline_keyboard) == 2

@@ -19,6 +19,7 @@ from telegram_auto_poster.utils import (
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.captioner import DEFAULT_CAPTIONS
 
 config = load_config()
 target_channel = config["target_channel"]
@@ -285,3 +286,40 @@ async def notok_callback(update, context) -> None:
     except Exception as e:
         logger.error(f"Error in notok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
+
+
+async def caption_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send media to channel using selected caption"""
+    logger.info(
+        f"Received caption selection from user {update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    prefix = "cap_"
+    if not data.startswith(prefix):
+        return
+    try:
+        index_str, file_name = data[len(prefix) :].split(":", 1)
+        index = int(index_str)
+    except ValueError:
+        await query.message.reply_text("Неверные данные подписи")
+        return
+
+    captions = context.bot_data.get("caption_choices", {}).get(file_name, DEFAULT_CAPTIONS)
+    caption = captions[index] if index < len(captions) else ""
+
+    bucket = PHOTOS_BUCKET if file_name.startswith("processed_downloaded_image") or file_name.startswith("processed_") and file_name.endswith(".jpg") else VIDEOS_BUCKET
+    temp_path, _ = await download_from_minio(file_name, bucket)
+    try:
+        await send_media_to_telegram(context.bot, target_channel, temp_path, caption)
+        storage.delete_file(file_name, bucket)
+        media_type = "photo" if file_name.endswith(('.jpg', '.jpeg', '.png')) else "video"
+        stats.record_approved(media_type, filename=file_name, source="caption_select_callback")
+        await query.message.edit_caption(f"Пост отправлен: {caption}", reply_markup=None)
+    except Exception as e:  # pragma: no cover - network errors
+        logger.error(f"Error in caption_select_callback: {e}")
+        await query.message.reply_text(get_user_friendly_error_message(e))
+    finally:
+        cleanup_temp_file(temp_path)
