@@ -34,7 +34,7 @@ services:
           memory: 512M
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
     container_name: telegram_minio
     restart: always
     networks:
