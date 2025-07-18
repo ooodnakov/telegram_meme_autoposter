@@ -1,120 +1,134 @@
-import asyncio
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from unittest.mock import AsyncMock
 from pathlib import Path
 import sys
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+dummy_stats_module = ModuleType("telegram_auto_poster.utils.stats")
+dummy_stats_module.stats = SimpleNamespace(
+    record_approved=lambda *a, **k: None,
+    record_error=lambda *a, **k: None,
+    record_batch_sent=lambda *a, **k: None,
+    generate_stats_report=lambda: "",
+    reset_daily_stats=lambda: "",
+    force_save=lambda: None,
+)
+sys.modules["telegram_auto_poster.utils.stats"] = dummy_stats_module
+
+dummy_storage_module = ModuleType("telegram_auto_poster.utils.storage")
+
+class DummyStorage:
+    def list_files(self, bucket, prefix=None):
+        return []
+
+    def delete_file(self, object_name, bucket):
+        pass
+
+    def file_exists(self, object_name, bucket):
+        return False
+
+    def get_submission_metadata(self, object_name):
+        return None
+
+    def mark_notified(self, object_name):
+        pass
+
+dummy_storage_module.storage = DummyStorage()
+sys.modules["telegram_auto_poster.utils.storage"] = dummy_storage_module
+
+dummy_config_module = ModuleType("telegram_auto_poster.config")
+dummy_config_module.PHOTOS_BUCKET = "photos"
+dummy_config_module.VIDEOS_BUCKET = "videos"
+dummy_config_module.DOWNLOADS_BUCKET = "downloads"
+dummy_config_module.LUBA_CHAT = "@luba"
+dummy_config_module.load_config = lambda: {}
+sys.modules["telegram_auto_poster.config"] = dummy_config_module
+
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-# Подменяем модули, которые при импорте пытаются подключиться к внешним
-# сервисам (база данных и MinIO).
-dummy_stats_module = SimpleNamespace(stats=SimpleNamespace())
-dummy_storage = SimpleNamespace()
-dummy_storage.list_files = lambda bucket: []
-dummy_storage_module = SimpleNamespace(storage=dummy_storage)
-sys.modules.setdefault('telegram_auto_poster.utils.stats', dummy_stats_module)
-sys.modules.setdefault('telegram_auto_poster.utils.storage', dummy_storage_module)
-
-from telegram_auto_poster.bot.commands import send_luba_command
-
-
-class DummyMessage:
-    def __init__(self):
-        self.texts = []
-
-    async def reply_text(self, text):
-        self.texts.append(text)
-
-
-class DummyUpdate:
-    def __init__(self, user_id=1):
-        self.effective_user = SimpleNamespace(id=user_id)
-        self.message = DummyMessage()
-        self.effective_message = self.message
-
-
-class DummyContext:
-    def __init__(self):
-        self.bot = object()
-        self.bot_data = {}
+from telegram_auto_poster.bot import commands
 
 
 @pytest.mark.asyncio
-async def test_send_luba_command_sends_media(monkeypatch):
-    update = DummyUpdate()
-    context = DummyContext()
+async def test_send_batch_photo_closes_file_and_cleans(tmp_path, monkeypatch):
+    temp_file = tmp_path / "photo.jpg"
+    temp_file.write_bytes(b"data")
 
-    # Prepare mocks
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.check_admin_rights',
-        lambda u, c: asyncio.Future()
+    async def mock_download(name, bucket, ext):
+        return str(temp_file), ext
+
+    monkeypatch.setattr(commands, "download_from_minio", mock_download)
+    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None)
+    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None)
+    monkeypatch.setattr(commands.stats, "record_approved", lambda *a, **k: None)
+
+    monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
+    cleaned = {}
+
+    def mock_cleanup(path):
+        cleaned["path"] = path
+
+    monkeypatch.setattr(commands, "cleanup_temp_file", mock_cleanup)
+
+    update = SimpleNamespace(
+        message=SimpleNamespace(reply_text=AsyncMock()),
+        effective_message=SimpleNamespace(message_id=1),
     )
-    check_future = asyncio.Future()
-    check_future.set_result(True)
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.check_admin_rights',
-        lambda u, c: check_future,
-    )
-
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.storage.list_files',
-        lambda bucket: ['a.jpg', 'b.mp4'],
-    )
-
-    async def fake_download(name, bucket):
-        ext = '.mp4' if name.endswith('.mp4') else '.jpg'
-        return f'/tmp/{name}', ext
-
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.download_from_minio',
-        fake_download,
-    )
-
-    send_calls = []
-
-    async def fake_send(bot, chat_id, file_path, caption=None, supports_streaming=True):
-        send_calls.append((bot, chat_id, file_path, caption, supports_streaming))
-
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.send_media_to_telegram',
-        fake_send,
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_video=AsyncMock())
+    context = SimpleNamespace(
+        bot=bot,
+        bot_data={"target_channel_id": 123, "photo_batch": ["file"], "video_batch": []},
     )
 
-    monkeypatch.setattr('telegram_auto_poster.bot.commands.cleanup_temp_file', lambda p: None)
-    monkeypatch.setattr('telegram_auto_poster.bot.commands.asyncio.sleep', lambda s: asyncio.Future())
-    sleep_future = asyncio.Future()
-    sleep_future.set_result(None)
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.asyncio.sleep',
-        lambda s: sleep_future,
-    )
+    await commands.send_batch_command(update, context)
 
-    await send_luba_command(update, context)
-
-    assert len(send_calls) == 2
-    assert send_calls[0][4] is False
-    assert send_calls[1][4] is True
-    assert update.message.texts[-1].startswith('Sent 2 files')
+    bot.send_photo.assert_awaited_once()
+    sent_args = bot.send_photo.call_args.kwargs
+    assert sent_args["chat_id"] == 123
+    file_obj = sent_args["photo"]
+    assert file_obj.closed
+    assert cleaned["path"] == str(temp_file)
+    assert context.bot_data["photo_batch"] == []
 
 
 @pytest.mark.asyncio
-async def test_send_luba_command_no_files(monkeypatch):
-    update = DummyUpdate()
-    context = DummyContext()
+async def test_send_batch_video_closes_file_and_cleans(tmp_path, monkeypatch):
+    temp_file = tmp_path / "video.mp4"
+    temp_file.write_bytes(b"data")
 
-    future = asyncio.Future()
-    future.set_result(True)
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.check_admin_rights',
-        lambda u, c: future,
+    async def mock_download(name, bucket, ext):
+        return str(temp_file), ext
+
+    monkeypatch.setattr(commands, "download_from_minio", mock_download)
+    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None)
+    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None)
+    monkeypatch.setattr(commands.stats, "record_approved", lambda *a, **k: None)
+    monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
+
+    cleaned = {}
+
+    def mock_cleanup(path):
+        cleaned["path"] = path
+
+    monkeypatch.setattr(commands, "cleanup_temp_file", mock_cleanup)
+
+    update = SimpleNamespace(
+        message=SimpleNamespace(reply_text=AsyncMock()),
+        effective_message=SimpleNamespace(message_id=1),
+    )
+    bot = SimpleNamespace(send_photo=AsyncMock(), send_video=AsyncMock())
+    context = SimpleNamespace(
+        bot=bot,
+        bot_data={"target_channel_id": 123, "photo_batch": [], "video_batch": ["file"]},
     )
 
-    monkeypatch.setattr(
-        'telegram_auto_poster.bot.commands.storage.list_files',
-        lambda bucket: [],
-    )
+    await commands.send_batch_command(update, context)
 
-    await send_luba_command(update, context)
-
-    assert update.message.texts[-1] == 'No files to send to Luba.'
+    bot.send_video.assert_awaited_once()
+    sent_args = bot.send_video.call_args.kwargs
+    assert sent_args["chat_id"] == 123
+    file_obj = sent_args["video"]
+    assert file_obj.closed
+    assert cleaned["path"] == str(temp_file)
+    assert context.bot_data["video_batch"] == []

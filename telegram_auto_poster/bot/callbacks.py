@@ -79,7 +79,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 storage.delete_file(file_name, bucket)
 
                 # Notify original submitter
-                if user_metadata and not user_metadata.get("notified"):
+                if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
                     translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
@@ -123,7 +123,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 stats.record_added_to_batch(media_type)
                 logger.info(f"Added {file_name} to batch ({batch_count} total)")
                 # Notify original submitter
-                if user_metadata and not user_metadata.get("notified"):
+                if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
                     translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
@@ -203,7 +203,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             )
 
             # Notify original submitter
-            if user_metadata and not user_metadata.get("notified"):
+            if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
                 translated_media_type = "фото" if media_type == "photo" else "видео"
                 await notify_user(
                     context,
@@ -270,7 +270,7 @@ async def notok_callback(update, context) -> None:
         stats.record_rejected(media_type, filename=file_name, source="notok_callback")
 
         # Notify original submitter using notify_user reply functionality
-        if user_metadata and not user_metadata.get("notified"):
+        if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
             translated_media_type = "фото" if media_type == "photo" else "видео"
             await notify_user(
                 context,
