@@ -1,5 +1,6 @@
 import os
 import datetime
+from valkey import Valkey
 from sqlalchemy import (
     create_engine,
     Column,
@@ -57,6 +58,11 @@ SessionLocal = sessionmaker(bind=engine)
 
 Base.metadata.create_all(bind=engine)
 
+# Valkey (Redis-compatible) connection for fast counter storage
+valkey_host = os.getenv("VALKEY_HOST", "localhost")
+valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
+redis_client = Valkey(host=valkey_host, port=valkey_port, decode_responses=True)
+
 
 class MediaStats:
     _instance = None
@@ -65,6 +71,7 @@ class MediaStats:
         if cls._instance is None:
             cls._instance = super(MediaStats, cls).__new__(cls)
             cls._instance.db = SessionLocal()
+            cls._instance.r = redis_client
             cls._instance._init_db()
         return cls._instance
 
@@ -88,6 +95,7 @@ class MediaStats:
             "telegram_errors",
             "list_operations",
         ]
+        self.names = names
         for scope in ("daily", "total"):
             for name in names:
                 exists = (
@@ -97,17 +105,27 @@ class MediaStats:
                 )
                 if not exists:
                     self.db.add(StatsCounter(scope=scope, name=name, value=0))
+                else:
+                    self.r.setnx(f"{scope}:{name}", exists.value)
+            # ensure key exists in valkey even if db had no row
+            for name in names:
+                self.r.setnx(f"{scope}:{name}", 0)
         # ensure daily reset metadata exists
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         if not meta:
             now = datetime.datetime.utcnow().isoformat()
             self.db.add(Metadata(key="daily_last_reset", value=now))
+            self.r.set("daily_last_reset", now)
+        else:
+            self.r.setnx("daily_last_reset", meta.value)
         self.db.commit()
 
     def _increment(self, name, scope="daily", count=1):
         stat = self.db.query(StatsCounter).filter_by(scope=scope, name=name).first()
         stat.value += count
         self.db.commit()
+        # update valkey counters
+        self.r.incrby(f"{scope}:{name}", count)
 
     def record_received(self, media_type):
         self._increment("media_received")
@@ -221,18 +239,26 @@ class MediaStats:
             )
             meta.value = now.isoformat()
             self.db.commit()
-        stats = {
-            sc.name: sc.value
-            for sc in self.db.query(StatsCounter).filter_by(scope="daily")
-        }
-        stats["last_reset"] = meta.value
+            for name in self.names:
+                self.r.set(f"daily:{name}", 0)
+            self.r.set("daily_last_reset", meta.value)
+        stats = {name: int(self.r.get(f"daily:{name}") or 0) for name in self.names}
+        stats["last_reset"] = self.r.get("daily_last_reset") or meta.value
         return stats
 
     def get_total_stats(self):
-        return {
-            sc.name: sc.value
-            for sc in self.db.query(StatsCounter).filter_by(scope="total")
-        }
+        stats = {name: int(self.r.get(f"total:{name}") or 0) for name in self.names}
+        for name in self.names:
+            if not self.r.exists(f"total:{name}"):
+                row = (
+                    self.db.query(StatsCounter)
+                    .filter_by(scope="total", name=name)
+                    .first()
+                )
+                if row:
+                    self.r.set(f"total:{name}", row.value)
+                    stats[name] = row.value
+        return stats
 
     def get_performance_metrics(self):
         pm = {}
@@ -409,6 +435,9 @@ class MediaStats:
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         meta.value = now_iso
         self.db.commit()
+        for name in self.names:
+            self.r.set(f"daily:{name}", 0)
+        self.r.set("daily_last_reset", now_iso)
         return "Daily statistics have been reset."
 
     def force_save(self):

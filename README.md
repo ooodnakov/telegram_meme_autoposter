@@ -10,6 +10,7 @@ A system that monitors various Telegram channels for media content (photos/video
 - Allows admin approval or rejection of content
 - Supports batching multiple approved items for posting at once
 - Provides detailed statistics on media processing
+- Stores statistics in a Valkey server for fast access
 - **NEW: Provides feedback to media submitters when their content is approved or rejected**
 - **NEW: Enhanced admin permission system to control access to admin commands**
 - Stores media in MinIO object storage for efficient processing
@@ -44,6 +45,7 @@ All admin commands are protected with permission checks to ensure only authorize
    - `TARGET_CHANNEL_ID` - Channel ID where approved media will be posted
    - `TELEGRAM_ADMIN_IDS` - Comma-separated list of admin Telegram user IDs
    - MinIO configuration (host, port, access keys)
+   - Valkey configuration (`VALKEY_HOST` and `VALKEY_PORT`)
 3. Set up MinIO storage server (or use an existing one)
 4. Install dependencies with `pip install -r requirements.txt`
 5. Run the bot with `python -m telegram_auto_poster.main`

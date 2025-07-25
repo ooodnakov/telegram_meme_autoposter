@@ -18,20 +18,32 @@ services:
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=rem
       - MINIO_SECRET_KEY=yourmother
+      - VALKEY_HOST=valkey
+      - VALKEY_PORT=6379
       # Mysql/Maria connection parameters:
       - DB_MYSQL_HOST=telegram_db
       - DB_MYSQL_PORT=3306
       - DB_MYSQL_USER=tma
       - DB_MYSQL_PASSWORD=tma
       - DB_MYSQL_NAME=tma
-    depends_on:
+  depends_on:
       - minio
       - db
+      - valkey
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
+
+  valkey:
+    image: valkey/valkey:7.2-alpine
+    container_name: telegram_valkey
+    restart: always
+    networks:
+      - teleg_net
+    ports:
+      - "6379:6379"
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
