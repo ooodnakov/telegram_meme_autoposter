@@ -1,6 +1,9 @@
 services:
   telegram_meme:
     container_name: telegram_auto_poster
+    build:
+      context: .
+      dockerfile: Dockerfile
     # image: python:3.12-slim
     restart: no
     networks:
@@ -9,7 +12,6 @@ services:
     volumes:
       - ./:/app
       # - ./data:/app/data
-    build: .
     # start bash and run the script
     command: ["bash", "/app/run_bg.sh"]
     environment:
