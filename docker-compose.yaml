@@ -26,7 +26,7 @@ services:
       - DB_MYSQL_USER=tma
       - DB_MYSQL_PASSWORD=tma
       - DB_MYSQL_NAME=tma
-  depends_on:
+    depends_on:
       - minio
       - db
       - valkey
