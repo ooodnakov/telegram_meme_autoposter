@@ -301,7 +301,7 @@ async def caption_select_callback(update: Update, context: ContextTypes.DEFAULT_
     if not data.startswith(prefix):
         return
     try:
-        index_str, file_name = data[len(prefix) :].split(":", 1)
+        index_str, bucket, file_name = data[len(prefix) :].split(":", 2)
         index = int(index_str)
     except ValueError:
         await query.message.reply_text("Неверные данные подписи")
@@ -309,8 +309,6 @@ async def caption_select_callback(update: Update, context: ContextTypes.DEFAULT_
 
     captions = context.bot_data.get("caption_choices", {}).get(file_name, DEFAULT_CAPTIONS)
     caption = captions[index] if index < len(captions) else ""
-
-    bucket = PHOTOS_BUCKET if file_name.startswith("processed_downloaded_image") or file_name.startswith("processed_") and file_name.endswith(".jpg") else VIDEOS_BUCKET
     temp_path, _ = await download_from_minio(file_name, bucket)
     try:
         await send_media_to_telegram(context.bot, target_channel, temp_path, caption)

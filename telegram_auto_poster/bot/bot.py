@@ -1,3 +1,4 @@
+import os
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -41,10 +42,15 @@ from .handlers import handle_media
 class TelegramMemeBot:
     def __init__(self):
         config = load_config()
+        if "openai_api_key" in config:
+            os.environ.setdefault("OPENAI_API_KEY", config["openai_api_key"])
+
         self.bot_token = config["bot_token"]
         self.bot_chat_id = config["bot_chat_id"]
         self.application = None
-        logger.info(f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}")
+        logger.info(
+            f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}"
+        )
 
     async def setup(self):
         """Initialize the bot with all handlers and start updating."""

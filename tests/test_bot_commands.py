@@ -159,3 +159,5 @@ async def test_caption_command_sends_keyboard(tmp_path, monkeypatch):
     message.reply_text.assert_awaited_once()
     markup = message.reply_text.call_args.kwargs["reply_markup"]
     assert len(markup.inline_keyboard) == 2
+    data = markup.inline_keyboard[0][0].callback_data
+    assert data.startswith("cap_0:photos:file.jpg")

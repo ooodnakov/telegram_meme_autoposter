@@ -37,6 +37,10 @@ def load_config():
         "bot_chat_id": config["Bot"]["bot_chat_id"],
     }
 
+    # Optional OpenAI API key
+    if config.has_option("Bot", "openai_api_key"):
+        conf_dict["openai_api_key"] = config["Bot"]["openai_api_key"]
+
     # Add admin IDs if they exist in config
     if config.has_option("Bot", "admin_ids"):
         # Admin IDs can be comma-separated list of user IDs

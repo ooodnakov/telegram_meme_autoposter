@@ -183,7 +183,11 @@ async def caption_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     cleanup_temp_file(temp_path)
 
     keyboard = [
-        [InlineKeyboardButton(text=c, callback_data=f"cap_{i}:{file_name}")]
+        [
+            InlineKeyboardButton(
+                text=c, callback_data=f"cap_{i}:{bucket}:{file_name}"
+            )
+        ]
         for i, c in enumerate(captions)
     ]
     context.bot_data.setdefault("caption_choices", {})[file_name] = captions
