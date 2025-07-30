@@ -12,12 +12,10 @@ done
 echo "MinIO is ready!"
 
 # Create directories for temporary files
-mkdir -p /app/tmp
-mkdir -p /app/photos
-mkdir -p /app/videos
-
-cd /app
+mkdir -p /workspace/tmp
+mkdir -p /workspace/photos
+mkdir -p /workspace/videos
 
 # Start the application
 echo "Starting application..."
-python -m telegram_auto_poster.main
+uv run watchfiles --filter python "uv run python -m telegram_auto_poster.main" telegram_auto_poster

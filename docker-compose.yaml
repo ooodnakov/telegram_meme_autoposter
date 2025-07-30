@@ -1,17 +1,23 @@
 services:
   telegram_meme:
     container_name: telegram_auto_poster
+    build: .
     # image: python:3.12-slim
     restart: no
     networks:
       - proxy
       - teleg_net
     volumes:
-      - ./:/app
+      - ./telegram_auto_poster:/workspace/telegram_auto_poster
+      - ./pyproject.toml:/workspace/pyproject.toml
+      - ./uv.lock:/workspace/uv.lock
+      - ./videos:/workspace/videos
+      - ./photos:/workspace/photos
+      - ./config.ini:/workspace/config.ini
+      - ./ooodnakov.session:/workspace/ooodnakov.session
+      - ./wm.png:/workspace/wm.png
+      # - ./ooodnakov.session-journal:/workspace/ooodnakov.session-journal
       # - ./data:/app/data
-    build: .
-    # start bash and run the script
-    command: ["bash", "/app/run_bg.sh"]
     environment:
       - TZ=Europe/Moscow
       - MINIO_HOST=minio
@@ -40,10 +46,10 @@ services:
     image: valkey/valkey:7.2-alpine
     container_name: telegram_valkey
     restart: always
+    volumes:
+      - ./valkeydata:/data
     networks:
       - teleg_net
-    ports:
-      - "6379:6379"
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1

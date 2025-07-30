@@ -9,3 +9,5 @@ ooodnakov.session*
 downloaded_*
 media_stats.json
 mysql/*
+valkeydata/
+uv.lock
