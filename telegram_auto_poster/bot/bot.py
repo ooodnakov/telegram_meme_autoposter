@@ -1,3 +1,4 @@
+import os
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -23,6 +24,7 @@ from .commands import (
     stats_command,
     reset_stats_command,
     save_stats_command,
+    caption_command,
 )
 
 # Import callbacks from callbacks.py
@@ -30,6 +32,7 @@ from .callbacks import (
     ok_callback,
     push_callback,
     notok_callback,
+    caption_select_callback,
 )
 
 # Import media handlers from handlers.py
@@ -39,10 +42,15 @@ from .handlers import handle_media
 class TelegramMemeBot:
     def __init__(self):
         config = load_config()
+        if "openai_api_key" in config:
+            os.environ.setdefault("OPENAI_API_KEY", config["openai_api_key"])
+
         self.bot_token = config["bot_token"]
         self.bot_chat_id = config["bot_chat_id"]
         self.application = None
-        logger.info(f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}")
+        logger.info(
+            f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}"
+        )
 
     async def setup(self):
         """Initialize the bot with all handlers and start updating."""
@@ -86,6 +94,7 @@ class TelegramMemeBot:
         self.application.add_handler(CommandHandler("stats", stats_command))
         self.application.add_handler(CommandHandler("reset_stats", reset_stats_command))
         self.application.add_handler(CommandHandler("save_stats", save_stats_command))
+        self.application.add_handler(CommandHandler("caption", caption_command))
 
         # Register callback handlers - fixed to use exact pattern matching with regex
         logger.info("Registering callback handlers...")
@@ -97,6 +106,9 @@ class TelegramMemeBot:
         )
         self.application.add_handler(
             CallbackQueryHandler(notok_callback, pattern=r"^/notok$")
+        )
+        self.application.add_handler(
+            CallbackQueryHandler(caption_select_callback, pattern=r"^cap_\d+:")
         )
 
         # Register media handler

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -16,7 +17,13 @@ from telegram_auto_poster.config import (
     LUBA_CHAT,
 )
 from telegram_auto_poster.bot.permissions import check_admin_rights
-from telegram_auto_poster.utils import MinioError, TelegramMediaError
+from telegram_auto_poster.utils import (
+    MinioError,
+    TelegramMediaError,
+    extract_filename,
+)
+from telegram_auto_poster.utils.captioner import generate_captions
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -147,6 +154,47 @@ async def save_stats_command(
         await update.message.reply_text(
             "Sorry, there was an error saving the statistics."
         )
+
+
+async def caption_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Generate caption suggestions for replied media using OpenAI"""
+    logger.info(f"Received /caption command from user {update.effective_user.id}")
+
+    if not await check_admin_rights(update, context):
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text("Команду нужно использовать в ответ на сообщение с медиа")
+        return
+
+    message_text = (
+        update.message.reply_to_message.caption or update.message.reply_to_message.text
+    )
+    file_path = extract_filename(message_text)
+    if not file_path:
+        await update.message.reply_text("Не удалось определить файл")
+        return
+
+    file_name = os.path.basename(file_path)
+    bucket = PHOTOS_BUCKET if file_path.startswith("photos/") else VIDEOS_BUCKET
+
+    temp_path, _ = await download_from_minio(file_name, bucket)
+    captions = await generate_captions(temp_path)
+    cleanup_temp_file(temp_path)
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=c, callback_data=f"cap_{i}:{bucket}:{file_name}"
+            )
+        ]
+        for i, c in enumerate(captions)
+    ]
+    context.bot_data.setdefault("caption_choices", {})[file_name] = captions
+
+    await update.message.reply_text(
+        "Выберите подпись:", reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
 async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
