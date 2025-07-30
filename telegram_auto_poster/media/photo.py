@@ -43,7 +43,7 @@ async def add_watermark_to_image(input_filename: str, output_filename: str):
 
         # Process the image
         base: ImageFile = Image.open(input_path)
-        overlay = Image.open("wm.jpg").resize(
+        overlay = Image.open("wm.png").resize(
             [int(base.size[0] * 0.1)] * 2, Image.Resampling.NEAREST
         )
         overlay.putalpha(40)

@@ -10,7 +10,8 @@ REQUIRED_FIELDS = {
 
 def load_config():
     config = configparser.ConfigParser()
-    config.read("config.ini")
+    config_path = os.getenv("CONFIG_PATH", "config.ini")
+    config.read(config_path)
 
     if not config.has_section("Telegram") or not config.has_section("Bot"):
         raise RuntimeError("Файл config.ini заполнен некорректно")

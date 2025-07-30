@@ -1,41 +1,41 @@
-# Use an official Python runtime as a parent image
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
 
-# Set environment variables to avoid interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
+FROM python:3.12-slim AS builder
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH="/root/.local/bin/:$PATH"
+WORKDIR /workspace
 
-# Install any needed system packages
+# Install build tools and uv
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    gcc \
+    apt-get install -y --no-install-recommends gcc curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync
+
+FROM python:3.12-slim AS runtime
+ENV DEBIAN_FRONTEND=noninteractive \
+    PATH="/root/.local/bin/:$PATH"
+WORKDIR /workspace
+
+# Runtime dependencies only
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends netcat-traditional gcc \
     wget \
     ffmpeg \
     htop \
     git \
-    curl
+    curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Set the working directory in the container
-WORKDIR /app
 
-# Install zsh and oh-my-zsh (optional, for better developer experience)
-RUN apt-get install -y zsh
-RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.1/zsh-in-docker.sh)" -- \
-    -p git -p 'history-substring-search' \
-    -a 'bindkey "\$terminfo[kcuu1]" history-substring-search-up' \
-    -a 'bindkey "\$terminfo[kcud1]" history-substring-search-down'
+COPY --from=builder /root/.local /root/.local
+COPY --from=builder /workspace/.venv /workspace/.venv  
 
-# Copy requirements file
-COPY ./requirements.txt /app/requirements.txt
+COPY ./telegram_auto_poster ./telegram_auto_poster
+COPY run_bg.sh /run_bg.sh
+RUN chmod +x /run_bg.sh
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Create necessary directories
-RUN mkdir -p /app/photos /app/videos /app/tmp
-
-# Make the startup script executable
-COPY ./run_bg.sh /app/run_bg.sh
-RUN chmod +x /app/run_bg.sh
-
-# Default command uses zsh for interactive sessions
-CMD ["zsh"]
+ENTRYPOINT ["/run_bg.sh"]

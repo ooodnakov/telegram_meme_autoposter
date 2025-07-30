@@ -361,9 +361,7 @@ async def send_batch_command(update, context):
 
                     # Send to target channel
                     with open(temp_path, "rb") as f:
-                        await context.bot.send_photo(
-                            chat_id=target_channel, photo=f
-                        )
+                        await context.bot.send_photo(chat_id=target_channel, photo=f)
                     stats.record_approved(
                         "photo", filename=file_name, source="send_batch_command"
                     )

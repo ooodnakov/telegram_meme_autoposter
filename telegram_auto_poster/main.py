@@ -47,6 +47,19 @@ async def main():
         await stop_event.wait()
 
     except Exception as e:
+        import sys
+        import traceback
+
+        # Print full traceback
+        traceback.print_exc()
+
+        # Or get traceback as string for logging
+        error_details = traceback.format_exc()
+        print(f"Error occurred: {error_details}")
+        exc_type, exc_value, exc_traceback = sys.exc_info()
+        print(f"Exception type: {exc_type}")
+        print(f"Exception value: {exc_value}")
+        print(f"Traceback: {exc_traceback}")
         logger.error(f"An error occurred: {e}")
     finally:
         # Cleanup - make sure we have proper objects before trying to stop them

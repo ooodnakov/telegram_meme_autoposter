@@ -64,7 +64,7 @@ client = TelegramClient(username, api_id, api_hash)
 
 async def add_watermark_to_image(input_filename, output_filename):
     base: ImageFile = Image.open(input_filename)
-    overlay = Image.open("wm.jpg").resize(
+    overlay = Image.open("wm.png").resize(
         [int(base.size[0] * 0.1)] * 2, Image.Resampling.NEAREST
     )
     overlay.putalpha(40)
