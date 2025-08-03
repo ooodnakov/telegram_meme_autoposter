@@ -23,11 +23,13 @@ services:
     environment:
       - TZ=Europe/Moscow
       - MINIO_HOST=minio
-      - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=rem
-      - MINIO_SECRET_KEY=yourmother
-      - VALKEY_HOST=valkey
+      - MINIO_PORT=8999
+      - MINIO_ACCESS_KEY=super_secret_name
+      - MINIO_SECRET_KEY=super_secret_key
+      - VALKEY_HOST=valkey_common
       - VALKEY_PORT=6379
+      - VALKEY_PASS=redis
+      - REDIS_PREFIX=telegram_auto_poster
       # Mysql/Maria connection parameters:
       - DB_MYSQL_HOST=telegram_db
       - DB_MYSQL_PORT=3306
@@ -35,45 +37,12 @@ services:
       - DB_MYSQL_PASSWORD=tma
       - DB_MYSQL_NAME=tma
     depends_on:
-      - minio
       - db
-      - valkey
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
-
-  valkey:
-    image: valkey/valkey:7.2-alpine
-    container_name: telegram_valkey
-    restart: always
-    volumes:
-      - ./valkeydata:/data
-    networks:
-      - teleg_net
-
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
-    container_name: telegram_minio
-    restart: always
-    networks:
-      - teleg_net
-      - proxy
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
-    environment:
-      - MINIO_ROOT_USER=rem
-      - MINIO_ROOT_PASSWORD=yourmother
-    command: server /data --console-address ":9001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
 
   db:
     container_name: telegram_db

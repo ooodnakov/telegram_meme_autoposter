@@ -18,6 +18,7 @@ sys.modules["telegram_auto_poster.utils.stats"] = dummy_stats_module
 
 dummy_storage_module = ModuleType("telegram_auto_poster.utils.storage")
 
+
 class DummyStorage:
     def list_files(self, bucket, prefix=None):
         return []
@@ -34,13 +35,15 @@ class DummyStorage:
     def mark_notified(self, object_name):
         pass
 
+
 dummy_storage_module.storage = DummyStorage()
 sys.modules["telegram_auto_poster.utils.storage"] = dummy_storage_module
 
 dummy_config_module = ModuleType("telegram_auto_poster.config")
-dummy_config_module.PHOTOS_BUCKET = "photos"
-dummy_config_module.VIDEOS_BUCKET = "videos"
-dummy_config_module.DOWNLOADS_BUCKET = "downloads"
+dummy_config_module.PHOTOS_PATH = "photos"
+dummy_config_module.VIDEOS_PATH = "videos"
+dummy_config_module.DOWNLOADS_PATH = "downloads"
+dummy_config_module.BUCKET_MAIN = "telegram-auto-poster"
 dummy_config_module.LUBA_CHAT = "@luba"
 dummy_config_module.load_config = lambda: {}
 sys.modules["telegram_auto_poster.config"] = dummy_config_module

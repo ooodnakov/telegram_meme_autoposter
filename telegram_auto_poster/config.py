@@ -69,7 +69,8 @@ SELECTED_CHATS = [
 LUBA_CHAT = "@Shanova_uuu"
 
 
-# Define bucket names
-PHOTOS_BUCKET = "photos"
-VIDEOS_BUCKET = "videos"
-DOWNLOADS_BUCKET = "downloads"
+# Define path names
+BUCKET_MAIN = "telegram-auto-poster"
+PHOTOS_PATH = "photos"
+VIDEOS_PATH = "videos"
+DOWNLOADS_PATH = "downloads"

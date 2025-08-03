@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from loguru import logger
 
-from ..utils.storage import storage, VIDEOS_BUCKET, DOWNLOADS_BUCKET
+from ..utils.storage import storage, VIDEOS_PATH, DOWNLOADS_PATH, BUCKET_MAIN
 
 
 async def _probe_video_size(path: str) -> tuple[int, int]:
@@ -54,8 +54,8 @@ async def add_watermark_to_video(input_filename: str, output_filename: str) -> s
             temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
             temp_input.close()
             storage.download_file(
-                object_name=os.path.basename(input_filename),
-                bucket=DOWNLOADS_BUCKET,
+                object_name=DOWNLOADS_PATH + "/" + os.path.basename(input_filename),
+                bucket=BUCKET_MAIN,
                 file_path=temp_input.name,
             )
             input_path = temp_input.name
@@ -130,25 +130,29 @@ async def add_watermark_to_video(input_filename: str, output_filename: str) -> s
         if user_meta:
             storage.upload_file(
                 output_path,
-                VIDEOS_BUCKET,
-                output_object,
+                BUCKET_MAIN,
+                VIDEOS_PATH + "/" + output_object,
                 user_id=user_meta["user_id"],
                 chat_id=user_meta["chat_id"],
                 message_id=user_meta.get("message_id"),
             )
         else:
-            storage.upload_file(output_path, VIDEOS_BUCKET, output_object)
+            storage.upload_file(
+                output_path, BUCKET_MAIN, VIDEOS_PATH + "/" + output_object
+            )
 
         # Delete original file from MinIO if it exists
         if not os.path.exists(input_filename):
-            storage.delete_file(os.path.basename(input_filename), DOWNLOADS_BUCKET)
+            storage.delete_file(
+                DOWNLOADS_PATH + "/" + os.path.basename(input_filename), BUCKET_MAIN
+            )
         else:
             # Remove local file if it's not a temp file
             if os.path.exists(input_filename):
                 os.remove(input_filename)
 
         logger.info(
-            f"Processed video and saved to MinIO: {VIDEOS_BUCKET}/{output_object}"
+            f"Processed video and saved to MinIO: {BUCKET_MAIN}/{VIDEOS_PATH}/{output_object}"
         )
         return output_filename
 

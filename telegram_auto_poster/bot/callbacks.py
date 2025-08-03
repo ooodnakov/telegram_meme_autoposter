@@ -8,7 +8,12 @@ from telegram_auto_poster.bot.handlers import (
     get_user_friendly_error_message,
     notify_user,
 )
-from telegram_auto_poster.config import PHOTOS_BUCKET, VIDEOS_BUCKET, load_config
+from telegram_auto_poster.config import (
+    PHOTOS_PATH,
+    VIDEOS_PATH,
+    BUCKET_MAIN,
+    load_config,
+)
 from telegram_auto_poster.utils import (
     MinioError,
     TelegramMediaError,
@@ -40,21 +45,28 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     file_name = os.path.basename(file_path)
     media_type = "photo" if file_path.startswith("photos/") else "video"
-    bucket = PHOTOS_BUCKET if file_path.startswith("photos/") else VIDEOS_BUCKET
+    file_prefix = (
+        PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+    )
 
     try:
         # Verify file existence
-        if not storage.file_exists(file_name, bucket):
-            raise MinioError(f"File not found: {file_name} in {bucket}")
+        if not storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
+            raise MinioError(
+                f"File not found: {file_prefix + file_name} in {BUCKET_MAIN}"
+            )
 
         # If suggestion, approve and publish immediately
         if "suggestion" in message_text:
             caption_to_send = "Пост из предложки @ooodnakov_memes_suggest_bot"
             await query.message.edit_caption(
-                f"Post approved with media {file_name}!", reply_markup=None
+                f"Post approved with media {file_prefix + file_name}!",
+                reply_markup=None,
             )
 
-            temp_path, _ = await download_from_minio(file_name, bucket)
+            temp_path, _ = await download_from_minio(
+                file_prefix + file_name, BUCKET_MAIN
+            )
             try:
                 if media_type == "photo":
                     await context.bot.send_photo(
@@ -76,10 +88,14 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 user_metadata = storage.get_submission_metadata(file_name)
 
                 # Delete from MinIO
-                storage.delete_file(file_name, bucket)
+                storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
                 # Notify original submitter
-                if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
+                if (
+                    user_metadata
+                    and not user_metadata.get("notified")
+                    and user_metadata.get("user_id")
+                ):
                     translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
@@ -96,34 +112,41 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         else:
             # Add to batch in MinIO for later sending
             new_object_name = f"batch_{file_name}"
-            temp_path, ext = await download_from_minio(file_name, bucket)
+            temp_path, ext = await download_from_minio(
+                file_prefix + file_name, BUCKET_MAIN
+            )
             try:
                 # Upload with new name - use the appropriate bucket for videos and photos
-                target_batch_bucket = PHOTOS_BUCKET
-                # For videos, make sure we correctly identify and store in the right bucket
-                if ext.lower() in [".mp4", ".avi", ".mov"] or bucket == VIDEOS_BUCKET:
-                    target_batch_bucket = PHOTOS_BUCKET  # We'll store all batch files in PHOTOS_BUCKET for consistency
+                target_batch_fileprefix = PHOTOS_PATH + "/"
 
-                storage.upload_file(temp_path, target_batch_bucket, new_object_name)
+                storage.upload_file(
+                    target_batch_fileprefix + temp_path, BUCKET_MAIN, new_object_name
+                )
 
                 # Get user metadata
                 user_metadata = storage.get_submission_metadata(new_object_name)
 
                 # Delete from MinIO
-                storage.delete_file(file_name, bucket)
+                storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
                 batch_count = len(
-                    storage.list_files(PHOTOS_BUCKET, prefix="batch_")
-                ) + len(storage.list_files(VIDEOS_BUCKET, prefix="batch_"))
+                    storage.list_files(BUCKET_MAIN, prefix="batch_")
+                ) + len(storage.list_files(BUCKET_MAIN, prefix="batch_"))
 
                 await query.message.edit_caption(
                     f"Post added to batch! There are {batch_count} posts in the batch.",
                     reply_markup=None,
                 )
                 stats.record_added_to_batch(media_type)
-                logger.info(f"Added {file_name} to batch ({batch_count} total)")
+                logger.info(
+                    f"Added {file_prefix + file_name} to batch ({batch_count} total)"
+                )
                 # Notify original submitter
-                if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
+                if (
+                    user_metadata
+                    and not user_metadata.get("notified")
+                    and user_metadata.get("user_id")
+                ):
                     translated_media_type = "фото" if media_type == "photo" else "видео"
                     await notify_user(
                         context,
@@ -167,11 +190,15 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     file_name = os.path.basename(file_path)
     media_type = "photo" if file_path.startswith("photos/") else "video"
-    bucket = PHOTOS_BUCKET if file_path.startswith("photos/") else VIDEOS_BUCKET
+    file_prefix = (
+        PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+    )
 
     try:
-        if not storage.file_exists(file_name, bucket):
-            raise MinioError(f"File not found: {file_name} in {bucket}")
+        if not storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
+            raise MinioError(
+                f"File not found: {file_prefix + file_name} in {BUCKET_MAIN}"
+            )
 
         caption_to_send = (
             "Пост из предложки @ooodnakov_memes_suggest_bot"
@@ -183,8 +210,8 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             f"Post approved with media {file_name}!", reply_markup=None
         )
 
-        temp_path, _ = await download_from_minio(file_name, bucket)
-        logger.info(f"Downloaded file {file_name} from {bucket} to {temp_path}")
+        temp_path, _ = await download_from_minio(file_prefix + file_name, BUCKET_MAIN)
+        logger.info(f"Downloaded file {file_name} from {BUCKET_MAIN} to {temp_path}")
         try:
             # Use helper function to send media
             await send_media_to_telegram(
@@ -196,14 +223,18 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             user_metadata = storage.get_submission_metadata(file_name)
 
             # Delete from MinIO
-            storage.delete_file(file_name, bucket)
+            storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
             stats.record_approved(
                 media_type, filename=file_name, source="push_callback"
             )
 
             # Notify original submitter
-            if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
+            if (
+                user_metadata
+                and not user_metadata.get("notified")
+                and user_metadata.get("user_id")
+            ):
                 translated_media_type = "фото" if media_type == "photo" else "видео"
                 await notify_user(
                     context,
@@ -258,19 +289,27 @@ async def notok_callback(update, context) -> None:
             f"Post disapproved with media {file_name}!", reply_markup=None
         )
 
-        bucket = PHOTOS_BUCKET if file_path.startswith("photos/") else VIDEOS_BUCKET
+        file_prefix = (
+            PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+        )
         # Get user metadata
         user_metadata = storage.get_submission_metadata(file_name)
         # Delete from MinIO
-        if storage.file_exists(file_name, bucket):
-            storage.delete_file(file_name, bucket)
+        if storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
+            storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
         else:
-            logger.warning(f"File not found for deletion: {bucket}/{file_name}")
+            logger.warning(
+                f"File not found for deletion: {BUCKET_MAIN}/{file_prefix + file_name}"
+            )
 
         stats.record_rejected(media_type, filename=file_name, source="notok_callback")
 
         # Notify original submitter using notify_user reply functionality
-        if user_metadata and not user_metadata.get("notified") and user_metadata.get("user_id"):
+        if (
+            user_metadata
+            and not user_metadata.get("notified")
+            and user_metadata.get("user_id")
+        ):
             translated_media_type = "фото" if media_type == "photo" else "видео"
             await notify_user(
                 context,

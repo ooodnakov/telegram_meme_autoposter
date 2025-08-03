@@ -22,7 +22,13 @@ from ..config import load_config
 from ..media.photo import add_watermark_to_image
 from ..media.video import add_watermark_to_video
 from ..utils.stats import stats
-from ..utils.storage import DOWNLOADS_BUCKET, PHOTOS_BUCKET, VIDEOS_BUCKET, storage
+from ..utils.storage import (
+    DOWNLOADS_PATH,
+    PHOTOS_PATH,
+    VIDEOS_PATH,
+    BUCKET_MAIN,
+    storage,
+)
 
 # Load target_channel from config
 config = load_config()
@@ -87,8 +93,8 @@ async def handle_photo(
         start_upload_time = time.time()
         storage.upload_file(
             temp_path,
-            DOWNLOADS_BUCKET,
-            file_name,
+            BUCKET_MAIN,
+            DOWNLOADS_PATH + "/" + file_name,
             user_id=user_id,
             chat_id=chat_id,
             message_id=message_id,
@@ -158,8 +164,8 @@ async def handle_video(
         start_upload_time = time.time()
         storage.upload_file(
             temp_path,
-            DOWNLOADS_BUCKET,
-            file_name,
+            BUCKET_MAIN,
+            DOWNLOADS_PATH + "/" + file_name,
             user_id=user_id,
             chat_id=chat_id,
             message_id=message_id,
@@ -247,7 +253,7 @@ async def process_photo(custom_text: str, name: str, bot_chat_id: str, applicati
         stats.record_processed("photo", processing_time)
 
         # Check if processed file exists in MinIO
-        if not storage.file_exists(processed_name, PHOTOS_BUCKET):
+        if not storage.file_exists(PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN):
             logger.error(f"Processed photo not found in MinIO: {processed_name}")
             stats.record_error(
                 "processing", f"Processed photo not found: {processed_name}"
@@ -267,7 +273,9 @@ async def process_photo(custom_text: str, name: str, bot_chat_id: str, applicati
         )
 
         # Download to temp file for bot with correct extension
-        temp_path, _ = await download_from_minio(processed_name, PHOTOS_BUCKET, ".jpg")
+        temp_path, _ = await download_from_minio(
+            PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN, ".jpg"
+        )
 
         try:
             # Send photo using bot
@@ -327,7 +335,7 @@ async def process_video(custom_text: str, name: str, bot_chat_id: str, applicati
         stats.record_processed("video", processing_time)
 
         # Check if processed file exists in MinIO
-        if not storage.file_exists(processed_name, VIDEOS_BUCKET):
+        if not storage.file_exists(VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN):
             logger.error(f"Processed video not found in MinIO: {processed_name}")
             stats.record_error(
                 "processing", f"Processed video not found: {processed_name}"
@@ -347,7 +355,9 @@ async def process_video(custom_text: str, name: str, bot_chat_id: str, applicati
         )
 
         # Download to temp file for bot with correct extension
-        temp_path, _ = await download_from_minio(processed_name, VIDEOS_BUCKET, ".mp4")
+        temp_path, _ = await download_from_minio(
+            VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN, ".mp4"
+        )
 
         try:
             # Send video using bot

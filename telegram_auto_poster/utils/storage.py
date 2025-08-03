@@ -7,9 +7,10 @@ from minio.error import S3Error, MinioException
 from loguru import logger
 from ..config import load_config
 from telegram_auto_poster.config import (
-    PHOTOS_BUCKET,
-    VIDEOS_BUCKET,
-    DOWNLOADS_BUCKET,
+    PHOTOS_PATH,
+    VIDEOS_PATH,
+    DOWNLOADS_PATH,
+    BUCKET_MAIN,
     LUBA_CHAT,
 )
 
@@ -64,7 +65,8 @@ class MinioStorage:
                 f"{host}:{port}",
                 access_key=access_key,
                 secret_key=secret_key,
-                secure=False,  # Use HTTPS if available
+                secure=False,
+                region="ru-west",
             )
 
             # Store metadata about submissions
@@ -73,9 +75,7 @@ class MinioStorage:
             logger.info("MinIO client initialized")
 
             # Ensure buckets exist
-            self._ensure_bucket_exists(PHOTOS_BUCKET)
-            self._ensure_bucket_exists(VIDEOS_BUCKET)
-            self._ensure_bucket_exists(DOWNLOADS_BUCKET)
+            self._ensure_bucket_exists(BUCKET_MAIN)
 
             self._initialized = True
         except Exception as e:
@@ -125,10 +125,10 @@ class MinioStorage:
         if meta:
             return meta
         # Try to fetch metadata from MinIO across known buckets
-        for bucket in [PHOTOS_BUCKET, VIDEOS_BUCKET, DOWNLOADS_BUCKET]:
+        for prepath in [PHOTOS_PATH, VIDEOS_PATH, DOWNLOADS_PATH]:
             try:
                 stat = self.client.stat_object(
-                    bucket_name=bucket, object_name=object_name
+                    bucket_name=BUCKET_MAIN, object_name=prepath + "/" + object_name
                 )
                 md = stat.metadata or {}
                 return {
@@ -185,25 +185,30 @@ class MinioStorage:
         try:
             # Determine bucket based on file extension if not provided
             if bucket is None:
-                if file_path.endswith((".jpg", ".jpeg", ".png")):
-                    bucket = PHOTOS_BUCKET
-                    media_type = "photo"
-                elif file_path.endswith((".mp4", ".avi", ".mov")):
-                    bucket = VIDEOS_BUCKET
-                    media_type = "video"
-                else:
-                    bucket = DOWNLOADS_BUCKET
-                    media_type = "document"
+                bucket = BUCKET_MAIN
+            media_type = None
+            if file_path.endswith((".jpg", ".jpeg", ".png")):
+                object_prefix = PHOTOS_PATH
+                media_type = "photo"
+            elif file_path.endswith((".mp4", ".avi", ".mov")):
+                object_prefix = VIDEOS_PATH
+                media_type = "video"
             else:
+                object_prefix = DOWNLOADS_PATH
+                media_type = "document"
+
+            if media_type:
                 media_type = {
-                    PHOTOS_BUCKET: "photo",
-                    VIDEOS_BUCKET: "video",
-                    DOWNLOADS_BUCKET: "document",
-                }[bucket]
+                    PHOTOS_PATH: "photo",
+                    VIDEOS_PATH: "video",
+                    DOWNLOADS_PATH: "document",
+                }[object_prefix]
 
             # Use filename as object_name if not provided
             if object_name is None:
                 object_name = os.path.basename(file_path)
+            if "/" not in object_name:
+                object_name = object_prefix + "/" + object_name
 
             # Build MinIO object metadata
             minio_metadata = {}
@@ -215,6 +220,9 @@ class MinioStorage:
             if message_id is not None:
                 minio_metadata["message_id"] = str(message_id)
             # Upload file with metadata
+            logger.debug(
+                f"Uploading {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
+            )
             self.client.fput_object(
                 bucket_name=bucket,
                 object_name=object_name,

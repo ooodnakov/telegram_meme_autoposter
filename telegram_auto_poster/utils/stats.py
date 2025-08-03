@@ -62,7 +62,11 @@ Base.metadata.create_all(bind=engine)
 # Valkey (Redis-compatible) connection for fast counter storage
 valkey_host = os.getenv("VALKEY_HOST", "localhost")
 valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
-redis_client = Valkey(host=valkey_host, port=valkey_port, decode_responses=True)
+valkey_pass = os.getenv("VALKEY_PASS", "redis")
+redis_client = Valkey(
+    host=valkey_host, port=valkey_port, password=valkey_pass, decode_responses=True
+)
+redis_prefix = os.getenv("REDIS_PREFIX", "telegram_auto_poster")
 
 
 class MediaStats:
@@ -109,7 +113,7 @@ class MediaStats:
                     value = 0
                 else:
                     value = row.value
-                self.r.setnx(f"{scope}:{name}", value)
+                self.r.setnx(f"{redis_prefix}:{scope}:{name}", value)
         # ensure daily reset metadata exists
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         if not meta:

@@ -10,9 +10,10 @@ from telegram_auto_poster.utils import (
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.config import (
-    PHOTOS_BUCKET,
-    VIDEOS_BUCKET,
-    DOWNLOADS_BUCKET,
+    PHOTOS_PATH,
+    VIDEOS_PATH,
+    DOWNLOADS_PATH,
+    BUCKET_MAIN,
     LUBA_CHAT,
 )
 from telegram_auto_poster.bot.permissions import check_admin_rights
@@ -163,7 +164,9 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     temp_path = None
     try:
         # Use helper function to download from MinIO
-        temp_path, ext = await download_from_minio(object_name, PHOTOS_BUCKET)
+        temp_path, ext = await download_from_minio(
+            PHOTOS_PATH + "/" + object_name, BUCKET_MAIN
+        )
 
         await update.message.reply_text("Post approved!")
 
@@ -177,7 +180,7 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await send_media_to_telegram(context.bot, target_channel, temp_path, "photo")
 
         # Clean up
-        storage.delete_file(object_name, PHOTOS_BUCKET)
+        storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
         logger.info("Created new post!")
 
         # Record stats
@@ -213,8 +216,8 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         media_type = "photo"  # Default
 
         # Delete from MinIO if exists
-        if storage.file_exists(object_name, PHOTOS_BUCKET):
-            storage.delete_file(object_name, PHOTOS_BUCKET)
+        if storage.file_exists(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN):
+            storage.delete_file(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN)
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
@@ -240,7 +243,9 @@ async def delete_batch_command(
 
     try:
         # Get all files with batch_ prefix from photos bucket
-        batch_files = storage.list_files(PHOTOS_BUCKET, prefix="batch_")
+        batch_files = storage.list_files(
+            PHOTOS_PATH + "/" + BUCKET_MAIN, prefix="batch_"
+        )
 
         if not batch_files:
             await context.bot.send_message(
@@ -252,7 +257,7 @@ async def delete_batch_command(
         deleted_count = 0
         for object_name in batch_files:
             try:
-                storage.delete_file(object_name, PHOTOS_BUCKET)
+                storage.delete_file(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN)
                 deleted_count += 1
             except Exception as e:
                 logger.error(f"Error deleting {object_name}: {e}")
@@ -277,7 +282,7 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     try:
         # Get all files from downloads bucket
-        download_files = storage.list_files(DOWNLOADS_BUCKET)
+        download_files = storage.list_files(DOWNLOADS_PATH + "/" + BUCKET_MAIN)
 
         if not download_files:
             await update.message.reply_text("No files to send to Luba.")
@@ -291,7 +296,7 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             try:
                 # Use helper function to download from MinIO
                 temp_path, ext = await download_from_minio(
-                    object_name, DOWNLOADS_BUCKET
+                    object_name, DOWNLOADS_PATH + "/" + BUCKET_MAIN
                 )
                 if not temp_path:
                     error_count += 1
@@ -356,7 +361,7 @@ async def send_batch_command(update, context):
                 try:
                     # Download photo from MinIO
                     temp_path, _ = await download_from_minio(
-                        file_name, PHOTOS_BUCKET, ".jpg"
+                        file_name, PHOTOS_PATH + "/" + BUCKET_MAIN, ".jpg"
                     )
 
                     # Send to target channel
@@ -408,7 +413,7 @@ async def send_batch_command(update, context):
                 try:
                     # Download video from MinIO
                     temp_path, _ = await download_from_minio(
-                        file_name, VIDEOS_BUCKET, ".mp4"
+                        VIDEOS_PATH + "/" + file_name, BUCKET_MAIN, ".mp4"
                     )
 
                     # Send to target channel

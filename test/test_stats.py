@@ -10,7 +10,6 @@ import sqlalchemy
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
-
 def setup_modules(monkeypatch):
     """Prepare test environment with in-memory DB and fake Minio."""
     global conf_module
@@ -61,9 +60,10 @@ def setup_modules(monkeypatch):
         "target_channel": "tc",
         "admin_ids": [1],
     }
-    fake_config.PHOTOS_BUCKET = "photos"
-    fake_config.VIDEOS_BUCKET = "videos"
-    fake_config.DOWNLOADS_BUCKET = "downloads"
+    fake_config.PHOTOS_PATH = "photos"
+    fake_config.VIDEOS_PATH = "videos"
+    fake_config.DOWNLOADS_PATH = "downloads"
+    fake_config.BUCKET_MAIN = "telegram-auto-poster"
     fake_config.LUBA_CHAT = "@luba"
     monkeypatch.setitem(sys.modules, "telegram_auto_poster.config", fake_config)
 
