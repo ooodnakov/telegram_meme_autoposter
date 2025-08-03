@@ -119,9 +119,9 @@ class MediaStats:
         if not meta:
             now = datetime.datetime.utcnow().isoformat()
             self.db.add(Metadata(key="daily_last_reset", value=now))
-            self.r.set("daily_last_reset", now)
+            self.r.set(f"{redis_prefix}:daily_last_reset", now)
         else:
-            self.r.setnx("daily_last_reset", meta.value)
+            self.r.setnx(f"{redis_prefix}:daily_last_reset", meta.value)
         self.db.commit()
 
     def _increment(self, name, scope="daily", count=1):
@@ -130,7 +130,7 @@ class MediaStats:
         self.db.commit()
         # update valkey counters
         try:
-            self.r.incrby(f"{scope}:{name}", count)
+            self.r.incrby(f"{redis_prefix}:{scope}:{name}", count)
         except Exception:  # pragma: no cover - log and continue
             logging.exception("Failed to update Valkey counter %s:%s", scope, name)
 
@@ -247,11 +247,11 @@ class MediaStats:
             meta.value = now.isoformat()
             self.db.commit()
             for name in self.names:
-                self.r.set(f"daily:{name}", 0)
-            self.r.set("daily_last_reset", meta.value)
+                self.r.set(f"{redis_prefix}:daily:{name}", 0)
+            self.r.set(f"{redis_prefix}:daily_last_reset", meta.value)
         stats = {}
         for name in self.names:
-            value = self.r.get(f"daily:{name}")
+            value = self.r.get(f"{redis_prefix}:daily:{name}")
             if value is None:
                 row = (
                     self.db.query(StatsCounter)
@@ -265,17 +265,17 @@ class MediaStats:
                     value = 0
             stats[name] = int(value)
 
-        last_reset = self.r.get("daily_last_reset")
+        last_reset = self.r.get(f"{redis_prefix}:daily_last_reset")
         if last_reset is None:
             last_reset = meta.value
-            self.r.set("daily_last_reset", last_reset)
+            self.r.set(f"{redis_prefix}:daily_last_reset", last_reset)
         stats["last_reset"] = last_reset
         return stats
 
     def get_total_stats(self):
         stats = {}
         for name in self.names:
-            value = self.r.get(f"total:{name}")
+            value = self.r.get(f"{redis_prefix}:total:{name}")
             if value is None:
                 row = (
                     self.db.query(StatsCounter)
@@ -284,7 +284,7 @@ class MediaStats:
                 )
                 if row:
                     value = row.value
-                    self.r.set(f"total:{name}", value)
+                    self.r.set(f"{redis_prefix}:total:{name}", value)
                 else:
                     value = 0
             stats[name] = int(value)
@@ -466,8 +466,8 @@ class MediaStats:
         meta.value = now_iso
         self.db.commit()
         for name in self.names:
-            self.r.set(f"daily:{name}", 0)
-        self.r.set("daily_last_reset", now_iso)
+            self.r.set(f"{redis_prefix}:daily:{name}", 0)
+        self.r.set(f"{redis_prefix}:daily_last_reset", now_iso)
         return "Daily statistics have been reset."
 
     def force_save(self):
