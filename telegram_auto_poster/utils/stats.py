@@ -69,6 +69,14 @@ redis_client = Valkey(
 redis_prefix = os.getenv("REDIS_PREFIX", "telegram_auto_poster")
 
 
+def _redis_key(scope: str, name: str) -> str:
+    return f"{redis_prefix}:{scope}:{name}" if redis_prefix else f"{scope}:{name}"
+
+
+def _redis_meta_key() -> str:
+    return f"{redis_prefix}:daily_last_reset" if redis_prefix else "daily_last_reset"
+
+
 class MediaStats:
     _instance = None
 
@@ -113,15 +121,15 @@ class MediaStats:
                     value = 0
                 else:
                     value = row.value
-                self.r.setnx(f"{redis_prefix}:{scope}:{name}", value)
+                self.r.setnx(_redis_key(scope, name), value)
         # ensure daily reset metadata exists
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         if not meta:
             now = datetime.datetime.utcnow().isoformat()
             self.db.add(Metadata(key="daily_last_reset", value=now))
-            self.r.set(f"{redis_prefix}:daily_last_reset", now)
+            self.r.set(_redis_meta_key(), now)
         else:
-            self.r.setnx(f"{redis_prefix}:daily_last_reset", meta.value)
+            self.r.setnx(_redis_meta_key(), meta.value)
         self.db.commit()
 
     def _increment(self, name, scope="daily", count=1):
@@ -130,7 +138,7 @@ class MediaStats:
         self.db.commit()
         # update valkey counters
         try:
-            self.r.incrby(f"{redis_prefix}:{scope}:{name}", count)
+            self.r.incrby(_redis_key(scope, name), count)
         except Exception:  # pragma: no cover - log and continue
             logging.exception("Failed to update Valkey counter %s:%s", scope, name)
 
@@ -235,11 +243,11 @@ class MediaStats:
             self._increment("list_operations", scope="total")
         self.db.commit()
 
-    def get_daily_stats(self):
+    def get_daily_stats(self, reset_if_new_day: bool = True):
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         last_reset = datetime.datetime.fromisoformat(meta.value)
         now = datetime.datetime.utcnow()
-        if last_reset.date() < now.date():
+        if reset_if_new_day and last_reset.date() < now.date():
             # reset daily stats
             self.db.query(StatsCounter).filter_by(scope="daily").update(
                 {StatsCounter.value: 0}
@@ -247,11 +255,11 @@ class MediaStats:
             meta.value = now.isoformat()
             self.db.commit()
             for name in self.names:
-                self.r.set(f"{redis_prefix}:daily:{name}", 0)
-            self.r.set(f"{redis_prefix}:daily_last_reset", meta.value)
+                self.r.set(_redis_key("daily", name), 0)
+            self.r.set(_redis_meta_key(), meta.value)
         stats = {}
         for name in self.names:
-            value = self.r.get(f"{redis_prefix}:daily:{name}")
+            value = self.r.get(_redis_key("daily", name))
             if value is None:
                 row = (
                     self.db.query(StatsCounter)
@@ -260,22 +268,22 @@ class MediaStats:
                 )
                 if row:
                     value = row.value
-                    self.r.set(f"daily:{name}", value)
+                    self.r.set(_redis_key("daily", name), value)
                 else:
                     value = 0
             stats[name] = int(value)
 
-        last_reset = self.r.get(f"{redis_prefix}:daily_last_reset")
+        last_reset = self.r.get(_redis_meta_key())
         if last_reset is None:
             last_reset = meta.value
-            self.r.set(f"{redis_prefix}:daily_last_reset", last_reset)
+            self.r.set(_redis_meta_key(), last_reset)
         stats["last_reset"] = last_reset
         return stats
 
     def get_total_stats(self):
         stats = {}
         for name in self.names:
-            value = self.r.get(f"{redis_prefix}:total:{name}")
+            value = self.r.get(_redis_key("total", name))
             if value is None:
                 row = (
                     self.db.query(StatsCounter)
@@ -284,7 +292,7 @@ class MediaStats:
                 )
                 if row:
                     value = row.value
-                    self.r.set(f"{redis_prefix}:total:{name}", value)
+                    self.r.set(_redis_key("total", name), value)
                 else:
                     value = 0
             stats[name] = int(value)
@@ -368,10 +376,9 @@ class MediaStats:
             events.append(ev)
         return events
 
-    def get_approval_rate_24h(self):
-        ds = self.get_daily_stats()
-        processed = ds["photos_processed"] + ds["videos_processed"]
-        approved = ds["photos_approved"] + ds["videos_approved"]
+    def get_approval_rate_24h(self, daily: dict) -> float:
+        processed = daily["photos_processed"] + daily["videos_processed"]
+        approved = daily["photos_approved"] + daily["videos_approved"]
         return (approved / processed * 100) if processed else 0
 
     def get_approval_rate_total(self):
@@ -380,10 +387,13 @@ class MediaStats:
         approved = ts["photos_approved"] + ts["videos_approved"]
         return (approved / processed * 100) if processed else 0
 
-    def get_success_rate_24h(self):
-        ds = self.get_daily_stats()
-        received = ds["media_received"]
-        errors = ds["processing_errors"] + ds["storage_errors"] + ds["telegram_errors"]
+    def get_success_rate_24h(self, daily: dict) -> float:
+        received = daily["media_received"]
+        errors = (
+            daily["processing_errors"]
+            + daily["storage_errors"]
+            + daily["telegram_errors"]
+        )
         return ((received - errors) / received * 100) if received else 100
 
     def get_busiest_hour(self):
@@ -407,14 +417,14 @@ class MediaStats:
         busiest_hour, count = max(hour_counts.items(), key=lambda x: x[1])
         return busiest_hour, count
 
-    def generate_stats_report(self):
+    def generate_stats_report(self, reset_daily: bool = True):
         """Generate a comprehensive stats report"""
-        daily = self.get_daily_stats()
+        daily = self.get_daily_stats(reset_if_new_day=reset_daily)
         total = self.get_total_stats()
         perf = self.get_performance_metrics()
-        approval_24h = self.get_approval_rate_24h()
+        approval_24h = self.get_approval_rate_24h(daily)
         approval_total = self.get_approval_rate_total()
-        success_24h = self.get_success_rate_24h()
+        success_24h = self.get_success_rate_24h(daily)
         busiest = self.get_busiest_hour()
         busiest_hour, count = busiest if busiest else (None, 0)
         busiest_display = (
@@ -466,8 +476,8 @@ class MediaStats:
         meta.value = now_iso
         self.db.commit()
         for name in self.names:
-            self.r.set(f"{redis_prefix}:daily:{name}", 0)
-        self.r.set(f"{redis_prefix}:daily_last_reset", now_iso)
+            self.r.set(_redis_key("daily", name), 0)
+        self.r.set(_redis_meta_key(), now_iso)
         return "Daily statistics have been reset."
 
     def force_save(self):

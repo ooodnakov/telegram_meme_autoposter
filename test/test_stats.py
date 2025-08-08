@@ -70,6 +70,7 @@ def setup_modules(monkeypatch):
     monkeypatch.setenv("DB_MYSQL_USER", "u")
     monkeypatch.setenv("DB_MYSQL_PASSWORD", "p")
     monkeypatch.setenv("DB_MYSQL_NAME", "db")
+    monkeypatch.setenv("REDIS_PREFIX", "")
     sys.modules.pop("telegram_auto_poster.utils.stats", None)
     sys.modules.pop("telegram_auto_poster.utils.storage", None)
     stats_mod = importlib.import_module("telegram_auto_poster.utils.stats")

@@ -10,6 +10,7 @@ A system that monitors various Telegram channels for media content (photos/video
 - Allows admin approval or rejection of content
 - Supports batching multiple approved items for posting at once
 - Provides detailed statistics on media processing
+- Automatically sends a daily statistics report at midnight
 - Stores statistics in a Valkey server for fast access
 - **NEW: Provides feedback to media submitters when their content is approved or rejected**
 - **NEW: Enhanced admin permission system to control access to admin commands**
