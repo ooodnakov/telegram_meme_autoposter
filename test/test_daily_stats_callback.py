@@ -13,9 +13,8 @@ from telegram_auto_poster.bot import commands
 @pytest.mark.asyncio
 async def test_daily_stats_callback_sends_report(monkeypatch):
     report_text = "report"
-    monkeypatch.setattr(
-        commands.stats, "generate_stats_report", lambda *a, **k: report_text
-    )
+    gen_stats_mock = MagicMock(return_value=report_text)
+    monkeypatch.setattr(commands.stats, "generate_stats_report", gen_stats_mock)
     reset_mock = MagicMock()
     monkeypatch.setattr(commands.stats, "reset_daily_stats", reset_mock)
     bot = SimpleNamespace(send_message=AsyncMock())
@@ -26,5 +25,6 @@ async def test_daily_stats_callback_sends_report(monkeypatch):
     )
     await commands.daily_stats_callback(context)
     bot.send_message.assert_awaited_once_with(chat_id=123, text=report_text)
+    gen_stats_mock.assert_called_once_with(reset_daily=False)
     reset_mock.assert_called_once()
 

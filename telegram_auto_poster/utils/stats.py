@@ -376,10 +376,9 @@ class MediaStats:
             events.append(ev)
         return events
 
-    def get_approval_rate_24h(self):
-        ds = self.get_daily_stats()
-        processed = ds["photos_processed"] + ds["videos_processed"]
-        approved = ds["photos_approved"] + ds["videos_approved"]
+    def get_approval_rate_24h(self, daily: dict) -> float:
+        processed = daily["photos_processed"] + daily["videos_processed"]
+        approved = daily["photos_approved"] + daily["videos_approved"]
         return (approved / processed * 100) if processed else 0
 
     def get_approval_rate_total(self):
@@ -388,10 +387,13 @@ class MediaStats:
         approved = ts["photos_approved"] + ts["videos_approved"]
         return (approved / processed * 100) if processed else 0
 
-    def get_success_rate_24h(self):
-        ds = self.get_daily_stats()
-        received = ds["media_received"]
-        errors = ds["processing_errors"] + ds["storage_errors"] + ds["telegram_errors"]
+    def get_success_rate_24h(self, daily: dict) -> float:
+        received = daily["media_received"]
+        errors = (
+            daily["processing_errors"]
+            + daily["storage_errors"]
+            + daily["telegram_errors"]
+        )
         return ((received - errors) / received * 100) if received else 100
 
     def get_busiest_hour(self):
@@ -420,9 +422,9 @@ class MediaStats:
         daily = self.get_daily_stats(reset_if_new_day=reset_daily)
         total = self.get_total_stats()
         perf = self.get_performance_metrics()
-        approval_24h = self.get_approval_rate_24h()
+        approval_24h = self.get_approval_rate_24h(daily)
         approval_total = self.get_approval_rate_total()
-        success_24h = self.get_success_rate_24h()
+        success_24h = self.get_success_rate_24h(daily)
         busiest = self.get_busiest_hour()
         busiest_hour, count = busiest if busiest else (None, 0)
         busiest_display = (
