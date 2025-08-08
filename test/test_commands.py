@@ -10,7 +10,7 @@ dummy_stats_module.stats = SimpleNamespace(
     record_approved=lambda *a, **k: None,
     record_error=lambda *a, **k: None,
     record_batch_sent=lambda *a, **k: None,
-    generate_stats_report=lambda: "",
+    generate_stats_report=lambda *a, **k: "",
     reset_daily_stats=lambda: "",
     force_save=lambda: None,
 )

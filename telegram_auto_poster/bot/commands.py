@@ -150,6 +150,21 @@ async def save_stats_command(
         )
 
 
+async def daily_stats_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send daily statistics report to the admin chat at midnight."""
+    try:
+        report = stats.generate_stats_report(reset_daily=False)
+        chat_id = (
+            context.job.chat_id
+            if getattr(context, "job", None) and context.job.chat_id
+            else context.application.bot_data.get("chat_id")
+        )
+        await context.bot.send_message(chat_id=chat_id, text=report)
+        stats.reset_daily_stats()
+    except Exception as e:
+        logger.error(f"Error sending daily stats report: {e}")
+
+
 async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Command to approve a media item"""
     logger.info(f"Received /ok command from user {update.effective_user.id}")

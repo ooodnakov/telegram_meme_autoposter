@@ -1,3 +1,4 @@
+import datetime
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -23,6 +24,7 @@ from .commands import (
     stats_command,
     reset_stats_command,
     save_stats_command,
+    daily_stats_callback,
 )
 
 # Import callbacks from callbacks.py
@@ -103,6 +105,14 @@ class TelegramMemeBot:
         logger.info("Registering media handler...")
         self.application.add_handler(
             MessageHandler(filters.PHOTO | filters.VIDEO, handle_media)
+        )
+
+        # Schedule daily statistics report at midnight
+        self.application.job_queue.run_daily(
+            daily_stats_callback,
+            time=datetime.time(hour=0, minute=0),
+            name="daily_stats_report",
+            chat_id=self.bot_chat_id,
         )
 
         # Just initialize the application
