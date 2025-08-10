@@ -1,1 +1,0 @@
-"""Media processing package for Telegram Meme Autoposter."""

@@ -35,32 +35,19 @@ def calculate_video_hash(file_path: str) -> str:
         return None
 
 
-def is_duplicate(media_hash: str, redis_client=None) -> bool:
+def check_and_add_hash(media_hash: str, redis_client=None) -> bool:
     """
-    Checks if a media hash already exists in the Redis set.
+    Adds a media hash to the Redis set if it doesn't exist.
+    Returns True if the hash was added (i.e., not a duplicate), False otherwise.
     """
     if not media_hash:
-        return False
+        return True  # Not a duplicate, allow processing
     if redis_client is None:
         redis_client = get_redis_client()
     try:
-        return redis_client.sismember(DEDUPLICATION_SET_KEY, media_hash)
-    except Exception as e:
-        logger.error(f"Could not check for duplicate hash: {e}")
-        # Fail open, i.e., assume not a duplicate if Redis check fails
-        return False
-
-
-def add_hash(media_hash: str, redis_client=None):
-    """
-    Adds a media hash to the Redis set.
-    """
-    if not media_hash:
-        return
-    if redis_client is None:
-        redis_client = get_redis_client()
-    try:
-        redis_client.sadd(DEDUPLICATION_SET_KEY, media_hash)
-        logger.info(f"Added hash {media_hash} to deduplication set.")
+        # SADD returns the number of elements that were added to the set.
+        return redis_client.sadd(DEDUPLICATION_SET_KEY, media_hash) == 1
     except Exception as e:
         logger.error(f"Could not add hash to deduplication set: {e}")
+        # Fail open, assume not a duplicate if Redis check fails
+        return True

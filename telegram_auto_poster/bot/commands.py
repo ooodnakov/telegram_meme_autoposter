@@ -18,6 +18,7 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.utils import MinioError, TelegramMediaError
+from telegram_auto_poster.bot.handlers import notify_user
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -393,8 +394,6 @@ async def send_batch_command(update, context):
 
                         # Only notify each user once per batch to avoid spam
                         if user_id not in notified_users:
-                            from telegram_auto_poster.bot.handlers import notify_user
-
                             await notify_user(
                                 context,
                                 user_id,
@@ -449,8 +448,6 @@ async def send_batch_command(update, context):
 
                         # Only notify each user once per batch to avoid spam
                         if user_id not in notified_users:
-                            from telegram_auto_poster.bot.handlers import notify_user
-
                             await notify_user(
                                 context,
                                 user_id,

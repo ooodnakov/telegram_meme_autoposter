@@ -7,8 +7,7 @@ from fakeredis import FakeStrictRedis
 from telegram_auto_poster.utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
-    is_duplicate,
-    add_hash,
+    check_and_add_hash,
     DEDUPLICATION_SET_KEY,
 )
 
@@ -47,26 +46,19 @@ def test_calculate_video_hash(sample_video):
     assert isinstance(video_hash, str)
     assert len(video_hash) == 32  # md5 is 32 chars
 
-def test_add_and_check_duplicate(fake_redis):
+def test_check_and_add_hash(fake_redis):
     """Test adding a hash and checking for duplicates"""
-    media_hash = "test_hash"
+    media_hash = "test_hash_atomic"
 
-    # Initially, it's not a duplicate
-    assert not is_duplicate(media_hash, redis_client=fake_redis)
+    # First time, it's not a duplicate, so it should be added and return True
+    assert check_and_add_hash(media_hash, redis_client=fake_redis) is True
 
-    # Add the hash
-    add_hash(media_hash, redis_client=fake_redis)
+    # Second time, it is a duplicate, so it should not be added and return False
+    assert check_and_add_hash(media_hash, redis_client=fake_redis) is False
 
-    # Now it should be a duplicate
-    assert is_duplicate(media_hash, redis_client=fake_redis)
-
-def test_is_duplicate_with_empty_hash(fake_redis):
-    """Test that is_duplicate returns False for empty hash"""
-    assert not is_duplicate(None, redis_client=fake_redis)
-    assert not is_duplicate("", redis_client=fake_redis)
-
-def test_add_hash_with_empty_hash(fake_redis):
-    """Test that add_hash does not add empty hashes"""
-    add_hash(None, redis_client=fake_redis)
-    add_hash("", redis_client=fake_redis)
+def test_check_and_add_with_empty_hash(fake_redis):
+    """Test that check_and_add_hash returns True for empty hash"""
+    assert check_and_add_hash(None, redis_client=fake_redis) is True
+    assert check_and_add_hash("", redis_client=fake_redis) is True
+    # Ensure nothing was added to the set
     assert fake_redis.scard(DEDUPLICATION_SET_KEY) == 0

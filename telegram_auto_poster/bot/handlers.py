@@ -25,15 +25,14 @@ from ..utils.stats import stats
 from ..utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
-    is_duplicate,
-    add_hash,
+    check_and_add_hash,
 )
-from ..utils.storage import (
-    DOWNLOADS_PATH,
+from ..utils.storage import storage
+from ..config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
+    DOWNLOADS_PATH,
     BUCKET_MAIN,
-    storage,
 )
 
 # Load target_channel from config
@@ -95,31 +94,26 @@ async def handle_photo(
         await f.download_to_drive(temp_path)
         download_time = time.time() - start_time
 
-        # Upload to MinIO with user info
-        start_upload_time = time.time()
-        storage.upload_file(
-            temp_path,
-            BUCKET_MAIN,
-            DOWNLOADS_PATH + "/" + file_name,
-            user_id=user_id,
-            chat_id=chat_id,
-            message_id=message_id,
-        )
-        upload_time = time.time() - start_upload_time
-
+        download_time = time.time() - start_time
         logger.info(
-            f"Photo from chat {chat_id} has downloaded and stored in MinIO wiht filename {file_name}"
-        )
-        logger.debug(
-            f"Download time: {download_time:.2f}s, Upload time: {upload_time:.2f}s"
+            f"Photo from chat {chat_id} has downloaded in {download_time:.2f}s"
         )
 
-        # Process the photo (which will handle MinIO operations)
+        user_metadata = {
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "media_type": "photo",
+        }
+
+        # Process the photo
         await process_photo(
             "New suggestion in bot",
+            temp_path,
             file_name,
             context.bot_data["chat_id"],
             context.application,
+            user_metadata=user_metadata,
         )
 
         # Send confirmation to user
@@ -166,29 +160,26 @@ async def handle_video(
         await f.download_to_drive(temp_path)
         download_time = time.time() - start_time
 
-        # Upload to MinIO with user info
-        start_upload_time = time.time()
-        storage.upload_file(
-            temp_path,
-            BUCKET_MAIN,
-            DOWNLOADS_PATH + "/" + file_name,
-            user_id=user_id,
-            chat_id=chat_id,
-            message_id=message_id,
-        )
-        upload_time = time.time() - start_upload_time
-
-        logger.info(f"Video from chat {chat_id} has downloaded and stored in MinIO")
-        logger.debug(
-            f"Download time: {download_time:.2f}s, Upload time: {upload_time:.2f}s"
+        download_time = time.time() - start_time
+        logger.info(
+            f"Video from chat {chat_id} has downloaded in {download_time:.2f}s"
         )
 
-        # Process the video (which will handle MinIO operations)
+        user_metadata = {
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "media_type": "video",
+        }
+
+        # Process the video
         await process_video(
             "New suggestion in bot",
+            temp_path,
             file_name,
             context.bot_data["chat_id"],
             context.application,
+            user_metadata=user_metadata,
         )
 
         # Send confirmation to user
@@ -232,31 +223,21 @@ async def notify_user(
         stats.record_error("telegram", f"Failed to notify user: {str(e)}")
 
 
-async def process_photo(custom_text: str, name: str, bot_chat_id: str, application):
+async def process_photo(custom_text: str, input_path: str, original_name: str, bot_chat_id: str, application, user_metadata: dict = None):
     """Process a photo by adding watermark and sending to review bot"""
     start_time = time.time()
-    temp_input_path = None
     try:
-        # Download the original file to calculate its hash
-        temp_input_path, _ = await download_from_minio(
-            DOWNLOADS_PATH + "/" + os.path.basename(name), BUCKET_MAIN, ".jpg"
-        )
-
         # Calculate hash and check for duplicates
-        image_hash = calculate_image_hash(temp_input_path)
-        if is_duplicate(image_hash):
+        image_hash = calculate_image_hash(input_path)
+        if not check_and_add_hash(image_hash):
             logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
-            stats.record_rejected("photo", name, "duplicate")
-            cleanup_temp_file(temp_input_path)
+            stats.record_rejected("photo", original_name, "duplicate")
             return
 
         # Add watermark and upload to MinIO
-        processed_name = f"processed_{os.path.basename(name)}"
+        processed_name = f"processed_{os.path.basename(original_name)}"
 
-        # Transfer user metadata from original to processed file
-        user_metadata = storage.get_submission_metadata(os.path.basename(name))
-
-        await add_watermark_to_image(temp_input_path, f"photos/{processed_name}")
+        await add_watermark_to_image(input_path, f"photos/{processed_name}")
 
         # Copy user metadata to processed file if exists
         if user_metadata:
@@ -310,7 +291,6 @@ async def process_photo(custom_text: str, name: str, bot_chat_id: str, applicati
                 pool_timeout=60,
             )
             logger.info(f"New photo {name} in channel!")
-            add_hash(image_hash)
         except Exception as e:
             logger.error(f"Failed to send photo to review channel: {e}")
             stats.record_error("telegram", f"Failed to send to review: {str(e)}")
@@ -328,32 +308,22 @@ async def process_photo(custom_text: str, name: str, bot_chat_id: str, applicati
         stats.record_error("processing", f"Unexpected error: {str(e)}")
 
 
-async def process_video(custom_text: str, name: str, bot_chat_id: str, application):
+async def process_video(custom_text: str, input_path: str, original_name: str, bot_chat_id: str, application, user_metadata: dict = None):
     """Process a video and send to review bot"""
     start_time = time.time()
-    temp_input_path = None
     try:
-        # Download the original file to calculate its hash
-        temp_input_path, _ = await download_from_minio(
-            DOWNLOADS_PATH + "/" + os.path.basename(name), BUCKET_MAIN, ".mp4"
-        )
-
         # Calculate hash and check for duplicates
-        video_hash = calculate_video_hash(temp_input_path)
-        if is_duplicate(video_hash):
+        video_hash = calculate_video_hash(input_path)
+        if not check_and_add_hash(video_hash):
             logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
-            stats.record_rejected("video", name, "duplicate")
-            cleanup_temp_file(temp_input_path)
+            stats.record_rejected("video", original_name, "duplicate")
             return
 
         # Add watermark and upload to MinIO
-        processed_name = f"processed_{os.path.basename(name)}"
-
-        # Transfer user metadata from original to processed file
-        user_metadata = storage.get_submission_metadata(os.path.basename(name))
+        processed_name = f"processed_{os.path.basename(original_name)}"
 
         # Add watermark to video and upload to MinIO
-        await add_watermark_to_video(temp_input_path, processed_name)
+        await add_watermark_to_video(input_path, processed_name)
 
         # Copy user metadata to processed file if exists
         if user_metadata:
@@ -411,7 +381,6 @@ async def process_video(custom_text: str, name: str, bot_chat_id: str, applicati
                     pool_timeout=60,
                 )
             logger.info(f"New video {name} in channel!")
-            add_hash(video_hash)
         except Exception as e:
             logger.error(f"Failed to send video to review channel: {e}")
             stats.record_error("telegram", f"Failed to send video to review: {str(e)}")

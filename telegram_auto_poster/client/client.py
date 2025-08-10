@@ -55,9 +55,9 @@ class TelegramMemeClient:
                     file_path = f"downloaded_image_{event.id}.jpg"
                     stats.record_received("photo")
                     await self.client.download_media(photo, file=file_path)
-                    storage.upload_file(file_path, BUCKET_MAIN, DOWNLOADS_PATH + "/" + os.path.basename(file_path))
                     await process_photo(
                         "New post found with image",
+                        file_path,
                         os.path.basename(file_path),
                         self.bot_chat_id,
                         self.application,
@@ -72,9 +72,9 @@ class TelegramMemeClient:
                         file_path = f"downloaded_video_{event.id}.mp4"
                         await self.client.download_media(video, file=file_path)
                         logger.info(f"Video with eventid {event.id} has been downloaded!")
-                        storage.upload_file(file_path, BUCKET_MAIN, DOWNLOADS_PATH + "/" + os.path.basename(file_path))
                         await process_video(
                             "New post found with video",
+                            file_path,
                             os.path.basename(file_path),
                             self.bot_chat_id,
                             self.application,
