@@ -11,7 +11,6 @@ from telegram_auto_poster.config import (
     VIDEOS_PATH,
     DOWNLOADS_PATH,
     BUCKET_MAIN,
-    LUBA_CHAT,
 )
 
 # Import stats module
@@ -53,7 +52,7 @@ class MinioStorage:
             return
 
         try:
-            config = load_config()
+            load_config()
 
             # Get MinIO config from environment or config
             host = os.getenv("MINIO_HOST", "minio")

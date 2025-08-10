@@ -166,10 +166,7 @@ async def send_media_to_telegram(
     """
 
     # Define error constants
-    ERROR_MINIO_FILE_NOT_FOUND = "File not found in MinIO storage"
-    ERROR_MINIO_DOWNLOAD_FAILED = "Failed to download file from MinIO"
     ERROR_TELEGRAM_SEND_FAILED = "Failed to send media to Telegram"
-    ERROR_TEMP_FILE_CREATION = "Failed to create temporary file"
     ERROR_FILE_NOT_SUPPORTED = "File type not supported"
 
     if not os.path.exists(file_path):

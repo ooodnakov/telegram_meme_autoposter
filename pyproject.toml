@@ -90,7 +90,7 @@ exclude = [
     "_build",
 ]
 
-include = ["pyproject.toml", "src/*"]
+include = ["pyproject.toml", "telegram_auto_poster/*"]
 # Same as Black.
 line-length = 88
 indent-width = 4
