@@ -444,8 +444,16 @@ class MediaStats:
                 format_line("📥", "Media Received", daily.get("media_received", 0)),
                 format_line("🖼️", "Photos Processed", daily.get("photos_processed", 0)),
                 format_line("📹", "Videos Processed", daily.get("videos_processed", 0)),
-                format_line("✅", "Approved", f"{daily.get('photos_approved', 0)} photos, {daily.get('videos_approved', 0)} videos"),
-                format_line("❌", "Rejected", f"{daily.get('photos_rejected', 0)} photos, {daily.get('videos_rejected', 0)} videos"),
+                format_line(
+                    "✅",
+                    "Approved",
+                    f"{daily.get('photos_approved', 0)} photos, {daily.get('videos_approved', 0)} videos",
+                ),
+                format_line(
+                    "❌",
+                    "Rejected",
+                    f"{daily.get('photos_rejected', 0)} photos, {daily.get('videos_rejected', 0)} videos",
+                ),
                 format_line("📦", "Batches Sent", daily.get("batch_sent", 0)),
                 format_line("📈", "Approval Rate", f"{approval_24h:.1f}%"),
                 format_line("✨", "Success Rate", f"{success_24h:.1f}%"),
@@ -453,10 +461,22 @@ class MediaStats:
             ],
             "performance": [
                 "<b>Performance Metrics:</b>",
-                format_line("⏳", "Avg Photo Processing", f"{perf.get('avg_photo_processing_time', 0):.2f}s"),
-                format_line("⏳", "Avg Video Processing", f"{perf.get('avg_video_processing_time', 0):.2f}s"),
-                format_line("⏱️", "Avg Upload Time", f"{perf.get('avg_upload_time', 0):.2f}s"),
-                format_line("⏱️", "Avg Download Time", f"{perf.get('avg_download_time', 0):.2f}s"),
+                format_line(
+                    "⏳",
+                    "Avg Photo Processing",
+                    f"{perf.get('avg_photo_processing_time', 0):.2f}s",
+                ),
+                format_line(
+                    "⏳",
+                    "Avg Video Processing",
+                    f"{perf.get('avg_video_processing_time', 0):.2f}s",
+                ),
+                format_line(
+                    "⏱️", "Avg Upload Time", f"{perf.get('avg_upload_time', 0):.2f}s"
+                ),
+                format_line(
+                    "⏱️", "Avg Download Time", f"{perf.get('avg_download_time', 0):.2f}s"
+                ),
             ],
             "total": [
                 "<b>All-Time Totals:</b>",
