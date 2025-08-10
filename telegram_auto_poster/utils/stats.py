@@ -441,58 +441,28 @@ class MediaStats:
             "header": "📊 <b>Statistics Report</b> 📊",
             "daily": [
                 "<b>Last 24 Hours:</b>",
-                format_line(
-                    "📥", "Media Received", daily.get("media_received", 0)
-                ),
-                format_line(
-                    "🖼️", "Photos Processed", daily.get("photos_processed", 0)
-                ),
-                format_line(
-                    "📹", "Videos Processed", daily.get("videos_processed", 0)
-                ),
+                format_line("📥", "Media Received", daily.get("media_received", 0)),
+                format_line("🖼️", "Photos Processed", daily.get("photos_processed", 0)),
+                format_line("📹", "Videos Processed", daily.get("videos_processed", 0)),
                 format_line("✅", "Approved", f"{daily.get('photos_approved', 0)} photos, {daily.get('videos_approved', 0)} videos"),
                 format_line("❌", "Rejected", f"{daily.get('photos_rejected', 0)} photos, {daily.get('videos_rejected', 0)} videos"),
                 format_line("📦", "Batches Sent", daily.get("batch_sent", 0)),
                 format_line("📈", "Approval Rate", f"{approval_24h:.1f}%"),
                 format_line("✨", "Success Rate", f"{success_24h:.1f}%"),
-                format_line(
-                    "🕔", "Busiest Hour", busiest_display, f"({count} events)"
-                ),
+                format_line("🕔", "Busiest Hour", busiest_display, f"({count} events)"),
             ],
             "performance": [
                 "<b>Performance Metrics:</b>",
-                format_line(
-                    "⏳",
-                    "Avg Photo Processing",
-                    f"{perf.get('avg_photo_processing_time', 0):.2f}s",
-                ),
-                format_line(
-                    "⏳",
-                    "Avg Video Processing",
-                    f"{perf.get('avg_video_processing_time', 0):.2f}s",
-                ),
-                format_line(
-                    "⏱️",
-                    "Avg Upload Time",
-                    f"{perf.get('avg_upload_time', 0):.2f}s",
-                ),
-                format_line(
-                    "⏱️",
-                    "Avg Download Time",
-                    f"{perf.get('avg_download_time', 0):.2f}s",
-                ),
+                format_line("⏳", "Avg Photo Processing", f"{perf.get('avg_photo_processing_time', 0):.2f}s"),
+                format_line("⏳", "Avg Video Processing", f"{perf.get('avg_video_processing_time', 0):.2f}s"),
+                format_line("⏱️", "Avg Upload Time", f"{perf.get('avg_upload_time', 0):.2f}s"),
+                format_line("⏱️", "Avg Download Time", f"{perf.get('avg_download_time', 0):.2f}s"),
             ],
             "total": [
                 "<b>All-Time Totals:</b>",
-                format_line(
-                    "Processed", "Media Processed", total.get("media_processed", 0)
-                ),
-                format_line(
-                    "🖼️", "Photos Approved", total.get("photos_approved", 0)
-                ),
-                format_line(
-                    "📹", "Videos Approved", total.get("videos_approved", 0)
-                ),
+                format_line("🗃️", "Media Processed", total.get("media_processed", 0)),
+                format_line("🖼️", "Photos Approved", total.get("photos_approved", 0)),
+                format_line("📹", "Videos Approved", total.get("videos_approved", 0)),
                 format_line("📈", "Overall Approval Rate", f"{approval_total:.1f}%"),
                 format_line("📦", "Total Batches Sent", total.get("batch_sent", 0)),
                 format_line(
@@ -507,13 +477,14 @@ class MediaStats:
         }
 
         # Build the report string
-        report = f"{report_sections['header']}\n\n"
-        report += "\n".join(report_sections["daily"]) + "\n\n"
-        report += "\n".join(report_sections["performance"]) + "\n\n"
-        report += "\n".join(report_sections["total"]) + "\n\n"
-        report += "\n".join(report_sections["footer"])
-
-        return report
+        report_parts = [
+            report_sections["header"],
+            "\n".join(report_sections["daily"]),
+            "\n".join(report_sections["performance"]),
+            "\n".join(report_sections["total"]),
+            "\n".join(report_sections["footer"]),
+        ]
+        return "\n\n".join(report_parts)
 
     def reset_daily_stats(self):
         """Manually reset daily stats"""

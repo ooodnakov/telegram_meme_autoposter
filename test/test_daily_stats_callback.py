@@ -24,7 +24,9 @@ async def test_daily_stats_callback_sends_report(monkeypatch):
         application=SimpleNamespace(bot_data={}),
     )
     await commands.daily_stats_callback(context)
-    bot.send_message.assert_awaited_once_with(chat_id=123, text=report_text)
+    bot.send_message.assert_awaited_once_with(
+        chat_id=123, text=report_text, parse_mode="HTML"
+    )
     gen_stats_mock.assert_called_once_with(reset_daily=False)
     reset_mock.assert_called_once()
 

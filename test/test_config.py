@@ -20,11 +20,14 @@ def test_missing_sections(tmp_path, monkeypatch):
         """
 [Telegram]
 api_id = 123
+api_hash = aaa
+username = test
+target_channel = @test
 """,
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
-    with pytest.raises(RuntimeError, match="Файл config.ini заполнен некорректно"):
+    with pytest.raises(RuntimeError, match="Missing section \\[Bot\\]"):
         config_module.load_config()
 
 
@@ -41,6 +44,9 @@ username = test
 bot_token = token
 bot_username = user
 bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
 """,
     )
     monkeypatch.chdir(tmp_path)
@@ -62,6 +68,9 @@ target_channel = @test
 bot_token = token
 bot_username = user
 bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
 """,
     )
     monkeypatch.chdir(tmp_path)
@@ -69,3 +78,4 @@ bot_chat_id = 1
     conf = config_module.load_config()
     assert conf["api_id"] == 123
     assert conf["bot_chat_id"] == "1"
+    assert conf["selected_chats"] == ["@test1", "@test2"]
