@@ -136,9 +136,7 @@ class TelegramMemeBot:
         await self.application.updater.start_polling(
             poll_interval=0.5,
             timeout=10,
-            bootstrap_retries=1,
-            read_timeout=20,
-            write_timeout=20,
+            bootstrap_retries=1,  
             allowed_updates=Update.ALL_TYPES,
             drop_pending_updates=False,
         )
