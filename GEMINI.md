@@ -31,7 +31,7 @@ The application is divided into two main components:
 ### Installation
 
 1.  Clone the repository.
-2.  Create a `config.ini` file from the `config.ini.example` and fill in the required values.
+2.  Create a `config.ini` file from the `config.example.ini` and fill in the required values.
 3.  Install the dependencies:
 
     ```bash

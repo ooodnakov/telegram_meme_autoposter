@@ -9,7 +9,6 @@ from telegram.ext import (
 from telegram import Update
 from loguru import logger
 
-from ..config import load_config
 
 # Import commands from commands.py
 from .commands import (
@@ -39,11 +38,11 @@ from .handlers import handle_media
 
 
 class TelegramMemeBot:
-    def __init__(self):
-        config = load_config()
+    def __init__(self, config):
         self.bot_token = config["bot_token"]
         self.bot_chat_id = config["bot_chat_id"]
         self.application = None
+        self.config = config
         logger.info(f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}")
 
     async def setup(self):
@@ -51,17 +50,14 @@ class TelegramMemeBot:
         logger.info("Setting up bot application...")
         self.application = ApplicationBuilder().token(self.bot_token).build()
 
-        # Get config
-        config = load_config()
-
         # Store important information in bot_data
         self.application.bot_data["chat_id"] = self.bot_chat_id
-        self.application.bot_data["target_channel_id"] = config["target_channel"]
+        self.application.bot_data["target_channel_id"] = self.config["target_channel"]
 
         # Store admin IDs
-        if "admin_ids" in config:
-            self.application.bot_data["admin_ids"] = config["admin_ids"]
-            logger.info(f"Configured admin IDs: {config['admin_ids']}")
+        if "admin_ids" in self.config:
+            self.application.bot_data["admin_ids"] = self.config["admin_ids"]
+            logger.info(f"Configured admin IDs: {self.config['admin_ids']}")
         else:
             # For backward compatibility, use the bot_chat_id as admin
             self.application.bot_data["admin_ids"] = [int(self.bot_chat_id)]

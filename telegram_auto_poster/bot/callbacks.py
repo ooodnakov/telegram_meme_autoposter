@@ -12,7 +12,6 @@ from telegram_auto_poster.config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
     BUCKET_MAIN,
-    load_config,
 )
 from telegram_auto_poster.utils import (
     MinioError,
@@ -25,9 +24,6 @@ from telegram_auto_poster.utils import (
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 
-config = load_config()
-target_channel = config["target_channel"]
-
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle approval: send suggestions or add to batch"""
@@ -36,6 +32,8 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     query = update.callback_query
     await query.answer()
+
+    target_channel = context.bot_data.get("target_channel_id")
 
     message_text = query.message.caption or query.message.text
     file_path = extract_filename(message_text)
@@ -185,6 +183,8 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     query = update.callback_query
     await query.answer()
+
+    target_channel = context.bot_data.get("target_channel_id")
 
     message_text = query.message.caption or query.message.text
     file_path = extract_filename(message_text)

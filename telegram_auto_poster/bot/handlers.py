@@ -18,7 +18,6 @@ from telegram_auto_poster.utils import (
     download_from_minio,
 )
 
-from ..config import load_config
 from ..media.photo import add_watermark_to_image
 from ..media.video import add_watermark_to_video
 from ..utils.stats import stats
@@ -29,10 +28,6 @@ from ..utils.storage import (
     BUCKET_MAIN,
     storage,
 )
-
-# Load target_channel from config
-config = load_config()
-target_channel = config["target_channel"]
 
 # Define error constants
 ERROR_MINIO_FILE_NOT_FOUND = "File not found in MinIO storage"

@@ -1,10 +1,12 @@
 import asyncio
+import signal
 from pathlib import Path
 
 from .bot.bot import TelegramMemeBot
 from .client.client import TelegramMemeClient
 from .utils.logger_setup import setup_logger
 from .utils.stats import stats
+from .config import load_config
 
 # Setup logger
 logger = setup_logger()
@@ -16,33 +18,31 @@ Path("videos").mkdir(exist_ok=True)
 
 async def main():
     """Main entry point for the Telegram Meme Autoposter."""
+    config = load_config()
     bot = None
     client = None
 
-    # Define signal handlers to gracefully shutdown
+    loop = asyncio.get_event_loop()
     stop_event = asyncio.Event()
 
     def signal_handler():
         logger.info("Received shutdown signal, stopping...")
         stop_event.set()
 
-    # # Register signal handlers
-    # for sig in (signal.SIGINT, signal.SIGTERM):
-    #     asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, signal_handler)
 
     try:
         # Initialize bot
-        bot = TelegramMemeBot()
+        bot = TelegramMemeBot(config)
         await bot.setup()
 
         # Initialize client with bot's application
-        client = TelegramMemeClient(bot.application)
-        asyncio.create_task(client.start())
+        client = TelegramMemeClient(bot.application, config)
 
-        # Start the bot polling in our existing event loop
-        asyncio.create_task(bot.start_polling())
+        loop.create_task(bot.start_polling())
+        loop.create_task(client.start())
 
-        # Keep the program running until stop event is set
         logger.info("Bot started, press CTRL+C to stop")
         await stop_event.wait()
 

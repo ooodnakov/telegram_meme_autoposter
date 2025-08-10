@@ -14,7 +14,6 @@ from telegram_auto_poster.config import (
     VIDEOS_PATH,
     DOWNLOADS_PATH,
     BUCKET_MAIN,
-    LUBA_CHAT,
 )
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.utils import MinioError, TelegramMediaError
@@ -291,6 +290,8 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Command to send all files to Luba"""
     logger.info(f"Received /luba command from user {update.effective_user.id}")
 
+    luba_chat = context.bot_data.get("luba_chat")
+
     # Check admin rights
     if not await check_admin_rights(update, context):
         return
@@ -326,7 +327,7 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 # воспроизведения для видео
                 await send_media_to_telegram(
                     context.bot,
-                    LUBA_CHAT,
+                    luba_chat,
                     temp_path,
                     caption=None,
                     supports_streaming=(media_type == "video"),

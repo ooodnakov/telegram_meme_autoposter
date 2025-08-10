@@ -5,7 +5,6 @@ import datetime
 from minio import Minio
 from minio.error import S3Error, MinioException
 from loguru import logger
-from ..config import load_config
 from telegram_auto_poster.config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
@@ -52,8 +51,6 @@ class MinioStorage:
             return
 
         try:
-            load_config()
-
             # Get MinIO config from environment or config
             host = os.getenv("MINIO_HOST", "minio")
             port = os.getenv("MINIO_PORT", "9000")

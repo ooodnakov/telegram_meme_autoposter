@@ -5,6 +5,7 @@ import os
 REQUIRED_FIELDS = {
     "Telegram": ["api_id", "api_hash", "username", "target_channel"],
     "Bot": ["bot_token", "bot_username", "bot_chat_id"],
+    "Chats": ["selected_chats", "luba_chat"],
 }
 
 
@@ -13,13 +14,14 @@ def load_config():
     config_path = os.getenv("CONFIG_PATH", "config.ini")
     config.read(config_path)
 
-    if not config.has_section("Telegram") or not config.has_section("Bot"):
-        raise RuntimeError("Файл config.ini заполнен некорректно")
-
     for section, fields in REQUIRED_FIELDS.items():
+        if not config.has_section(section):
+            raise RuntimeError(f"Missing section [{section}] in config.ini")
         for field in fields:
             if not config.has_option(section, field) or not config.get(section, field):
-                raise RuntimeError(f"Заполните параметр {field} в секции [{section}]")
+                raise RuntimeError(
+                    f"Missing required field '{field}' in section [{section}]"
+                )
 
     try:
         api_id = int(config["Telegram"]["api_id"])
@@ -36,6 +38,10 @@ def load_config():
         "bot_token": config["Bot"]["bot_token"],
         "bot_username": config["Bot"]["bot_username"],
         "bot_chat_id": config["Bot"]["bot_chat_id"],
+        "selected_chats": [
+            chat.strip() for chat in config["Chats"]["selected_chats"].split(",")
+        ],
+        "luba_chat": config["Chats"]["luba_chat"],
     }
 
     # Add admin IDs if they exist in config
@@ -54,19 +60,6 @@ def load_config():
         conf_dict["admin_ids"] = [int(conf_dict["bot_chat_id"])]
 
     return conf_dict
-
-
-SELECTED_CHATS = [
-    "@rand2ch",
-    "@grotesque_tg",
-    "@axaxanakanecta",
-    "@gvonotestsh",
-    "@profunctor_io",
-    "@ttttttttttttsdsd",
-    "@dsasdadsasda",
-]
-
-LUBA_CHAT = "@Shanova_uuu"
 
 
 # Define path names
