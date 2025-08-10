@@ -31,9 +31,10 @@ dependencies = [
     "typing-extensions==4.12.2",
     "urllib3==2.2.3",
     "valkey==6.1.0",
+    "imagehash==4.3.1",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "pytest>=8.2.2",
     "pytest-asyncio==0.23.6",
