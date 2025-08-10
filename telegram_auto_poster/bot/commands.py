@@ -99,7 +99,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         # Generate statistics report
         report = stats.generate_stats_report()
-        await update.message.reply_text(report)
+        await update.message.reply_text(report, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error generating stats report: {e}")
         await update.message.reply_text(
@@ -158,7 +158,7 @@ async def daily_stats_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
             if getattr(context, "job", None) and context.job.chat_id
             else context.application.bot_data.get("chat_id")
         )
-        await context.bot.send_message(chat_id=chat_id, text=report)
+        await context.bot.send_message(chat_id=chat_id, text=report, parse_mode="HTML")
         stats.reset_daily_stats()
     except Exception as e:
         logger.error(f"Error sending daily stats report: {e}")
