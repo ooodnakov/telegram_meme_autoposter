@@ -52,7 +52,7 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 addopts = "--tb=short --strict-markers"
-testpaths = ["tests"]
+testpaths = ["test"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",

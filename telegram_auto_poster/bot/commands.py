@@ -231,8 +231,8 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         media_type = "photo"  # Default
 
         # Delete from MinIO if exists
-        if storage.file_exists(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN):
-            storage.delete_file(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN)
+        if storage.file_exists(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN):
+            storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
@@ -257,10 +257,10 @@ async def delete_batch_command(
         return
 
     try:
-        # Get all files with batch_ prefix from photos bucket
-        batch_files = storage.list_files(
-            PHOTOS_PATH + "/" + BUCKET_MAIN, prefix="batch_"
-        )
+        # Get all files with batch_ prefix from photos and videos directories
+        photo_batch = storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
+        video_batch = storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+        batch_files = photo_batch + video_batch
 
         if not batch_files:
             await context.bot.send_message(
@@ -272,7 +272,7 @@ async def delete_batch_command(
         deleted_count = 0
         for object_name in batch_files:
             try:
-                storage.delete_file(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN)
+                storage.delete_file(object_name, BUCKET_MAIN)
                 deleted_count += 1
             except Exception as e:
                 logger.error(f"Error deleting {object_name}: {e}")
@@ -297,7 +297,7 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     try:
         # Get all files from downloads bucket
-        download_files = storage.list_files(DOWNLOADS_PATH + "/" + BUCKET_MAIN)
+        download_files = storage.list_files(BUCKET_MAIN, prefix=DOWNLOADS_PATH)
 
         if not download_files:
             await update.message.reply_text("No files to send to Luba.")
@@ -376,7 +376,7 @@ async def send_batch_command(update, context):
                 try:
                     # Download photo from MinIO
                     temp_path, _ = await download_from_minio(
-                        file_name, PHOTOS_PATH + "/" + BUCKET_MAIN, ".jpg"
+                        PHOTOS_PATH + "/" + file_name, BUCKET_MAIN, ".jpg"
                     )
 
                     # Send to target channel
