@@ -432,39 +432,79 @@ class MediaStats:
             if busiest_hour is not None
             else "N/A"
         )
-        report_lines = [
-            "📊 Statistics Report 📊",
-            "",
-            "📈 Last 24 Hours:",
-            f"• Media Received: {daily.get('media_received', 0)}",
-            f"• Photos Processed: {daily.get('photos_processed', 0)}",
-            f"• Videos Processed: {daily.get('videos_processed', 0)}",
-            f"• Photos Approved: {daily.get('photos_approved', 0)}",
-            f"• Videos Approved: {daily.get('videos_approved', 0)}",
-            f"• Photos Rejected: {daily.get('photos_rejected', 0)}",
-            f"• Videos Rejected: {daily.get('videos_rejected', 0)}",
-            f"• Batches Sent: {daily.get('batch_sent', 0)}",
-            f"• Approval Rate: {approval_24h:.1f}%",
-            f"• Success Rate: {success_24h:.1f}%",
-            f"• Busiest Hour: {busiest_display} ({count} events)",
-            "",
-            "⏱️ Performance Metrics:",
-            f"• Average Photo Processing: {perf.get('avg_photo_processing_time', 0):.2f}s",
-            f"• Average Video Processing: {perf.get('avg_video_processing_time', 0):.2f}s",
-            f"• Average Upload Time: {perf.get('avg_upload_time', 0):.2f}s",
-            f"• Average Download Time: {perf.get('avg_download_time', 0):.2f}s",
-            "",
-            "🔢 All-Time Totals:",
-            f"• Media Processed: {total.get('media_processed', 0)}",
-            f"• Photos Approved: {total.get('photos_approved', 0)}",
-            f"• Videos Approved: {total.get('videos_approved', 0)}",
-            f"• Overall Approval Rate: {approval_total:.1f}%",
-            f"• Total Batches Sent: {total.get('batch_sent', 0)}",
-            f"🛑 Total Errors: {total.get('processing_errors', 0) + total.get('storage_errors', 0) + total.get('telegram_errors', 0)}",
-            "",
-            f"Last reset: {daily.get('last_reset', '')}",
+
+        # Helper for formatting lines
+        def format_line(icon, title, value, extra=""):
+            return f"{icon} <b>{title}:</b> {value} {extra}".strip()
+
+        report_sections = {
+            "header": "📊 <b>Statistics Report</b> 📊",
+            "daily": [
+                "<b>Last 24 Hours:</b>",
+                format_line("📥", "Media Received", daily.get("media_received", 0)),
+                format_line("🖼️", "Photos Processed", daily.get("photos_processed", 0)),
+                format_line("📹", "Videos Processed", daily.get("videos_processed", 0)),
+                format_line(
+                    "✅",
+                    "Approved",
+                    f"{daily.get('photos_approved', 0)} photos, {daily.get('videos_approved', 0)} videos",
+                ),
+                format_line(
+                    "❌",
+                    "Rejected",
+                    f"{daily.get('photos_rejected', 0)} photos, {daily.get('videos_rejected', 0)} videos",
+                ),
+                format_line("📦", "Batches Sent", daily.get("batch_sent", 0)),
+                format_line("📈", "Approval Rate", f"{approval_24h:.1f}%"),
+                format_line("✨", "Success Rate", f"{success_24h:.1f}%"),
+                format_line("🕔", "Busiest Hour", busiest_display, f"({count} events)"),
+            ],
+            "performance": [
+                "<b>Performance Metrics:</b>",
+                format_line(
+                    "⏳",
+                    "Avg Photo Processing",
+                    f"{perf.get('avg_photo_processing_time', 0):.2f}s",
+                ),
+                format_line(
+                    "⏳",
+                    "Avg Video Processing",
+                    f"{perf.get('avg_video_processing_time', 0):.2f}s",
+                ),
+                format_line(
+                    "⏱️", "Avg Upload Time", f"{perf.get('avg_upload_time', 0):.2f}s"
+                ),
+                format_line(
+                    "⏱️", "Avg Download Time", f"{perf.get('avg_download_time', 0):.2f}s"
+                ),
+            ],
+            "total": [
+                "<b>All-Time Totals:</b>",
+                format_line("🗃️", "Media Processed", total.get("media_processed", 0)),
+                format_line("🖼️", "Photos Approved", total.get("photos_approved", 0)),
+                format_line("📹", "Videos Approved", total.get("videos_approved", 0)),
+                format_line("📈", "Overall Approval Rate", f"{approval_total:.1f}%"),
+                format_line("📦", "Total Batches Sent", total.get("batch_sent", 0)),
+                format_line(
+                    "🛑",
+                    "Total Errors",
+                    total.get("processing_errors", 0)
+                    + total.get("storage_errors", 0)
+                    + total.get("telegram_errors", 0),
+                ),
+            ],
+            "footer": [f"<i>Last reset: {daily.get('last_reset', '')}</i>"],
+        }
+
+        # Build the report string
+        report_parts = [
+            report_sections["header"],
+            "\n".join(report_sections["daily"]),
+            "\n".join(report_sections["performance"]),
+            "\n".join(report_sections["total"]),
+            "\n".join(report_sections["footer"]),
         ]
-        return "\n".join(report_lines)
+        return "\n\n".join(report_parts)
 
     def reset_daily_stats(self):
         """Manually reset daily stats"""
