@@ -1,7 +1,6 @@
 import os
 import datetime
 import logging
-from valkey import Valkey
 from sqlalchemy import (
     create_engine,
     Column,
@@ -13,7 +12,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
-
+from .db import get_redis_client, _redis_key, _redis_meta_key
 from collections import defaultdict
 
 Base = declarative_base()
@@ -59,23 +58,6 @@ SessionLocal = sessionmaker(bind=engine)
 
 Base.metadata.create_all(bind=engine)
 
-# Valkey (Redis-compatible) connection for fast counter storage
-valkey_host = os.getenv("VALKEY_HOST", "localhost")
-valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
-valkey_pass = os.getenv("VALKEY_PASS", "redis")
-redis_client = Valkey(
-    host=valkey_host, port=valkey_port, password=valkey_pass, decode_responses=True
-)
-redis_prefix = os.getenv("REDIS_PREFIX", "telegram_auto_poster")
-
-
-def _redis_key(scope: str, name: str) -> str:
-    return f"{redis_prefix}:{scope}:{name}" if redis_prefix else f"{scope}:{name}"
-
-
-def _redis_meta_key() -> str:
-    return f"{redis_prefix}:daily_last_reset" if redis_prefix else "daily_last_reset"
-
 
 class MediaStats:
     _instance = None
@@ -84,7 +66,7 @@ class MediaStats:
         if cls._instance is None:
             cls._instance = super(MediaStats, cls).__new__(cls)
             cls._instance.db = SessionLocal()
-            cls._instance.r = redis_client
+            cls._instance.r = get_redis_client()
             cls._instance._init_db()
         return cls._instance
 

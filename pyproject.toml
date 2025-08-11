@@ -24,7 +24,7 @@ dependencies = [
     "pyasn1==0.6.1",
     "pygments>=2.19.2",
     "pymysql==1.1.1",
-    "python-telegram-bot==22.3",
+    "python-telegram-bot[job-queue]==22.3",
     "requests==2.32.3",
     "rsa==4.9",
     "sniffio==1.3.1",
@@ -34,6 +34,8 @@ dependencies = [
     "tzlocal==5.3.1",
     "urllib3==2.2.3",
     "valkey==6.1.0",
+    "imagehash==4.3.1",
+    "watchfiles",
 ]
 
 [dependency-groups]
@@ -44,7 +46,6 @@ dev = [
     "pytest-cov>=5.0.0",
     "fakeredis>=2.30.1",
     "ruff>=0.11.13",
-    "watchfiles",
     "mypy>=1.17.0",
 ]
 
