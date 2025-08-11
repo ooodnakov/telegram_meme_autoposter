@@ -239,7 +239,9 @@ async def send_media_to_telegram(
                 logger.warning(
                     f"Network error, retrying in {wait_time}s (attempt {retry_count}/{max_retries}): {e}"
                 )
-                stats_client.record_error("telegram", f"Network error (retrying): {str(e)}")
+                stats_client.record_error(
+                    "telegram", f"Network error (retrying): {str(e)}"
+                )
                 await asyncio.sleep(wait_time)
             except BadRequest as e:
                 # Bad request errors are usually not retryable
