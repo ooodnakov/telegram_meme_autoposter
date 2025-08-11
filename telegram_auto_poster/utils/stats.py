@@ -59,7 +59,6 @@ SessionLocal = sessionmaker(bind=engine)
 Base.metadata.create_all(bind=engine)
 
 
-
 class MediaStats:
     _instance = None
 

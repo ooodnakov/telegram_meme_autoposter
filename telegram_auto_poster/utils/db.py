@@ -3,6 +3,7 @@ from valkey import Valkey
 
 _redis_client = None
 
+
 def get_redis_client():
     """
     Initializes and returns the Valkey client instance.
@@ -14,9 +15,13 @@ def get_redis_client():
         valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
         valkey_pass = os.getenv("VALKEY_PASS", "redis")
         _redis_client = Valkey(
-            host=valkey_host, port=valkey_port, password=valkey_pass, decode_responses=True
+            host=valkey_host,
+            port=valkey_port,
+            password=valkey_pass,
+            decode_responses=True,
         )
     return _redis_client
+
 
 redis_prefix = os.getenv("REDIS_PREFIX", "telegram_auto_poster")
 

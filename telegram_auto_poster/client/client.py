@@ -4,7 +4,6 @@ from loguru import logger
 from telethon import TelegramClient, events, types
 
 from ..utils.stats import stats
-from ..utils.storage import storage, DOWNLOADS_PATH, BUCKET_MAIN
 import os
 
 # Create a global client variable that can be accessed from other modules

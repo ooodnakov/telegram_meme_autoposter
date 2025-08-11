@@ -30,7 +30,6 @@ from ..utils.storage import storage
 from ..config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
-    DOWNLOADS_PATH,
     BUCKET_MAIN,
 )
 
@@ -288,7 +287,7 @@ async def process_photo(
                 connect_timeout=60,
                 pool_timeout=60,
             )
-            logger.info(f"New photo {name} in channel!")
+            logger.info(f"New photo {processed_name} in channel!")
         except Exception as e:
             logger.error(f"Failed to send photo to review channel: {e}")
             stats.record_error("telegram", f"Failed to send to review: {str(e)}")
@@ -385,7 +384,7 @@ async def process_video(
                     connect_timeout=60,
                     pool_timeout=60,
                 )
-            logger.info(f"New video {name} in channel!")
+            logger.info(f"New video {processed_name} in channel!")
         except Exception as e:
             logger.error(f"Failed to send video to review channel: {e}")
             stats.record_error("telegram", f"Failed to send video to review: {str(e)}")
