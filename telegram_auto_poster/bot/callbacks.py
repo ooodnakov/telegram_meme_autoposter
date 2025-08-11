@@ -12,7 +12,6 @@ from telegram_auto_poster.config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
     BUCKET_MAIN,
-    load_config,
 )
 from telegram_auto_poster.utils import (
     MinioError,
@@ -25,9 +24,6 @@ from telegram_auto_poster.utils import (
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 
-config = load_config()
-target_channel = config["target_channel"]
-
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle approval: send suggestions or add to batch"""
@@ -36,6 +32,8 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     query = update.callback_query
     await query.answer()
+
+    target_channel = context.bot_data.get("target_channel_id")
 
     message_text = query.message.caption or query.message.text
     file_path = extract_filename(message_text)
@@ -112,15 +110,14 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         else:
             # Add to batch in MinIO for later sending
             new_object_name = f"batch_{file_name}"
-            temp_path, ext = await download_from_minio(
+            temp_path, _ = await download_from_minio(
                 file_prefix + file_name, BUCKET_MAIN
             )
             try:
-                # Upload with new name - use the appropriate bucket for videos and photos
-                target_batch_fileprefix = PHOTOS_PATH + "/"
-
+                # Upload to appropriate prefix as batch_*
+                target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
                 storage.upload_file(
-                    target_batch_fileprefix + temp_path, BUCKET_MAIN, new_object_name
+                    temp_path, BUCKET_MAIN, f"{target_prefix}/{new_object_name}"
                 )
 
                 # Get user metadata
@@ -129,9 +126,14 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 # Delete from MinIO
                 storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
-                batch_count = len(
-                    storage.list_files(BUCKET_MAIN, prefix="batch_")
-                ) + len(storage.list_files(BUCKET_MAIN, prefix="batch_"))
+                # Count batch items across both photos and videos
+                batch_count = 0
+                batch_count += len(
+                    storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
+                )
+                batch_count += len(
+                    storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+                )
 
                 await query.message.edit_caption(
                     f"Post added to batch! There are {batch_count} posts in the batch.",
@@ -181,6 +183,8 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     query = update.callback_query
     await query.answer()
+
+    target_channel = context.bot_data.get("target_channel_id")
 
     message_text = query.message.caption or query.message.text
     file_path = extract_filename(message_text)

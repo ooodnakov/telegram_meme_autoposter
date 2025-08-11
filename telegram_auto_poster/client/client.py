@@ -3,7 +3,6 @@ import asyncio
 from loguru import logger
 from telethon import TelegramClient, events, types
 
-from ..config import SELECTED_CHATS, load_config
 from ..utils.stats import stats
 from ..utils.storage import storage, DOWNLOADS_PATH, BUCKET_MAIN
 import os
@@ -13,14 +12,15 @@ client_instance = None
 
 
 class TelegramMemeClient:
-    def __init__(self, application):
-        config = load_config()
+    def __init__(self, application, config):
         self.client = TelegramClient(
             config["username"], config["api_id"], config["api_hash"]
         )
         self.application = application
         self.target_channel = config["target_channel"]
         self.bot_chat_id = config["bot_chat_id"]
+        self.selected_chats = config["selected_chats"]
+        self._task = None
 
         # Set the global client instance
         global client_instance
@@ -37,6 +37,9 @@ class TelegramMemeClient:
 
         logger.info("TelegramClient instance created and globally available")
 
+    async def _run(self):
+        await self.client.run_until_disconnected()
+
     async def start(self):
         """Start the client and register event handlers."""
         await self.client.start()
@@ -46,7 +49,7 @@ class TelegramMemeClient:
         from ..bot.handlers import process_photo, process_video
 
         # Register event handler for new messages
-        @self.client.on(events.NewMessage(chats=SELECTED_CHATS))
+        @self.client.on(events.NewMessage(chats=self.selected_chats))
         async def handle_new_message(event):
             file_path = None
             try:
@@ -89,16 +92,16 @@ class TelegramMemeClient:
 
         # Try to get channel entities
         try:
-            for ch in SELECTED_CHATS:
+            for ch in self.selected_chats:
                 channel = await self.client.get_entity(ch)
                 logger.info(f"Listening for messages in {channel.title}")
         except (TypeError, ValueError) as e:
             logger.error(f"Error getting channel entity: {e}")
             return
-
-        await asyncio.Event().wait()
+        self._task = asyncio.create_task(self._run())
 
     async def stop(self):
         """Stop the client."""
-        await self.client.disconnect()
+        if self.client.is_connected():
+            await self.client.disconnect()
         logger.info("TelegramClient disconnected")

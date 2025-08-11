@@ -14,7 +14,6 @@ from telegram_auto_poster.config import (
     VIDEOS_PATH,
     DOWNLOADS_PATH,
     BUCKET_MAIN,
-    LUBA_CHAT,
 )
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.utils import MinioError, TelegramMediaError
@@ -101,7 +100,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         # Generate statistics report
         report = stats.generate_stats_report()
-        await update.message.reply_text(report)
+        await update.message.reply_text(report, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error generating stats report: {e}")
         await update.message.reply_text(
@@ -160,7 +159,7 @@ async def daily_stats_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
             if getattr(context, "job", None) and context.job.chat_id
             else context.application.bot_data.get("chat_id")
         )
-        await context.bot.send_message(chat_id=chat_id, text=report)
+        await context.bot.send_message(chat_id=chat_id, text=report, parse_mode="HTML")
         stats.reset_daily_stats()
     except Exception as e:
         logger.error(f"Error sending daily stats report: {e}")
@@ -232,8 +231,8 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         media_type = "photo"  # Default
 
         # Delete from MinIO if exists
-        if storage.file_exists(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN):
-            storage.delete_file(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN)
+        if storage.file_exists(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN):
+            storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
@@ -258,10 +257,10 @@ async def delete_batch_command(
         return
 
     try:
-        # Get all files with batch_ prefix from photos bucket
-        batch_files = storage.list_files(
-            PHOTOS_PATH + "/" + BUCKET_MAIN, prefix="batch_"
-        )
+        # Get all files with batch_ prefix from photos and videos directories
+        photo_batch = storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
+        video_batch = storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+        batch_files = photo_batch + video_batch
 
         if not batch_files:
             await context.bot.send_message(
@@ -273,7 +272,7 @@ async def delete_batch_command(
         deleted_count = 0
         for object_name in batch_files:
             try:
-                storage.delete_file(object_name, PHOTOS_PATH + "/" + BUCKET_MAIN)
+                storage.delete_file(object_name, BUCKET_MAIN)
                 deleted_count += 1
             except Exception as e:
                 logger.error(f"Error deleting {object_name}: {e}")
@@ -292,13 +291,15 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Command to send all files to Luba"""
     logger.info(f"Received /luba command from user {update.effective_user.id}")
 
+    luba_chat = context.bot_data.get("luba_chat")
+
     # Check admin rights
     if not await check_admin_rights(update, context):
         return
 
     try:
         # Get all files from downloads bucket
-        download_files = storage.list_files(DOWNLOADS_PATH + "/" + BUCKET_MAIN)
+        download_files = storage.list_files(BUCKET_MAIN, prefix=DOWNLOADS_PATH)
 
         if not download_files:
             await update.message.reply_text("No files to send to Luba.")
@@ -327,7 +328,7 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 # воспроизведения для видео
                 await send_media_to_telegram(
                     context.bot,
-                    LUBA_CHAT,
+                    luba_chat,
                     temp_path,
                     caption=None,
                     supports_streaming=(media_type == "video"),
@@ -377,7 +378,7 @@ async def send_batch_command(update, context):
                 try:
                     # Download photo from MinIO
                     temp_path, _ = await download_from_minio(
-                        file_name, PHOTOS_PATH + "/" + BUCKET_MAIN, ".jpg"
+                        PHOTOS_PATH + "/" + file_name, BUCKET_MAIN, ".jpg"
                     )
 
                     # Send to target channel
