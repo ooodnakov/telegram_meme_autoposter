@@ -1,7 +1,6 @@
 import importlib
 import os
 import sys
-import types
 import fakeredis
 import valkey
 import pytest
@@ -16,7 +15,9 @@ def stats_module(monkeypatch):
     """Prepare test environment with in-memory DB and fake Redis."""
     engine = sqlalchemy.create_engine("sqlite:///:memory:")
     monkeypatch.setattr(sqlalchemy, "create_engine", lambda *a, **k: engine)
-    monkeypatch.setattr(valkey, "Valkey", lambda *a, **k: fakeredis.FakeRedis(decode_responses=True))
+    monkeypatch.setattr(
+        valkey, "Valkey", lambda *a, **k: fakeredis.FakeRedis(decode_responses=True)
+    )
     monkeypatch.setenv("DB_MYSQL_USER", "test")
     monkeypatch.setenv("DB_MYSQL_PASSWORD", "test")
     monkeypatch.setenv("DB_MYSQL_HOST", "localhost")
@@ -36,9 +37,11 @@ def stats_module(monkeypatch):
 
     with patch("minio.Minio"):
         import telegram_auto_poster.config
+
         importlib.reload(telegram_auto_poster.config)
         import telegram_auto_poster.utils.storage
         import telegram_auto_poster.utils.stats
+
         importlib.reload(telegram_auto_poster.utils.storage)
         importlib.reload(telegram_auto_poster.utils.stats)
         yield telegram_auto_poster.utils.stats
