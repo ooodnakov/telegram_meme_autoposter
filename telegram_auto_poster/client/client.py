@@ -71,7 +71,9 @@ class TelegramMemeClient:
                         video = event.media.document
                         file_path = f"downloaded_video_{event.id}.mp4"
                         await self.client.download_media(video, file=file_path)
-                        logger.info(f"Video with eventid {event.id} has been downloaded!")
+                        logger.info(
+                            f"Video with eventid {event.id} has been downloaded!"
+                        )
                         await process_video(
                             "New post found with video",
                             file_path,
@@ -82,8 +84,8 @@ class TelegramMemeClient:
             finally:
                 if file_path and os.path.exists(file_path):
                     os.remove(file_path)
-            else:
-                logger.info("New non photo/video in channel")
+                else:
+                    logger.info("New non photo/video in channel")
 
         # Try to get channel entities
         try:

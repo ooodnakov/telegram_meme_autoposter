@@ -95,9 +95,7 @@ async def handle_photo(
         download_time = time.time() - start_time
 
         download_time = time.time() - start_time
-        logger.info(
-            f"Photo from chat {chat_id} has downloaded in {download_time:.2f}s"
-        )
+        logger.info(f"Photo from chat {chat_id} has downloaded in {download_time:.2f}s")
 
         user_metadata = {
             "user_id": user_id,
@@ -161,9 +159,7 @@ async def handle_video(
         download_time = time.time() - start_time
 
         download_time = time.time() - start_time
-        logger.info(
-            f"Video from chat {chat_id} has downloaded in {download_time:.2f}s"
-        )
+        logger.info(f"Video from chat {chat_id} has downloaded in {download_time:.2f}s")
 
         user_metadata = {
             "user_id": user_id,
@@ -223,7 +219,14 @@ async def notify_user(
         stats.record_error("telegram", f"Failed to notify user: {str(e)}")
 
 
-async def process_photo(custom_text: str, input_path: str, original_name: str, bot_chat_id: str, application, user_metadata: dict = None):
+async def process_photo(
+    custom_text: str,
+    input_path: str,
+    original_name: str,
+    bot_chat_id: str,
+    application,
+    user_metadata: dict = None,
+):
     """Process a photo by adding watermark and sending to review bot"""
     start_time = time.time()
     try:
@@ -308,7 +311,14 @@ async def process_photo(custom_text: str, input_path: str, original_name: str, b
         stats.record_error("processing", f"Unexpected error: {str(e)}")
 
 
-async def process_video(custom_text: str, input_path: str, original_name: str, bot_chat_id: str, application, user_metadata: dict = None):
+async def process_video(
+    custom_text: str,
+    input_path: str,
+    original_name: str,
+    bot_chat_id: str,
+    application,
+    user_metadata: dict = None,
+):
     """Process a video and send to review bot"""
     start_time = time.time()
     try:
