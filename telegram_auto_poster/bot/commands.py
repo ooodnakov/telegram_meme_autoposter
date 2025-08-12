@@ -382,10 +382,14 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 temp_path, ext = await download_from_minio(file_path, BUCKET_MAIN)
 
                 # Determine media type
-                media_type = "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
+                media_type = (
+                    "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
+                )
 
                 # Send to channel
-                await send_media_to_telegram(context.bot, target_channel, temp_path, media_type)
+                await send_media_to_telegram(
+                    context.bot, target_channel, temp_path, media_type
+                )
 
                 # Clean up
                 storage.delete_file(file_path, BUCKET_MAIN)

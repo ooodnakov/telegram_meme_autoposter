@@ -43,7 +43,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     file_name = os.path.basename(file_path)
-    media_type = "photo" if file_path.startswith("photos/") else "video"
+    "photo" if file_path.startswith("photos/") else "video"
     file_prefix = (
         PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
     )
