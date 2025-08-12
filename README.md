@@ -37,37 +37,6 @@ Users can now interact with the bot in the following ways:
 
 All admin commands are protected with permission checks to ensure only authorized users can access them.
 
-## Setup Instructions
-
-1. Clone this repository
-2. Configure environment variables or update the `config.py` file:
-   - `TELEGRAM_BOT_TOKEN` - Telegram bot token
-   - `ADMIN_USER_ID` - Telegram user ID for admin access
-   - `TARGET_CHANNEL_ID` - Channel ID where approved media will be posted
-   - `TELEGRAM_ADMIN_IDS` - Comma-separated list of admin Telegram user IDs
-   - MinIO configuration (host, port, access keys)
-   - Valkey configuration (`VALKEY_HOST` and `VALKEY_PORT`)
-3. Set up MinIO storage server (or use an existing one)
-4. Install dependencies with `pip install -r requirements.txt`
-5. Run the bot with `python -m telegram_auto_poster.main`
-
-### Admin Configuration
-
-You can configure admin users in multiple ways:
-
-1. **Config file**: Add an `admin_ids` field in the `[Bot]` section of your `config.ini` file:
-   ```ini
-   [Bot]
-   admin_ids = 12345678,87654321
-   ```
-
-2. **Environment variable**: Set the `TELEGRAM_ADMIN_IDS` environment variable:
-   ```bash
-   export TELEGRAM_ADMIN_IDS=12345678,87654321
-   ```
-
-3. **Default fallback**: If no admin IDs are specified, the bot will use the `bot_chat_id` as the admin ID.
-
 ## Architecture
 
 The system consists of the following components:
@@ -78,6 +47,82 @@ The system consists of the following components:
 4. **Stats System**: Tracking system for monitoring performance and usage patterns
 5. **Permissions System**: Controls access to admin commands
 
+## Getting Started
+
+These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+
+### Prerequisites
+
+- Python 3.12
+- [uv](https://github.com/astral-sh/uv)
+- Docker
+- Docker Compose
+
+### Installation
+
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/your_username/telegram-meme-autoposter.git
+    cd telegram-meme-autoposter
+    ```
+
+2.  **Create a virtual environment and install dependencies**
+    ```bash
+    uv venv
+    source .venv/bin/activate
+    uv pip sync
+    ```
+
+3.  **Set up environment variables**
+
+    Create a `.env` file by copying the `env.example` file and fill in the required values.
+
+    ```bash
+    cp env.example .env
+    ```
+
+4.  **Run the application**
+    ```bash
+    python -m telegram_auto_poster.main
+    ```
+
+## Running with Docker
+
+You can also run the application using Docker and Docker Compose.
+
+1.  **Set up environment variables**
+
+    Create a `.env` file by copying the `env.example` file and fill in the required values.
+
+    ```bash
+    cp env.example .env
+    ```
+
+2.  **Build and run the Docker container**
+    ```bash
+    docker-compose up --build
+    ```
+
+The application will be running in a container, and you can view the logs using `docker-compose logs -f`.
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. 
+We welcome contributions to this project. Please follow these steps to contribute:
+
+1.  **Fork the repository**
+2.  **Create a new branch**
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+3.  **Make your changes**
+4.  **Commit your changes**
+    ```bash
+    git commit -m "feat: add your feature"
+    ```
+5.  **Push to the branch**
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+6.  **Create a pull request**
+
+Please make sure your code follows the project's coding style and that you have added tests for any new functionality.
