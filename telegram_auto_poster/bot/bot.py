@@ -24,6 +24,8 @@ from .commands import (
     reset_stats_command,
     save_stats_command,
     daily_stats_callback,
+    sch_command,
+    post_scheduled_media_job,
 )
 
 # Import callbacks from callbacks.py
@@ -31,6 +33,7 @@ from .callbacks import (
     ok_callback,
     push_callback,
     notok_callback,
+    schedule_callback,
 )
 
 # Import media handlers from handlers.py
@@ -84,6 +87,7 @@ class TelegramMemeBot:
         self.application.add_handler(CommandHandler("stats", stats_command))
         self.application.add_handler(CommandHandler("reset_stats", reset_stats_command))
         self.application.add_handler(CommandHandler("save_stats", save_stats_command))
+        self.application.add_handler(CommandHandler("sch", sch_command))
 
         # Register callback handlers - fixed to use exact pattern matching with regex
         logger.info("Registering callback handlers...")
@@ -95,6 +99,9 @@ class TelegramMemeBot:
         )
         self.application.add_handler(
             CallbackQueryHandler(notok_callback, pattern=r"^/notok$")
+        )
+        self.application.add_handler(
+            CallbackQueryHandler(schedule_callback, pattern=r"^/schedule$")
         )
 
         # Register media handler
@@ -109,6 +116,14 @@ class TelegramMemeBot:
             time=datetime.time(hour=0, minute=0),
             name="daily_stats_report",
             chat_id=self.bot_chat_id,
+        )
+
+        # Schedule the job to post scheduled media
+        self.application.job_queue.run_repeating(
+            post_scheduled_media_job,
+            interval=60,
+            first=10,
+            name="post_scheduled_media",
         )
 
         # Just initialize the application
