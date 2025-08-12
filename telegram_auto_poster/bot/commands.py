@@ -15,6 +15,8 @@ from telegram_auto_poster.config import (
     DOWNLOADS_PATH,
     BUCKET_MAIN,
 )
+import datetime
+from telegram_auto_poster.utils import db
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.utils import MinioError, TelegramMediaError
 from telegram_auto_poster.bot.handlers import notify_user
@@ -349,6 +351,87 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception as e:
         logger.error(f"Error in send_luba_command: {e}")
         await update.message.reply_text(f"Error: {str(e)}")
+
+
+async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Job to post scheduled media."""
+    logger.info("Running scheduled media job...")
+    try:
+        now_ts = int(datetime.datetime.now().timestamp())
+        # Get posts scheduled up to now
+        scheduled_posts = db.get_scheduled_posts(max_score=now_ts)
+
+        if not scheduled_posts:
+            logger.info("No scheduled posts to publish.")
+            return
+
+        target_channel = context.bot_data.get("target_channel_id")
+        if not target_channel:
+            logger.error("Target channel ID not set! Cannot post scheduled media.")
+            return
+
+        for post in scheduled_posts:
+            file_path, timestamp = post
+            logger.info(
+                f"Processing scheduled post: {file_path} scheduled for {datetime.datetime.fromtimestamp(timestamp)}"
+            )
+
+            temp_path = None
+            try:
+                # Download from MinIO
+                temp_path, ext = await download_from_minio(file_path, BUCKET_MAIN)
+
+                # Determine media type
+                media_type = (
+                    "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
+                )
+
+                # Send to channel
+                await send_media_to_telegram(
+                    context.bot, target_channel, temp_path, media_type
+                )
+
+                # Clean up
+                storage.delete_file(file_path, BUCKET_MAIN)
+                db.remove_scheduled_post(file_path)
+
+                logger.info(f"Successfully posted scheduled media: {file_path}")
+                # stats.record_published_scheduled(media_type)
+            except Exception as e:
+                logger.error(f"Error processing scheduled post {file_path}: {e}")
+            finally:
+                cleanup_temp_file(temp_path)
+
+    except Exception as e:
+        logger.error(f"Error in post_scheduled_media_job: {e}")
+
+
+async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Command to show scheduled posts"""
+    logger.info(f"Received /sch command from user {update.effective_user.id}")
+
+    # Check admin rights
+    if not await check_admin_rights(update, context):
+        return
+
+    try:
+        scheduled_posts = db.get_scheduled_posts()
+        if not scheduled_posts:
+            await update.message.reply_text("No posts scheduled.")
+            return
+
+        message = "<b>Scheduled Posts:</b>\n"
+        for post in scheduled_posts:
+            file_path, timestamp = post
+            dt_object = datetime.datetime.fromtimestamp(timestamp)
+            message += f"- <code>{file_path}</code> at {dt_object.strftime('%Y-%m-%d %H:%M')}\n"
+
+        await update.message.reply_text(message, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in sch_command: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error retrieving the schedule."
+        )
 
 
 async def send_batch_command(update, context):

@@ -21,8 +21,75 @@ from telegram_auto_poster.utils import (
     extract_filename,
     send_media_to_telegram,
 )
+import datetime
+
+from telegram_auto_poster.utils import db
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+
+
+async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle scheduling a post."""
+    logger.info(
+        f"Received /schedule callback from user {update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    await query.answer()
+
+    message_text = query.message.caption or query.message.text
+    file_path = extract_filename(message_text)
+    if not file_path:
+        await query.message.reply_text("Could not extract file path from the message")
+        return
+
+    file_name = os.path.basename(file_path)
+    "photo" if file_path.startswith("photos/") else "video"
+    file_prefix = (
+        PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+    )
+
+    try:
+        # 1. Find next available slot
+        now = datetime.datetime.now(datetime.timezone.utc)
+        scheduled_posts = db.get_scheduled_posts()
+
+        next_slot = now.replace(minute=0, second=0, microsecond=0)
+        if next_slot.hour >= 22:
+            next_slot += datetime.timedelta(days=1)
+            next_slot = next_slot.replace(hour=10)
+        elif next_slot.hour < 10:
+            next_slot = next_slot.replace(hour=10)
+        else:
+            next_slot += datetime.timedelta(hours=1)
+
+        occupied_slots = {int(post[1]) for post in scheduled_posts}
+        while int(next_slot.timestamp()) in occupied_slots:
+            next_slot += datetime.timedelta(hours=1)
+            if next_slot.hour > 22:
+                next_slot += datetime.timedelta(days=1)
+                next_slot = next_slot.replace(hour=10)
+
+        # 2. Move file in MinIO
+        new_object_name = f"scheduled/{file_name}"
+        storage.client.copy_object(
+            BUCKET_MAIN,
+            new_object_name,
+            f"/{BUCKET_MAIN}/{file_prefix}{file_name}",
+        )
+        storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+
+        # 3. Add to database
+        db.add_scheduled_post(int(next_slot.timestamp()), new_object_name)
+
+        # 4. Update message
+        await query.message.edit_caption(
+            f"Post scheduled for {next_slot.strftime('%Y-%m-%d %H:%M')}!",
+            reply_markup=None,
+        )
+        # stats.record_scheduled(media_type)
+    except Exception as e:
+        logger.error(f"Error in schedule_callback: {e}")
+        await query.message.reply_text(f"An unexpected error occurred: {str(e)}")
 
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -262,6 +262,7 @@ async def process_photo(
             [
                 [
                     InlineKeyboardButton("Send to batch!", callback_data="/ok"),
+                    InlineKeyboardButton("Schedule", callback_data="/schedule"),
                 ],
                 [
                     InlineKeyboardButton("Push!", callback_data="/push"),
@@ -355,6 +356,7 @@ async def process_video(
             [
                 [
                     InlineKeyboardButton("Send to batch!", callback_data="/ok"),
+                    InlineKeyboardButton("Schedule", callback_data="/schedule"),
                 ],
                 [
                     InlineKeyboardButton("Push!", callback_data="/push"),

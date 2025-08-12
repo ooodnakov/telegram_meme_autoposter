@@ -51,3 +51,26 @@ def _redis_key(scope: str, name: str) -> str:
 def _redis_meta_key() -> str:
     prefix = _redis_prefix()
     return f"{prefix}:daily_last_reset" if prefix else "daily_last_reset"
+
+
+def add_scheduled_post(scheduled_time: int, file_path: str):
+    """Adds a post to the scheduled list."""
+    client = get_redis_client()
+    key = _redis_key("scheduled_posts", "schedule")
+    client.zadd(key, {file_path: scheduled_time})
+
+
+def get_scheduled_posts(min_score: int = 0, max_score: int = -1):
+    """Retrieves all scheduled posts."""
+    client = get_redis_client()
+    key = _redis_key("scheduled_posts", "schedule")
+    if max_score == -1:
+        max_score = "+inf"
+    return client.zrange(key, min_score, max_score, withscores=True)
+
+
+def remove_scheduled_post(file_path: str):
+    """Removes a post from the schedule."""
+    client = get_redis_client()
+    key = _redis_key("scheduled_posts", "schedule")
+    client.zrem(key, file_path)
