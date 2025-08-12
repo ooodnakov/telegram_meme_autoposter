@@ -1,19 +1,21 @@
-import os
 import datetime
 import logging
+import os
+from collections import defaultdict
+
 from sqlalchemy import (
-    create_engine,
     Column,
+    DateTime,
+    Float,
     Integer,
     String,
-    Float,
-    DateTime,
     Text,
+    create_engine,
     func,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
-from .db import get_redis_client, _redis_key, _redis_meta_key
-from collections import defaultdict
+
+from .db import _redis_key, _redis_meta_key, get_redis_client
 
 Base = declarative_base()
 

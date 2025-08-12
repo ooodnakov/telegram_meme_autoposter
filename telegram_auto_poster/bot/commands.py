@@ -1,25 +1,28 @@
 import asyncio
+import datetime
+
 from loguru import logger
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+
+from telegram_auto_poster.bot.handlers import notify_user
+from telegram_auto_poster.bot.permissions import check_admin_rights
+from telegram_auto_poster.config import (
+    BUCKET_MAIN,
+    DOWNLOADS_PATH,
+    PHOTOS_PATH,
+    VIDEOS_PATH,
+)
 from telegram_auto_poster.utils import (
-    download_from_minio,
+    MinioError,
+    TelegramMediaError,
     cleanup_temp_file,
+    db,
+    download_from_minio,
     send_media_to_telegram,
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.config import (
-    PHOTOS_PATH,
-    VIDEOS_PATH,
-    DOWNLOADS_PATH,
-    BUCKET_MAIN,
-)
-import datetime
-from telegram_auto_poster.utils import db
-from telegram_auto_poster.bot.permissions import check_admin_rights
-from telegram_auto_poster.utils import MinioError, TelegramMediaError
-from telegram_auto_poster.bot.handlers import notify_user
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -429,7 +432,9 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             label = f"{dt.strftime('%m-%d %H:%M')} • {file_path.split('/')[-1]}"
             # Ensure callback_data stays compact
             callback_data = f"/unschedule:{file_path}"
-            buttons.append([InlineKeyboardButton(text=label, callback_data=callback_data)])
+            buttons.append(
+                [InlineKeyboardButton(text=label, callback_data=callback_data)]
+            )
 
         markup = InlineKeyboardMarkup(buttons)
         await update.message.reply_text(

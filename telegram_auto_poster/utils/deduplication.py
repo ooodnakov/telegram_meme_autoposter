@@ -1,14 +1,17 @@
 import hashlib
+
 import imagehash
-from PIL import Image
 from loguru import logger
+from PIL import Image
 
 from .db import get_redis_client
 
-DEDUPLICATION_SET_KEY = "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
+DEDUPLICATION_SET_KEY = (
+    "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
+)
 
 
-def calculate_image_hash(file_path: str) -> str:
+def calculate_image_hash(file_path: str) -> str | None:
     """Calculate the perceptual hash of an image.
 
     Args:
@@ -26,7 +29,7 @@ def calculate_image_hash(file_path: str) -> str:
         return None
 
 
-def calculate_video_hash(file_path: str) -> str:
+def calculate_video_hash(file_path: str) -> str | None:
     """Calculate the MD5 hash of a video file.
 
     Args:
@@ -58,7 +61,8 @@ def check_and_add_hash(media_hash: str, redis_client=None) -> bool:
 
     Returns:
         ``True`` if the hash was newly added, ``False`` if it already
-        existed.
+        existed or if the operation fails.
+
     """
     return add_approved_hash(media_hash, redis_client=redis_client)
 
@@ -94,8 +98,8 @@ def add_approved_hash(media_hash: str, redis_client=None) -> bool:
         redis_client: Optional redis client instance.
 
     Returns:
-        ``True`` if the hash was newly added, ``False`` otherwise or if
-        storing fails.
+        ``True`` if the hash was newly added or if `media_hash` is empty,
+        ``False`` if the hash already existed or if storing fails.
     """
     if not media_hash:
         return True
