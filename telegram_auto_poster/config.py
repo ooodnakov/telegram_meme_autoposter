@@ -1,7 +1,6 @@
 import configparser
 import os
 
-
 REQUIRED_FIELDS = {
     "Telegram": ["api_id", "api_hash", "username", "target_channel"],
     "Bot": ["bot_token", "bot_username", "bot_chat_id"],

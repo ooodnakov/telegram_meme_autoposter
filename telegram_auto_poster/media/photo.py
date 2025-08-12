@@ -1,13 +1,14 @@
 import os
 import tempfile
 from random import randint
+
 import piexif
+from loguru import logger
 from PIL import Image
 from PIL.ImageFile import ImageFile
-from loguru import logger
 
+from ..config import BUCKET_MAIN, PHOTOS_PATH
 from ..utils.storage import storage
-from ..config import PHOTOS_PATH, BUCKET_MAIN
 
 
 async def add_watermark_to_image(

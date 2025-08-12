@@ -1,10 +1,10 @@
 import asyncio
+import os
 
 from loguru import logger
 from telethon import TelegramClient, events, types
 
 from ..utils.stats import stats
-import os
 
 # Create a global client variable that can be accessed from other modules
 client_instance = None

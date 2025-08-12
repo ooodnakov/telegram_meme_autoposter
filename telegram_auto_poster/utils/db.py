@@ -1,6 +1,5 @@
 import os
 
-
 # Valkey is only imported when a client is requested. This allows tests to
 # monkeypatch ``valkey.Valkey`` before the import happens and avoids connection
 # attempts during module import when a Valkey server isn't available.

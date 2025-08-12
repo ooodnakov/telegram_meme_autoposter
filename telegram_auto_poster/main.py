@@ -4,9 +4,9 @@ from pathlib import Path
 
 from .bot.bot import TelegramMemeBot
 from .client.client import TelegramMemeClient
+from .config import load_config
 from .utils.logger_setup import setup_logger
 from .utils.stats import stats
-from .config import load_config
 
 # Setup logger
 logger = setup_logger()
