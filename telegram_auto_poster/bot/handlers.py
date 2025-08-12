@@ -24,7 +24,7 @@ from ..utils.stats import stats
 from ..utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
-    check_and_add_hash,
+    is_duplicate_hash,
 )
 from ..utils.storage import storage
 from ..config import (
@@ -91,6 +91,16 @@ async def handle_photo(
         download_time = time.time() - start_time
         logger.info(f"Photo from chat {chat_id} has downloaded in {download_time:.2f}s")
 
+        image_hash = calculate_image_hash(temp_path)
+        if is_duplicate_hash(image_hash):
+            logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
+            stats.record_rejected("photo", file_name, "duplicate")
+            await update.message.reply_text(
+                "Этот пост уже есть в канале.",
+                do_quote=True,
+            )
+            return
+
         user_metadata = {
             "user_id": user_id,
             "chat_id": chat_id,
@@ -106,6 +116,7 @@ async def handle_photo(
             context.bot_data["chat_id"],
             context.application,
             user_metadata=user_metadata,
+            media_hash=image_hash,
         )
 
         # Send confirmation to user
@@ -155,6 +166,16 @@ async def handle_video(
         download_time = time.time() - start_time
         logger.info(f"Video from chat {chat_id} has downloaded in {download_time:.2f}s")
 
+        video_hash = calculate_video_hash(temp_path)
+        if is_duplicate_hash(video_hash):
+            logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
+            stats.record_rejected("video", file_name, "duplicate")
+            await update.message.reply_text(
+                "Этот пост уже есть в канале.",
+                do_quote=True,
+            )
+            return
+
         user_metadata = {
             "user_id": user_id,
             "chat_id": chat_id,
@@ -170,6 +191,7 @@ async def handle_video(
             context.bot_data["chat_id"],
             context.application,
             user_metadata=user_metadata,
+            media_hash=video_hash,
         )
 
         # Send confirmation to user
@@ -220,21 +242,20 @@ async def process_photo(
     bot_chat_id: str,
     application,
     user_metadata: dict = None,
+    media_hash: str = None,
 ):
     """Process a photo by adding watermark and sending to review bot"""
     start_time = time.time()
     try:
-        # Calculate hash and check for duplicates
-        image_hash = calculate_image_hash(input_path)
-        if not check_and_add_hash(image_hash):
-            logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
-            stats.record_rejected("photo", original_name, "duplicate")
-            return
-
         # Add watermark and upload to MinIO
         processed_name = f"processed_{os.path.basename(original_name)}"
 
-        await add_watermark_to_image(input_path, f"photos/{processed_name}")
+        await add_watermark_to_image(
+            input_path,
+            f"photos/{processed_name}",
+            user_metadata=user_metadata,
+            media_hash=media_hash,
+        )
 
         # Copy user metadata to processed file if exists
         if user_metadata:
@@ -244,6 +265,7 @@ async def process_photo(
                 user_metadata["chat_id"],
                 user_metadata["media_type"],
                 user_metadata["message_id"],
+                media_hash=media_hash,
             )
 
         # Record processing time
@@ -295,6 +317,7 @@ async def process_photo(
             raise TelegramMediaError(f"Failed to send photo to review: {str(e)}")
         finally:
             cleanup_temp_file(temp_path)
+        return True
     except MinioError as e:
         logger.error(f"MinIO error in process_photo: {e}")
         stats.record_error("storage", f"MinIO error: {str(e)}")
@@ -304,6 +327,7 @@ async def process_photo(
     except Exception as e:
         logger.error(f"Unexpected error in process_photo: {e}")
         stats.record_error("processing", f"Unexpected error: {str(e)}")
+    return False
 
 
 async def process_video(
@@ -313,22 +337,21 @@ async def process_video(
     bot_chat_id: str,
     application,
     user_metadata: dict = None,
+    media_hash: str = None,
 ):
     """Process a video and send to review bot"""
     start_time = time.time()
     try:
-        # Calculate hash and check for duplicates
-        video_hash = calculate_video_hash(input_path)
-        if not check_and_add_hash(video_hash):
-            logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
-            stats.record_rejected("video", original_name, "duplicate")
-            return
-
         # Add watermark and upload to MinIO
         processed_name = f"processed_{os.path.basename(original_name)}"
 
         # Add watermark to video and upload to MinIO
-        await add_watermark_to_video(input_path, processed_name)
+        await add_watermark_to_video(
+            input_path,
+            processed_name,
+            user_metadata=user_metadata,
+            media_hash=media_hash,
+        )
 
         # Copy user metadata to processed file if exists
         if user_metadata:
@@ -338,6 +361,7 @@ async def process_video(
                 user_metadata["chat_id"],
                 user_metadata["media_type"],
                 user_metadata["message_id"],
+                media_hash=media_hash,
             )
 
         # Record processing time
@@ -393,6 +417,7 @@ async def process_video(
             raise TelegramMediaError(f"Failed to send video to review: {str(e)}")
         finally:
             cleanup_temp_file(temp_path)
+        return True
     except MinioError as e:
         logger.error(f"MinIO error in process_video: {e}")
         stats.record_error("storage", f"MinIO error: {str(e)}")
@@ -402,6 +427,8 @@ async def process_video(
     except Exception as e:
         logger.error(f"Unexpected error in process_video: {e}")
         stats.record_error("processing", f"Unexpected error: {str(e)}")
+    return False
+
 
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -91,7 +91,13 @@ class MinioStorage:
             raise
 
     def store_submission_metadata(
-        self, object_name, user_id, chat_id, media_type, message_id=None
+        self,
+        object_name,
+        user_id,
+        chat_id,
+        media_type,
+        message_id=None,
+        media_hash: str | None = None,
     ):
         """Store metadata about who submitted media for later feedback
 
@@ -109,6 +115,7 @@ class MinioStorage:
             "timestamp": datetime.datetime.now().isoformat(),
             "notified": False,
             "message_id": message_id,
+            "hash": media_hash,
         }
         logger.debug(
             f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}, message_id={message_id}"
@@ -134,6 +141,7 @@ class MinioStorage:
                     "message_id": int(md.get("message_id"))
                     if md.get("message_id")
                     else None,
+                    "hash": md.get("hash"),
                     # notified state is managed in-memory
                     "notified": False,
                 }
@@ -163,6 +171,7 @@ class MinioStorage:
         user_id=None,
         chat_id=None,
         message_id=None,
+        media_hash: str | None = None,
     ):
         """Upload a file to MinIO with timing metrics and optional user metadata.
 
@@ -215,6 +224,8 @@ class MinioStorage:
             minio_metadata["media_type"] = media_type
             if message_id is not None:
                 minio_metadata["message_id"] = str(message_id)
+            if media_hash is not None:
+                minio_metadata["hash"] = str(media_hash)
             # Upload file with metadata
             logger.debug(
                 f"Uploading {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"

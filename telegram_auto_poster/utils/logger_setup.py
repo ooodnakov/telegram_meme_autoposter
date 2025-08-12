@@ -1,5 +1,11 @@
 import sys
+import logging
 from loguru import logger
+
+
+class PropagateHandler(logging.Handler):
+    def emit(self, record):
+        logging.getLogger(record.name).handle(record)
 
 
 def setup_logger():
@@ -11,5 +17,6 @@ def setup_logger():
 
     logger.remove()
     logger.add(sys.stderr, format=logging_format)
+    logger.add(PropagateHandler(), format="{message}")
 
     return logger

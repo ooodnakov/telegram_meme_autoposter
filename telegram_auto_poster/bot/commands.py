@@ -1,6 +1,6 @@
 import asyncio
 from loguru import logger
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram_auto_poster.utils import (
     download_from_minio,
@@ -71,6 +71,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "<b>Проверка контента администратором:</b>",
                 "При проверке контента вы можете использовать кнопки для:",
                 "• Send to batch - Добавить медиа в пакет для последующей отправки",
+                "• Schedule - Добавляет медиа в очередь"
                 "• Push - Немедленно опубликовать медиа в канале",
                 "• No - Отклонить медиа",
             ]
@@ -420,13 +421,20 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text("No posts scheduled.")
             return
 
-        message = "<b>Scheduled Posts:</b>\n"
-        for post in scheduled_posts:
-            file_path, timestamp = post
-            dt_object = datetime.datetime.fromtimestamp(timestamp)
-            message += f"- <code>{file_path}</code> at {dt_object.strftime('%Y-%m-%d %H:%M')}\n"
+        # Build inline keyboard with one button per scheduled post (delete action)
+        buttons = []
+        for file_path, ts in scheduled_posts:
+            dt = datetime.datetime.fromtimestamp(int(ts))
+            # Show time and filename for clarity
+            label = f"{dt.strftime('%m-%d %H:%M')} • {file_path.split('/')[-1]}"
+            # Ensure callback_data stays compact
+            callback_data = f"/unschedule:{file_path}"
+            buttons.append([InlineKeyboardButton(text=label, callback_data=callback_data)])
 
-        await update.message.reply_text(message, parse_mode="HTML")
+        markup = InlineKeyboardMarkup(buttons)
+        await update.message.reply_text(
+            "Choose a scheduled post to remove:", reply_markup=markup
+        )
     except Exception as e:
         logger.error(f"Error in sch_command: {e}")
         await update.message.reply_text(

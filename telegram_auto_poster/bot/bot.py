@@ -34,6 +34,7 @@ from .callbacks import (
     push_callback,
     notok_callback,
     schedule_callback,
+    unschedule_callback,
 )
 
 # Import media handlers from handlers.py
@@ -103,6 +104,9 @@ class TelegramMemeBot:
         self.application.add_handler(
             CallbackQueryHandler(schedule_callback, pattern=r"^/schedule$")
         )
+        self.application.add_handler(
+            CallbackQueryHandler(unschedule_callback, pattern=r"^/unschedule:")
+        )
 
         # Register media handler
         logger.info("Registering media handler...")
@@ -119,10 +123,14 @@ class TelegramMemeBot:
         )
 
         # Schedule the job to post scheduled media
+        now = datetime.datetime.now(datetime.timezone.utc)
+        next_hour = (now + datetime.timedelta(hours=1)).replace(
+            minute=0, second=0, microsecond=0
+        )
         self.application.job_queue.run_repeating(
             post_scheduled_media_job,
-            interval=60,
-            first=10,
+            interval=60 * 60,
+            first=next_hour,
             name="post_scheduled_media",
         )
 

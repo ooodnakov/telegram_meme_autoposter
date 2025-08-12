@@ -34,7 +34,12 @@ async def _probe_video_size(path: str) -> tuple[int, int]:
     return w, h
 
 
-async def add_watermark_to_video(input_path: str, output_filename: str) -> str:
+async def add_watermark_to_video(
+    input_path: str,
+    output_filename: str,
+    user_metadata: dict | None = None,
+    media_hash: str | None = None,
+) -> str:
     """Add watermark to a video with bouncing animation.
 
     Args:
@@ -110,21 +115,19 @@ async def add_watermark_to_video(input_path: str, output_filename: str) -> str:
 
         # Upload the processed file to MinIO, preserving submission metadata
         output_object = os.path.basename(output_filename)
-        original_name = os.path.basename(input_path)
-        user_meta = storage.get_submission_metadata(original_name)
-        if user_meta:
-            storage.upload_file(
-                output_path,
-                BUCKET_MAIN,
-                VIDEOS_PATH + "/" + output_object,
-                user_id=user_meta["user_id"],
-                chat_id=user_meta["chat_id"],
-                message_id=user_meta.get("message_id"),
-            )
-        else:
-            storage.upload_file(
-                output_path, BUCKET_MAIN, VIDEOS_PATH + "/" + output_object
-            )
+        meta = user_metadata
+        if not meta:
+            original_name = os.path.basename(input_path)
+            meta = storage.get_submission_metadata(original_name)
+        storage.upload_file(
+            output_path,
+            BUCKET_MAIN,
+            VIDEOS_PATH + "/" + output_object,
+            user_id=meta.get("user_id") if meta else None,
+            chat_id=meta.get("chat_id") if meta else None,
+            message_id=meta.get("message_id") if meta else None,
+            media_hash=media_hash,
+        )
 
         # The original local file is a temporary file and will be cleaned up
         # by the calling function (handle_photo or handle_video)

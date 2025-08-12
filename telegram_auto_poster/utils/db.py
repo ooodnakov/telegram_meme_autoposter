@@ -60,13 +60,20 @@ def add_scheduled_post(scheduled_time: int, file_path: str):
     client.zadd(key, {file_path: scheduled_time})
 
 
-def get_scheduled_posts(min_score: int = 0, max_score: int = -1):
-    """Retrieves all scheduled posts."""
+def get_scheduled_posts(min_score: int = 0, max_score: int | None = None):
+    """
+    Retrieve scheduled posts by score (Unix timestamp).
+
+    - When called without arguments, returns all items (score >= 0).
+    - When `max_score` is provided, returns items with score <= `max_score`.
+    """
     client = get_redis_client()
     key = _redis_key("scheduled_posts", "schedule")
-    if max_score == -1:
-        max_score = "+inf"
-    return client.zrange(key, min_score, max_score, withscores=True)
+
+    # Use score-based range; default to all (0 .. +inf)
+    min_bound = min_score
+    max_bound = "+inf" if max_score is None else max_score
+    return client.zrangebyscore(key, min_bound, max_bound, withscores=True)
 
 
 def remove_scheduled_post(file_path: str):

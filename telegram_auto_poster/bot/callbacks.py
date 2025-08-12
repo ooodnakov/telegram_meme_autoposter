@@ -1,7 +1,7 @@
 import os
 
 from loguru import logger
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from telegram_auto_poster.bot.handlers import (
@@ -22,10 +22,16 @@ from telegram_auto_poster.utils import (
     send_media_to_telegram,
 )
 import datetime
+from minio.commonconfig import CopySource
 
 from telegram_auto_poster.utils import db
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.deduplication import (
+    add_approved_hash,
+    calculate_image_hash,
+    calculate_video_hash,
+)
 
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -68,20 +74,45 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             if next_slot.hour > 22:
                 next_slot += datetime.timedelta(days=1)
                 next_slot = next_slot.replace(hour=10)
+        
+        # 2. Add to approved dedup corpus (use stored hash or compute)
+        media_hash = None
+        try:
+            user_meta = storage.get_submission_metadata(file_name)
+            if user_meta and user_meta.get("hash"):
+                media_hash = user_meta.get("hash")
+            else:
+                temp_path, _ = await download_from_minio(
+                    file_prefix + file_name, BUCKET_MAIN
+                )
+                try:
+                    if file_path.startswith("photos/"):
+                        media_hash = calculate_image_hash(temp_path)
+                    else:
+                        media_hash = calculate_video_hash(temp_path)
+                finally:
+                    cleanup_temp_file(temp_path)
+            if media_hash:
+                add_approved_hash(media_hash)
+        except Exception as _e:
+            # Non-blocking: failure to compute hash should not prevent scheduling
+            logger.warning(f"Failed to add approved hash for {file_name}: {_e}")
 
-        # 2. Move file in MinIO
+        # 3. Move file in MinIO
         new_object_name = f"scheduled/{file_name}"
+        # Copy object within the same bucket using proper CopySource
+        source = CopySource(BUCKET_MAIN, f"{file_prefix}{file_name}")
         storage.client.copy_object(
             BUCKET_MAIN,
             new_object_name,
-            f"/{BUCKET_MAIN}/{file_prefix}{file_name}",
+            source,
         )
         storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
-        # 3. Add to database
+        # 4. Add to database
         db.add_scheduled_post(int(next_slot.timestamp()), new_object_name)
 
-        # 4. Update message
+        # 5. Update message
         await query.message.edit_caption(
             f"Post scheduled for {next_slot.strftime('%Y-%m-%d %H:%M')}!",
             reply_markup=None,
@@ -149,6 +180,22 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 stats.record_approved(
                     media_type, filename=file_name, source="ok_callback"
                 )
+                # Add to approved dedup corpus
+                try:
+                    user_metadata = storage.get_submission_metadata(file_name)
+                    media_hash = user_metadata.get("hash") if user_metadata else None
+                    if not media_hash:
+                        media_hash = (
+                            calculate_image_hash(temp_path)
+                            if media_type == "photo"
+                            else calculate_video_hash(temp_path)
+                        )
+                    if media_hash:
+                        add_approved_hash(media_hash)
+                except Exception as _e:
+                    logger.warning(
+                        f"Failed to add approved hash for {file_name} in ok_callback: {_e}"
+                    )
                 # Get user metadata
                 user_metadata = storage.get_submission_metadata(file_name)
 
@@ -181,11 +228,36 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 file_prefix + file_name, BUCKET_MAIN
             )
             try:
-                # Upload to appropriate prefix as batch_*
+                # Upload to appropriate prefix as batch_*, preserving metadata and hash
                 target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
+                src_meta = storage.get_submission_metadata(file_name)
+                media_hash = None
+                if src_meta and src_meta.get("hash"):
+                    media_hash = src_meta.get("hash")
+                else:
+                    media_hash = (
+                        calculate_image_hash(temp_path)
+                        if media_type == "photo"
+                        else calculate_video_hash(temp_path)
+                    )
                 storage.upload_file(
-                    temp_path, BUCKET_MAIN, f"{target_prefix}/{new_object_name}"
+                    temp_path,
+                    BUCKET_MAIN,
+                    f"{target_prefix}/{new_object_name}",
+                    user_id=src_meta.get("user_id") if src_meta else None,
+                    chat_id=src_meta.get("chat_id") if src_meta else None,
+                    message_id=src_meta.get("message_id") if src_meta else None,
+                    media_hash=media_hash,
                 )
+
+                # Add to approved dedup corpus
+                try:
+                    if media_hash:
+                        add_approved_hash(media_hash)
+                except Exception as _e:
+                    logger.warning(
+                        f"Failed to add approved hash for {file_name} in ok_callback(batch): {_e}"
+                    )
 
                 # Get user metadata
                 user_metadata = storage.get_submission_metadata(new_object_name)
@@ -289,6 +361,23 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 context.bot, target_channel, temp_path, caption_to_send
             )
             logger.info(f"Created new post from image {file_path}!")
+
+            # Add to approved dedup corpus
+            try:
+                user_metadata = storage.get_submission_metadata(file_name)
+                media_hash = user_metadata.get("hash") if user_metadata else None
+                if not media_hash:
+                    media_hash = (
+                        calculate_image_hash(temp_path)
+                        if media_type == "photo"
+                        else calculate_video_hash(temp_path)
+                    )
+                if media_hash:
+                    add_approved_hash(media_hash)
+            except Exception as _e:
+                logger.warning(
+                    f"Failed to add approved hash for {file_name} in push_callback: {_e}"
+                )
 
             # Get user metadata
             user_metadata = storage.get_submission_metadata(file_name)
@@ -395,3 +484,46 @@ async def notok_callback(update, context) -> None:
     except Exception as e:
         logger.error(f"Error in notok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
+
+
+async def unschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle removal of scheduled posts from Redis and MinIO."""
+    logger.info(
+        f"Received /unschedule callback from user {update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        data = query.data or ""
+        if not data.startswith("/unschedule:"):
+            await query.message.reply_text("Invalid request")
+            return
+
+        file_path = data.split(":", 1)[1]
+        # Remove from DB first
+        db.remove_scheduled_post(file_path)
+        # Attempt to remove object; ignore if already missing
+        if storage.file_exists(file_path, BUCKET_MAIN):
+            storage.delete_file(file_path, BUCKET_MAIN)
+
+        # Refresh the list inline by rebuilding the keyboard
+        scheduled_posts = db.get_scheduled_posts()
+        if not scheduled_posts:
+            await query.message.edit_text("No posts scheduled.")
+            return
+
+        buttons = []
+        for path, ts in scheduled_posts:
+            dt = datetime.datetime.fromtimestamp(int(ts))
+            label = f"{dt.strftime('%m-%d %H:%M')} • {path.split('/')[-1]}"
+            buttons.append(
+                [InlineKeyboardButton(text=label, callback_data=f"/unschedule:{path}")]
+            )
+        markup = InlineKeyboardMarkup(buttons)
+        await query.message.edit_text(
+            "Choose a scheduled post to remove:", reply_markup=markup
+        )
+    except Exception as e:
+        logger.error(f"Error in unschedule_callback: {e}")
+        await query.message.reply_text(f"Failed to remove scheduled post: {str(e)}")
