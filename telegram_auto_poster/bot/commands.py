@@ -361,7 +361,7 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Job to post scheduled media."""
     logger.info("Running scheduled media job...")
     try:
-        now_ts = int(datetime.datetime.now().timestamp())
+        now_ts = int(now_utc().timestamp())
         # Get posts scheduled up to now
         scheduled_posts = db.get_scheduled_posts(max_score=now_ts)
 
@@ -377,7 +377,8 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         for post in scheduled_posts:
             file_path, timestamp = post
             logger.info(
-                f"Processing scheduled post: {file_path} scheduled for {datetime.datetime.fromtimestamp(timestamp)}"
+                f"Processing scheduled post: {file_path} scheduled for "
+                f"{format_display(datetime.datetime.fromtimestamp(timestamp, tz=UTC))}"
             )
 
             temp_path = None
@@ -427,7 +428,7 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         # Build inline keyboard with one button per scheduled post (delete action)
         buttons = []
         for file_path, ts in scheduled_posts:
-            dt = datetime.datetime.fromtimestamp(int(ts))
+            dt = datetime.datetime.fromtimestamp(int(ts), tz=UTC).astimezone(DISPLAY_TZ)
             # Show time and filename for clarity
             label = f"{dt.strftime('%m-%d %H:%M')} • {file_path.split('/')[-1]}"
             # Ensure callback_data stays compact

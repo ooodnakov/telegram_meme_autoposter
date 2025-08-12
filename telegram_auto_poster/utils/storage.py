@@ -1,4 +1,3 @@
-import datetime
 import os
 import tempfile
 import time
@@ -13,6 +12,7 @@ from telegram_auto_poster.config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
+from telegram_auto_poster.utils.timezone import now_utc
 
 # Import stats module
 try:
@@ -114,7 +114,7 @@ class MinioStorage:
             "user_id": user_id,
             "chat_id": chat_id,
             "media_type": media_type,
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": now_utc().isoformat(),
             "notified": False,
             "message_id": message_id,
             "hash": media_hash,

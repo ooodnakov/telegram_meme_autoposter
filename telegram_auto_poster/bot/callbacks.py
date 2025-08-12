@@ -31,6 +31,12 @@ from telegram_auto_poster.utils.deduplication import (
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.timezone import (
+    DISPLAY_TZ,
+    UTC,
+    format_display,
+    now_utc,
+)
 
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -55,7 +61,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     try:
         # 1. Find next available slot
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = now_utc()
         scheduled_posts = db.get_scheduled_posts()
 
         next_slot = now.replace(minute=0, second=0, microsecond=0)
@@ -113,7 +119,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         # 5. Update message
         await query.message.edit_caption(
-            f"Post scheduled for {next_slot.strftime('%Y-%m-%d %H:%M')}!",
+            f"Post scheduled for {format_display(next_slot)}!",
             reply_markup=None,
         )
         # stats.record_scheduled(media_type)
@@ -516,7 +522,7 @@ async def unschedule_callback(
 
         buttons = []
         for path, ts in scheduled_posts:
-            dt = datetime.datetime.fromtimestamp(int(ts))
+            dt = datetime.datetime.fromtimestamp(int(ts), tz=UTC).astimezone(DISPLAY_TZ)
             label = f"{dt.strftime('%m-%d %H:%M')} • {path.split('/')[-1]}"
             buttons.append(
                 [InlineKeyboardButton(text=label, callback_data=f"/unschedule:{path}")]
