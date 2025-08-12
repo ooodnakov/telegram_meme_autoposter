@@ -23,12 +23,6 @@ from telegram_auto_poster.utils import (
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.timezone import (
-    DISPLAY_TZ,
-    UTC,
-    format_display,
-    now_utc,
-)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
