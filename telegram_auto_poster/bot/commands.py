@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import os
 
 from loguru import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -385,16 +386,17 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             temp_path = None
             try:
                 # Download from MinIO
-                temp_path, ext = await download_from_minio(file_path, BUCKET_MAIN)
+                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
 
-                # Determine media type
-                media_type = (
-                    "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
-                )
-
-                # Send to channel
+                # Send to channel without caption, enabling streaming for videos
                 await send_media_to_telegram(
-                    context.bot, target_channel, temp_path, media_type
+                    context.bot,
+                    target_channel,
+                    temp_path,
+                    caption=None,
+                    supports_streaming=(
+                        os.path.splitext(temp_path)[1].lower() in [".mp4", ".avi", ".mov"]
+                    ),
                 )
 
                 # Clean up
@@ -402,7 +404,11 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 db.remove_scheduled_post(file_path)
 
                 logger.info(f"Successfully posted scheduled media: {file_path}")
-                # stats.record_published_scheduled(media_type)
+                # stats.record_published_scheduled(
+                #     "video"
+                #     if os.path.splitext(temp_path)[1].lower() in [".mp4", ".avi", ".mov"]
+                #     else "photo"
+                # )
             except Exception as e:
                 logger.error(f"Error processing scheduled post {file_path}: {e}")
             finally:
