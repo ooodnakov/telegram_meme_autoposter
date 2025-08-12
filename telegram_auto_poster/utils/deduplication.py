@@ -1,11 +1,14 @@
 import hashlib
+
 import imagehash
-from PIL import Image
 from loguru import logger
+from PIL import Image
 
 from .db import get_redis_client
 
-DEDUPLICATION_SET_KEY = "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
+DEDUPLICATION_SET_KEY = (
+    "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
+)
 
 
 def calculate_image_hash(file_path: str) -> str:

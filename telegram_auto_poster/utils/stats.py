@@ -1,20 +1,23 @@
-import os
 import datetime
 import logging
+import os
+from collections import defaultdict
+
 from sqlalchemy import (
-    create_engine,
     Column,
+    DateTime,
+    Float,
     Integer,
     String,
-    Float,
-    DateTime,
     Text,
+    create_engine,
     func,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
-from .db import get_redis_client, _redis_key, _redis_meta_key
-from collections import defaultdict
-from telegram_auto_poster.utils.timezone import now_utc, UTC
+
+from telegram_auto_poster.utils.timezone import UTC, now_utc
+
+from .db import _redis_key, _redis_meta_key, get_redis_client
 
 Base = declarative_base()
 
@@ -228,7 +231,12 @@ class MediaStats:
 
     def get_daily_stats(self, reset_if_new_day: bool = True):
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
-        last_reset = datetime.datetime.fromisoformat(meta.value).astimezone(UTC)
+        last_reset = (
+            lambda dt: dt.replace(tzinfo=UTC)
+            if dt.tzinfo is None
+            else dt.astimezone(UTC)
+        )(datetime.datetime.fromisoformat(meta.value))
+
         now = now_utc()
         if reset_if_new_day and last_reset.date() < now.date():
             # reset daily stats

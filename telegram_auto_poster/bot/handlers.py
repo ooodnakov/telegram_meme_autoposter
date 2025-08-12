@@ -18,20 +18,20 @@ from telegram_auto_poster.utils import (
     download_from_minio,
 )
 
+from ..config import (
+    BUCKET_MAIN,
+    PHOTOS_PATH,
+    VIDEOS_PATH,
+)
 from ..media.photo import add_watermark_to_image
 from ..media.video import add_watermark_to_video
-from ..utils.stats import stats
 from ..utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
     is_duplicate_hash,
 )
+from ..utils.stats import stats
 from ..utils.storage import storage
-from ..config import (
-    PHOTOS_PATH,
-    VIDEOS_PATH,
-    BUCKET_MAIN,
-)
 
 # Define error constants
 ERROR_MINIO_FILE_NOT_FOUND = "File not found in MinIO storage"
@@ -428,7 +428,6 @@ async def process_video(
         logger.error(f"Unexpected error in process_video: {e}")
         stats.record_error("processing", f"Unexpected error: {str(e)}")
     return False
-
 
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

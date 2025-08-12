@@ -1,17 +1,18 @@
 import os
 import tempfile
 import time
-import datetime
-from telegram_auto_poster.utils.timezone import now_utc
-from minio import Minio
-from minio.error import S3Error, MinioException
+
 from loguru import logger
+from minio import Minio
+from minio.error import MinioException, S3Error
+
 from telegram_auto_poster.config import (
+    BUCKET_MAIN,
+    DOWNLOADS_PATH,
     PHOTOS_PATH,
     VIDEOS_PATH,
-    DOWNLOADS_PATH,
-    BUCKET_MAIN,
 )
+from telegram_auto_poster.utils.timezone import now_utc
 
 # Import stats module
 try:

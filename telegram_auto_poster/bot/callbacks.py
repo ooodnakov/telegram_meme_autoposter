@@ -1,7 +1,9 @@
+import datetime
 import os
 
 from loguru import logger
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from minio.commonconfig import CopySource
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 from telegram_auto_poster.bot.handlers import (
@@ -9,34 +11,31 @@ from telegram_auto_poster.bot.handlers import (
     notify_user,
 )
 from telegram_auto_poster.config import (
+    BUCKET_MAIN,
     PHOTOS_PATH,
     VIDEOS_PATH,
-    BUCKET_MAIN,
 )
 from telegram_auto_poster.utils import (
     MinioError,
     TelegramMediaError,
     cleanup_temp_file,
+    db,
     download_from_minio,
     extract_filename,
     send_media_to_telegram,
 )
-import datetime
-from minio.commonconfig import CopySource
-
-from telegram_auto_poster.utils import db
-from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.deduplication import (
     add_approved_hash,
     calculate_image_hash,
     calculate_video_hash,
 )
+from telegram_auto_poster.utils.stats import stats
+from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import (
-    UTC,
     DISPLAY_TZ,
-    now_utc,
+    UTC,
     format_display,
+    now_utc,
 )
 
 
@@ -80,7 +79,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             if next_slot.hour > 22:
                 next_slot += datetime.timedelta(days=1)
                 next_slot = next_slot.replace(hour=10)
-        
+
         # 2. Add to approved dedup corpus (use stored hash or compute)
         media_hash = None
         try:
@@ -492,7 +491,9 @@ async def notok_callback(update, context) -> None:
         await query.message.reply_text(get_user_friendly_error_message(e))
 
 
-async def unschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def unschedule_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """Handle removal of scheduled posts from Redis and MinIO."""
     logger.info(
         f"Received /unschedule callback from user {update.callback_query.from_user.id}"
@@ -521,9 +522,7 @@ async def unschedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         buttons = []
         for path, ts in scheduled_posts:
-            dt = datetime.datetime.fromtimestamp(int(ts), tz=UTC).astimezone(
-                DISPLAY_TZ
-            )
+            dt = datetime.datetime.fromtimestamp(int(ts), tz=UTC).astimezone(DISPLAY_TZ)
             label = f"{dt.strftime('%m-%d %H:%M')} • {path.split('/')[-1]}"
             buttons.append(
                 [InlineKeyboardButton(text=label, callback_data=f"/unschedule:{path}")]
