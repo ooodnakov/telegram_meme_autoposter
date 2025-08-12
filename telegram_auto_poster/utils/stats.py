@@ -23,6 +23,15 @@ Base = declarative_base()
 
 
 class StatsCounter(Base):
+    """SQLAlchemy model representing a named counter.
+
+    Attributes:
+        id (int): Primary key.
+        scope (str): Counter namespace such as ``"daily"`` or ``"total"``.
+        name (str): Human readable metric name.
+        value (int): Current value of the counter.
+    """
+
     __tablename__ = "stats_counters"
     id = Column(Integer, primary_key=True)
     scope = Column(String(10), nullable=False)  # 'daily' or 'total'
@@ -31,12 +40,36 @@ class StatsCounter(Base):
 
 
 class Metadata(Base):
+    """Simple key/value storage for miscellaneous metadata.
+
+    Attributes:
+        key (str): Metadata identifier.
+        value (str): Stored metadata value.
+    """
+
     __tablename__ = "metadata"
     key = Column(String(50), primary_key=True)
     value = Column(String(100), nullable=False)
 
 
 class History(Base):
+    """Model for storing individual history events.
+
+    Each row represents a noteworthy event such as a processing error,
+    approval or download.
+
+    Attributes:
+        id (int): Primary key.
+        category (str): Event category (e.g. ``"approval"``).
+        timestamp (datetime): Time of the event.
+        filename (str | None): Related file name, if any.
+        source (str | None): Origin of the event such as a channel name.
+        duration (float | None): Processing duration for time based events.
+        error_type (str | None): Specific error type for error events.
+        message (str | None): Optional description or error message.
+        media_type (str | None): Media type associated with the event.
+    """
+
     __tablename__ = "history"
     id = Column(Integer, primary_key=True, autoincrement=True)
     category = Column(String(50), nullable=False)
@@ -64,6 +97,17 @@ Base.metadata.create_all(bind=engine)
 
 
 class MediaStats:
+    """High level interface for collecting and retrieving statistics.
+
+    The class keeps counters in both MySQL and Valkey and exposes helper
+    methods for recording events and generating reports.
+
+    Attributes:
+        db (Session): SQLAlchemy session used for persistent storage.
+        r (Any): Valkey (Redis compatible) client instance.
+        names (list[str]): List of known counter names used by the bot.
+    """
+
     _instance = None
 
     def __new__(cls):
@@ -75,6 +119,7 @@ class MediaStats:
         return cls._instance
 
     def _init_db(self):
+        """Populate the database and cache with initial counter values."""
         names = [
             "media_received",
             "media_processed",
@@ -118,7 +163,14 @@ class MediaStats:
             self.r.setnx(_redis_meta_key(), meta.value)
         self.db.commit()
 
-    def _increment(self, name, scope="daily", count=1):
+    def _increment(self, name: str, scope: str = "daily", count: int = 1) -> None:
+        """Increment a named counter in both the database and Valkey.
+
+        Args:
+            name: Counter name to increase.
+            scope: Counter scope, typically ``"daily"`` or ``"total"``.
+            count: Amount to increment by.
+        """
         stat = self.db.query(StatsCounter).filter_by(scope=scope, name=name).first()
         stat.value += count
         self.db.commit()
@@ -128,7 +180,12 @@ class MediaStats:
         except Exception:  # pragma: no cover - log and continue
             logging.exception("Failed to update Valkey counter %s:%s", scope, name)
 
-    def record_received(self, media_type):
+    def record_received(self, media_type: str) -> None:
+        """Record that a media item was received from a user.
+
+        Args:
+            media_type: Type of media, either ``"photo"`` or ``"video"``.
+        """
         self._increment("media_received")
         self._increment("media_received", scope="total")
         if media_type == "photo":
@@ -138,7 +195,13 @@ class MediaStats:
             self._increment("videos_received")
             self._increment("videos_received", scope="total")
 
-    def record_processed(self, media_type, processing_time):
+    def record_processed(self, media_type: str, processing_time: float) -> None:
+        """Record completion of media processing and store its duration.
+
+        Args:
+            media_type: Processed media type (``"photo"`` or ``"video"``).
+            processing_time: Time taken to process the media in seconds.
+        """
         self._increment("media_processed")
         self._increment("media_processed", scope="total")
         category = f"{media_type}_processing"
@@ -156,7 +219,19 @@ class MediaStats:
             self._increment("videos_processed", scope="total")
         self.db.commit()
 
-    def record_approved(self, media_type, filename=None, source=None):
+    def record_approved(
+        self,
+        media_type: str,
+        filename: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Record that a piece of media passed moderation.
+
+        Args:
+            media_type: Approved media type.
+            filename: Optional name of the associated file.
+            source: Optional origin of the media.
+        """
         name = "photos_approved" if media_type == "photo" else "videos_approved"
         self._increment(name)
         self._increment(name, scope="total")
@@ -170,7 +245,19 @@ class MediaStats:
         self.db.add(hist)
         self.db.commit()
 
-    def record_rejected(self, media_type, filename=None, source=None):
+    def record_rejected(
+        self,
+        media_type: str,
+        filename: str | None = None,
+        source: str | None = None,
+    ) -> None:
+        """Record that a piece of media failed moderation.
+
+        Args:
+            media_type: Rejected media type.
+            filename: Optional name of the associated file.
+            source: Optional origin of the media.
+        """
         name = "photos_rejected" if media_type == "photo" else "videos_rejected"
         self._increment(name)
         self._increment(name, scope="total")
@@ -184,7 +271,12 @@ class MediaStats:
         self.db.add(hist)
         self.db.commit()
 
-    def record_added_to_batch(self, media_type):
+    def record_added_to_batch(self, media_type: str) -> None:
+        """Record that media was staged for later batch posting.
+
+        Args:
+            media_type: Type of media being queued for a batch.
+        """
         name = (
             "photos_added_to_batch"
             if media_type == "photo"
@@ -193,11 +285,23 @@ class MediaStats:
         self._increment(name)
         self._increment(name, scope="total")
 
-    def record_batch_sent(self, count):
+    def record_batch_sent(self, count: int) -> None:
+        """Record that a batch of media items was sent to the channel.
+
+        Args:
+            count: Number of media items included in the batch.
+        """
         self._increment("batch_sent", count=count)
         self._increment("batch_sent", scope="total", count=count)
 
-    def record_error(self, error_type, error_message):
+    def record_error(self, error_type: str, error_message: str) -> None:
+        """Record an operational error and increment the relevant counter.
+
+        Args:
+            error_type: Category of error (``"processing"``, ``"storage"`` or
+                ``"telegram"``).
+            error_message: Human readable error description.
+        """
         if error_type == "processing":
             name = "processing_errors"
         elif error_type == "storage":
@@ -215,7 +319,14 @@ class MediaStats:
         self.db.add(hist)
         self.db.commit()
 
-    def record_storage_operation(self, operation_type, duration):
+    def record_storage_operation(self, operation_type: str, duration: float) -> None:
+        """Record how long a storage operation took to complete.
+
+        Args:
+            operation_type: Type of storage operation (``"upload"``,
+                ``"download"`` or ``"list"``).
+            duration: Time the operation took in seconds.
+        """
         if operation_type not in ("upload", "download", "list"):
             return
         hist = History(
@@ -229,7 +340,16 @@ class MediaStats:
             self._increment("list_operations", scope="total")
         self.db.commit()
 
-    def get_daily_stats(self, reset_if_new_day: bool = True):
+    def get_daily_stats(self, reset_if_new_day: bool = True) -> dict:
+        """Return a mapping of counters for the last 24 hours.
+
+        Args:
+            reset_if_new_day: Reset counters if the stored reset timestamp is
+                from a previous day.
+
+        Returns:
+            dict: Mapping of counter names to values for the last day.
+        """
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         last_reset = (
             lambda dt: dt.replace(tzinfo=UTC)
@@ -271,7 +391,12 @@ class MediaStats:
         stats["last_reset"] = last_reset
         return stats
 
-    def get_total_stats(self):
+    def get_total_stats(self) -> dict:
+        """Return cumulative counter values for the lifetime of the bot.
+
+        Returns:
+            dict: Mapping of counter names to total values.
+        """
         stats = {}
         for name in self.names:
             value = self.r.get(_redis_key("total", name))
@@ -289,7 +414,12 @@ class MediaStats:
             stats[name] = int(value)
         return stats
 
-    def get_performance_metrics(self):
+    def get_performance_metrics(self) -> dict:
+        """Return average processing, upload and download times.
+
+        Returns:
+            dict: Mapping of metric names to average durations in seconds.
+        """
         pm = {}
         pm["avg_photo_processing_time"] = (
             self.db.query(func.avg(History.duration))
@@ -317,7 +447,15 @@ class MediaStats:
         )
         return pm
 
-    def get_recent_errors(self, limit=10):
+    def get_recent_errors(self, limit: int = 10) -> list[dict]:
+        """Return a list of the most recent error events.
+
+        Args:
+            limit: Maximum number of events to return.
+
+        Returns:
+            list[dict]: Error records sorted newest first.
+        """
         rows = (
             self.db.query(History)
             .filter_by(category="error")
@@ -334,7 +472,16 @@ class MediaStats:
             for r in rows
         ]
 
-    def get_recent_events(self, event_type, limit=10):
+    def get_recent_events(self, event_type: str, limit: int = 10) -> list[dict]:
+        """Fetch recent events of a specific category.
+
+        Args:
+            event_type: Name of the event group to retrieve.
+            limit: Maximum number of events to return.
+
+        Returns:
+            list[dict]: Event records sorted newest first.
+        """
         mapping = {
             "photo_processing_times": "photo_processing",
             "video_processing_times": "video_processing",
@@ -368,17 +515,40 @@ class MediaStats:
         return events
 
     def get_approval_rate_24h(self, daily: dict) -> float:
+        """Calculate approval percentage for the last day.
+
+        Args:
+            daily: Mapping of daily counters as returned by
+                :meth:`get_daily_stats`.
+
+        Returns:
+            float: Approval percentage in the range 0..100.
+        """
         processed = daily["photos_processed"] + daily["videos_processed"]
         approved = daily["photos_approved"] + daily["videos_approved"]
         return (approved / processed * 100) if processed else 0
 
-    def get_approval_rate_total(self):
+    def get_approval_rate_total(self) -> float:
+        """Calculate overall approval percentage for all time.
+
+        Returns:
+            float: Approval percentage in the range 0..100.
+        """
         ts = self.get_total_stats()
         processed = ts["photos_processed"] + ts["videos_processed"]
         approved = ts["photos_approved"] + ts["videos_approved"]
         return (approved / processed * 100) if processed else 0
 
     def get_success_rate_24h(self, daily: dict) -> float:
+        """Compute success rate excluding errors for the last day.
+
+        Args:
+            daily: Mapping of daily counters as returned by
+                :meth:`get_daily_stats`.
+
+        Returns:
+            float: Success percentage in the range 0..100.
+        """
         received = daily["media_received"]
         errors = (
             daily["processing_errors"]
@@ -387,7 +557,13 @@ class MediaStats:
         )
         return ((received - errors) / received * 100) if received else 100
 
-    def get_busiest_hour(self):
+    def get_busiest_hour(self) -> tuple[int | None, int]:
+        """Return the hour with the most approvals or rejections in 24h.
+
+        Returns:
+            tuple[int | None, int]: Hour of day (0-23) and event count. ``None``
+            is returned when there were no events.
+        """
         now = now_utc()
         yesterday = now - datetime.timedelta(days=1)
         rows = (
@@ -408,8 +584,16 @@ class MediaStats:
         busiest_hour, count = max(hour_counts.items(), key=lambda x: x[1])
         return busiest_hour, count
 
-    def generate_stats_report(self, reset_daily: bool = True):
-        """Generate a comprehensive stats report"""
+    def generate_stats_report(self, reset_daily: bool = True) -> str:
+        """Create a human readable HTML report with recent statistics.
+
+        Args:
+            reset_daily: Whether to reset daily counters when generating the
+                report.
+
+        Returns:
+            str: HTML snippet with formatted statistics.
+        """
         daily = self.get_daily_stats(reset_if_new_day=reset_daily)
         total = self.get_total_stats()
         perf = self.get_performance_metrics()
@@ -497,8 +681,12 @@ class MediaStats:
         ]
         return "\n\n".join(report_parts)
 
-    def reset_daily_stats(self):
-        """Manually reset daily stats"""
+    def reset_daily_stats(self) -> str:
+        """Reset all daily counters and update the reset timestamp.
+
+        Returns:
+            str: Confirmation message describing the reset.
+        """
         now_iso = now_utc().isoformat()
         self.db.query(StatsCounter).filter_by(scope="daily").update(
             {StatsCounter.value: 0}
@@ -511,8 +699,8 @@ class MediaStats:
         self.r.set(_redis_meta_key(), now_iso)
         return "Daily statistics have been reset."
 
-    def force_save(self):
-        """Force commit any pending transactions"""
+    def force_save(self) -> None:
+        """Persist any outstanding database transactions."""
         self.db.commit()
 
 
