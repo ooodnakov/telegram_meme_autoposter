@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 import datetime
+from telegram_auto_poster.utils.timezone import now_utc
 from minio import Minio
 from minio.error import S3Error, MinioException
 from loguru import logger
@@ -112,7 +113,7 @@ class MinioStorage:
             "user_id": user_id,
             "chat_id": chat_id,
             "media_type": media_type,
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": now_utc().isoformat(),
             "notified": False,
             "message_id": message_id,
             "hash": media_hash,

@@ -14,6 +14,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker
 from .db import get_redis_client, _redis_key, _redis_meta_key
 from collections import defaultdict
+from telegram_auto_poster.utils.timezone import now_utc, UTC
 
 Base = declarative_base()
 
@@ -36,7 +37,7 @@ class History(Base):
     __tablename__ = "history"
     id = Column(Integer, primary_key=True, autoincrement=True)
     category = Column(String(50), nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=now_utc, nullable=False)
     filename = Column(String(200))
     source = Column(String(50))
     duration = Column(Float)
@@ -107,7 +108,7 @@ class MediaStats:
         # ensure daily reset metadata exists
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
         if not meta:
-            now = datetime.datetime.utcnow().isoformat()
+            now = now_utc().isoformat()
             self.db.add(Metadata(key="daily_last_reset", value=now))
             self.r.set(_redis_meta_key(), now)
         else:
@@ -140,7 +141,7 @@ class MediaStats:
         category = f"{media_type}_processing"
         hist = History(
             category=category,
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=now_utc(),
             duration=processing_time,
         )
         self.db.add(hist)
@@ -158,7 +159,7 @@ class MediaStats:
         self._increment(name, scope="total")
         hist = History(
             category="approval",
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=now_utc(),
             media_type=media_type,
             filename=filename,
             source=source,
@@ -172,7 +173,7 @@ class MediaStats:
         self._increment(name, scope="total")
         hist = History(
             category="rejection",
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=now_utc(),
             media_type=media_type,
             filename=filename,
             source=source,
@@ -204,7 +205,7 @@ class MediaStats:
         self._increment(name, scope="total")
         hist = History(
             category="error",
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=now_utc(),
             error_type=error_type,
             message=error_message,
         )
@@ -216,7 +217,7 @@ class MediaStats:
             return
         hist = History(
             category=operation_type,
-            timestamp=datetime.datetime.utcnow(),
+            timestamp=now_utc(),
             duration=duration,
         )
         self.db.add(hist)
@@ -227,8 +228,8 @@ class MediaStats:
 
     def get_daily_stats(self, reset_if_new_day: bool = True):
         meta = self.db.query(Metadata).filter_by(key="daily_last_reset").first()
-        last_reset = datetime.datetime.fromisoformat(meta.value)
-        now = datetime.datetime.utcnow()
+        last_reset = datetime.datetime.fromisoformat(meta.value).astimezone(UTC)
+        now = now_utc()
         if reset_if_new_day and last_reset.date() < now.date():
             # reset daily stats
             self.db.query(StatsCounter).filter_by(scope="daily").update(
@@ -379,7 +380,7 @@ class MediaStats:
         return ((received - errors) / received * 100) if received else 100
 
     def get_busiest_hour(self):
-        now = datetime.datetime.utcnow()
+        now = now_utc()
         yesterday = now - datetime.timedelta(days=1)
         rows = (
             self.db.query(History)
@@ -490,7 +491,7 @@ class MediaStats:
 
     def reset_daily_stats(self):
         """Manually reset daily stats"""
-        now_iso = datetime.datetime.utcnow().isoformat()
+        now_iso = now_utc().isoformat()
         self.db.query(StatsCounter).filter_by(scope="daily").update(
             {StatsCounter.value: 0}
         )

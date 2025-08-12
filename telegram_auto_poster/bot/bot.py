@@ -39,6 +39,7 @@ from .callbacks import (
 
 # Import media handlers from handlers.py
 from .handlers import handle_media
+from telegram_auto_poster.utils.timezone import now_utc
 
 
 class TelegramMemeBot:
@@ -123,7 +124,7 @@ class TelegramMemeBot:
         )
 
         # Schedule the job to post scheduled media
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = now_utc()
         next_hour = (now + datetime.timedelta(hours=1)).replace(
             minute=0, second=0, microsecond=0
         )
