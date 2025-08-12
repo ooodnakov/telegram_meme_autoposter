@@ -392,9 +392,13 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                     "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
                 )
 
-                # Send to channel
+                # Send to channel without caption, enabling streaming for videos
                 await send_media_to_telegram(
-                    context.bot, target_channel, temp_path, media_type
+                    context.bot,
+                    target_channel,
+                    temp_path,
+                    caption=None,
+                    supports_streaming=(media_type == "video"),
                 )
 
                 # Clean up
