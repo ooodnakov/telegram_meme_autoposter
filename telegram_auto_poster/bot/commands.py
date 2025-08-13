@@ -395,7 +395,8 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                     temp_path,
                     caption=None,
                     supports_streaming=(
-                        os.path.splitext(temp_path)[1].lower() in [".mp4", ".avi", ".mov"]
+                        os.path.splitext(temp_path)[1].lower()
+                        in [".mp4", ".avi", ".mov"]
                     ),
                 )
 

@@ -109,9 +109,9 @@ def test_is_duplicate_hash_empty(fake_redis):
     assert is_duplicate_hash("", redis_client=fake_redis) is False
 
 
-def test_is_duplicate_hash_redis_error():
+def test_is_duplicate_hash_redis_error(mocker):
     """Test is_duplicate_hash with redis error"""
-    mock_redis = MagicMock()
+    mock_redis = mocker.MagicMock()
     mock_redis.sismember.side_effect = Exception("Redis is down")
     media_hash = "test_hash_error"
     logs = []
@@ -121,9 +121,9 @@ def test_is_duplicate_hash_redis_error():
     assert "Could not check hash" in logs[0]
 
 
-def test_add_approved_hash_redis_error():
+def test_add_approved_hash_redis_error(mocker):
     """Test add_approved_hash with redis error"""
-    mock_redis = MagicMock()
+    mock_redis = mocker.MagicMock()
     mock_redis.sadd.side_effect = Exception("Redis is down")
     media_hash = "test_hash_error_add"
     logs = []

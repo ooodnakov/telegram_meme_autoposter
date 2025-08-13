@@ -1,13 +1,10 @@
 import importlib
-import os
-import sys
 import types
+import sys
 import fakeredis
 import valkey
 
 import sqlalchemy
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 def setup_modules(monkeypatch):
@@ -75,8 +72,11 @@ def setup_modules(monkeypatch):
     sys.modules.pop("telegram_auto_poster.utils.storage", None)
     stats_mod = importlib.import_module("telegram_auto_poster.utils.stats")
     stats_mod = importlib.reload(stats_mod)
+    stats_mod.init_stats()
+
     storage_mod = importlib.import_module("telegram_auto_poster.utils.storage")
     storage_mod = importlib.reload(storage_mod)
+    storage_mod.init_storage()
     return stats_mod, storage_mod
 
 

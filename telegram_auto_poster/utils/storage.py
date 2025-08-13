@@ -14,19 +14,7 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.utils.timezone import now_utc
 
-# Import stats module
-try:
-    from ..utils.stats import stats
-except ImportError:
-    # If stats module is not available, create a dummy
-    class DummyStats:
-        def record_storage_operation(self, *args, **kwargs):
-            pass
-
-        def record_error(self, *args, **kwargs):
-            pass
-
-    stats = DummyStats()
+from telegram_auto_poster.utils.stats import stats
 
 # Get MinIO configuration from environment variables
 MINIO_HOST = os.environ.get("MINIO_HOST", "localhost")
@@ -49,32 +37,35 @@ class MinioStorage:
 
     _instance = None
 
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         """Implement the singleton pattern for the storage client."""
         if cls._instance is None:
             cls._instance = super(MinioStorage, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def __init__(self, client=None):
         """Connect to MinIO and prepare buckets on first instantiation."""
         if self._initialized:
             return
 
         try:
-            # Get MinIO config from environment or config
-            host = os.getenv("MINIO_HOST", "minio")
-            port = os.getenv("MINIO_PORT", "9000")
-            access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-            secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+            if client:
+                self.client = client
+            else:
+                # Get MinIO config from environment or config
+                host = os.getenv("MINIO_HOST", "minio")
+                port = os.getenv("MINIO_PORT", "9000")
+                access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+                secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
-            self.client = Minio(
-                f"{host}:{port}",
-                access_key=access_key,
-                secret_key=secret_key,
-                secure=False,
-                region="ru-west",
-            )
+                self.client = Minio(
+                    f"{host}:{port}",
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    secure=False,
+                    region="ru-west",
+                )
 
             # Store metadata about submissions
             self.submission_metadata = {}
@@ -457,4 +448,14 @@ class MinioStorage:
 
 
 # Create a singleton instance
-storage = MinioStorage()
+class DummyStorage:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
+storage = DummyStorage()
+
+
+def init_storage():
+    global storage
+    storage = MinioStorage()

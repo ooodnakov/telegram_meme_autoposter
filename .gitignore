@@ -11,3 +11,4 @@ media_stats.json
 mysql/*
 valkeydata/
 uv.lock
+.coverage

@@ -8,7 +8,7 @@ from PIL import Image
 from PIL.ImageFile import ImageFile
 
 from ..config import BUCKET_MAIN, PHOTOS_PATH
-from ..utils.storage import storage
+from telegram_auto_poster.utils.storage import storage
 
 
 async def add_watermark_to_image(

@@ -1,137 +1,211 @@
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from pathlib import Path
-import sys
-
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
-dummy_stats_module = ModuleType("telegram_auto_poster.utils.stats")
-dummy_stats_module.stats = SimpleNamespace(
-    record_approved=lambda *a, **k: None,
-    record_error=lambda *a, **k: None,
-    record_batch_sent=lambda *a, **k: None,
-    generate_stats_report=lambda *a, **k: "",
-    reset_daily_stats=lambda: "",
-    force_save=lambda: None,
-)
-sys.modules["telegram_auto_poster.utils.stats"] = dummy_stats_module
-
-dummy_storage_module = ModuleType("telegram_auto_poster.utils.storage")
-
-
-class DummyStorage:
-    def list_files(self, bucket, prefix=None):
-        return []
-
-    def delete_file(self, object_name, bucket):
-        pass
-
-    def file_exists(self, object_name, bucket):
-        return False
-
-    def get_submission_metadata(self, object_name):
-        return None
-
-    def mark_notified(self, object_name):
-        pass
-
-
-dummy_storage_module.storage = DummyStorage()
-sys.modules["telegram_auto_poster.utils.storage"] = dummy_storage_module
-
-dummy_config_module = ModuleType("telegram_auto_poster.config")
-dummy_config_module.PHOTOS_PATH = "photos"
-dummy_config_module.VIDEOS_PATH = "videos"
-dummy_config_module.DOWNLOADS_PATH = "downloads"
-dummy_config_module.BUCKET_MAIN = "telegram-auto-poster"
-dummy_config_module.LUBA_CHAT = "@luba"
-dummy_config_module.load_config = lambda: {}
-sys.modules["telegram_auto_poster.config"] = dummy_config_module
 
 import pytest
 
 from telegram_auto_poster.bot import commands
 
 
-@pytest.mark.asyncio
-async def test_send_batch_photo_closes_file_and_cleans(tmp_path, monkeypatch):
-    temp_file = tmp_path / "photo.jpg"
-    temp_file.write_bytes(b"data")
-
-    async def mock_download(name, bucket, ext):
-        return str(temp_file), ext
-
-    monkeypatch.setattr(commands, "download_from_minio", mock_download)
-    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None)
-    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None)
-    monkeypatch.setattr(commands.stats, "record_approved", lambda *a, **k: None)
-
-    monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
-    cleaned = {}
-
-    def mock_cleanup(path):
-        cleaned["path"] = path
-
-    monkeypatch.setattr(commands, "cleanup_temp_file", mock_cleanup)
-
+@pytest.fixture
+def mock_bot_and_context(mocker):
     update = SimpleNamespace(
         message=SimpleNamespace(reply_text=AsyncMock()),
         effective_message=SimpleNamespace(message_id=1),
     )
-    bot = SimpleNamespace(send_photo=AsyncMock(), send_video=AsyncMock())
+    bot = SimpleNamespace(
+        send_photo=AsyncMock(),
+        send_video=AsyncMock(),
+        send_message=AsyncMock(),
+    )
     context = SimpleNamespace(
         bot=bot,
-        bot_data={"target_channel_id": 123, "photo_batch": ["file"], "video_batch": []},
+        bot_data={
+            "target_channel_id": 123,
+            "photo_batch": ["file1"],
+            "video_batch": ["file2"],
+        },
     )
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.check_admin_rights",
+        return_value=True,
+    )
+    return update, context
+
+
+@pytest.mark.asyncio
+async def test_send_batch_photo_closes_file_and_cleans(
+    tmp_path, mocker, mock_bot_and_context
+):
+    temp_file = tmp_path / "photo.jpg"
+    temp_file.write_bytes(b"data")
+
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.download_from_minio",
+        return_value=(str(temp_file), "ext"),
+    )
+    mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
+    mock_storage.get_submission_metadata.return_value = None
+    mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
+    mock_cleanup = mocker.patch(
+        "telegram_auto_poster.bot.commands.cleanup_temp_file"
+    )
+
+    update, context = mock_bot_and_context
+    context.bot_data["video_batch"] = []
 
     await commands.send_batch_command(update, context)
 
-    bot.send_photo.assert_awaited_once()
-    sent_args = bot.send_photo.call_args.kwargs
+    context.bot.send_photo.assert_awaited_once()
+    sent_args = context.bot.send_photo.call_args.kwargs
     assert sent_args["chat_id"] == 123
     file_obj = sent_args["photo"]
     assert file_obj.closed
-    assert cleaned["path"] == str(temp_file)
+    mock_cleanup.assert_called_once_with(str(temp_file))
     assert context.bot_data["photo_batch"] == []
 
 
 @pytest.mark.asyncio
-async def test_send_batch_video_closes_file_and_cleans(tmp_path, monkeypatch):
+async def test_start_command(mocker):
+    """Test the start command."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    await commands.start_command(update, context)
+    update.message.reply_text.assert_awaited_once_with("Привет! Присылай сюда свои мемы)")
+
+
+@pytest.mark.asyncio
+async def test_help_command(mocker):
+    """Test the help command for a non-admin user."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=456),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = SimpleNamespace(bot_data={"admin_ids": [123]})
+    await commands.help_command(update, context)
+    update.message.reply_text.assert_awaited_once()
+    call_args = update.message.reply_text.call_args[0][0]
+    assert "Команды пользователя:" in call_args
+    assert "Команды администратора:" not in call_args
+
+
+@pytest.mark.asyncio
+async def test_help_command_admin(mocker):
+    """Test the help command for an admin user."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = SimpleNamespace(bot_data={"admin_ids": [123]})
+    await commands.help_command(update, context)
+    update.message.reply_text.assert_awaited_once()
+    call_args = update.message.reply_text.call_args[0][0]
+    assert "Команды пользователя:" in call_args
+    assert "Команды администратора:" in call_args
+
+
+@pytest.mark.asyncio
+async def test_get_chat_id_command(mocker):
+    """Test the get_chat_id command."""
+    update = SimpleNamespace(
+        effective_chat=SimpleNamespace(id=789),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    await commands.get_chat_id_command(update, context)
+    update.message.reply_text.assert_awaited_once_with("This chat ID is: 789")
+
+
+@pytest.mark.asyncio
+async def test_send_batch_video_closes_file_and_cleans(
+    tmp_path, mocker, mock_bot_and_context
+):
     temp_file = tmp_path / "video.mp4"
     temp_file.write_bytes(b"data")
 
-    async def mock_download(name, bucket, ext):
-        return str(temp_file), ext
-
-    monkeypatch.setattr(commands, "download_from_minio", mock_download)
-    monkeypatch.setattr(commands.storage, "get_submission_metadata", lambda name: None)
-    monkeypatch.setattr(commands.storage, "mark_notified", lambda name: None)
-    monkeypatch.setattr(commands.stats, "record_approved", lambda *a, **k: None)
-    monkeypatch.setattr(commands, "check_admin_rights", AsyncMock(return_value=True))
-
-    cleaned = {}
-
-    def mock_cleanup(path):
-        cleaned["path"] = path
-
-    monkeypatch.setattr(commands, "cleanup_temp_file", mock_cleanup)
-
-    update = SimpleNamespace(
-        message=SimpleNamespace(reply_text=AsyncMock()),
-        effective_message=SimpleNamespace(message_id=1),
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.download_from_minio",
+        return_value=(str(temp_file), "ext"),
     )
-    bot = SimpleNamespace(send_photo=AsyncMock(), send_video=AsyncMock())
-    context = SimpleNamespace(
-        bot=bot,
-        bot_data={"target_channel_id": 123, "photo_batch": [], "video_batch": ["file"]},
+    mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
+    mock_storage.get_submission_metadata.return_value = None
+    mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
+    mock_cleanup = mocker.patch(
+        "telegram_auto_poster.bot.commands.cleanup_temp_file"
     )
+
+    update, context = mock_bot_and_context
+    context.bot_data["photo_batch"] = []
 
     await commands.send_batch_command(update, context)
 
-    bot.send_video.assert_awaited_once()
-    sent_args = bot.send_video.call_args.kwargs
+    context.bot.send_video.assert_awaited_once()
+    sent_args = context.bot.send_video.call_args.kwargs
     assert sent_args["chat_id"] == 123
     file_obj = sent_args["video"]
     assert file_obj.closed
-    assert cleaned["path"] == str(temp_file)
+    mock_cleanup.assert_called_once_with(str(temp_file))
     assert context.bot_data["video_batch"] == []
+
+
+@pytest.mark.asyncio
+async def test_stats_command(mocker):
+    """Test the stats command."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.check_admin_rights", return_value=True
+    )
+    mock_stats = mocker.patch("telegram_auto_poster.bot.commands.stats")
+    mock_stats.generate_stats_report.return_value = "report"
+
+    await commands.stats_command(update, context)
+
+    mock_stats.generate_stats_report.assert_called_once()
+    update.message.reply_text.assert_awaited_once_with("report", parse_mode="HTML")
+
+
+@pytest.mark.asyncio
+async def test_reset_stats_command(mocker):
+    """Test the reset_stats command."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.check_admin_rights", return_value=True
+    )
+    mock_stats = mocker.patch("telegram_auto_poster.bot.commands.stats")
+    mock_stats.reset_daily_stats.return_value = "reset"
+
+    await commands.reset_stats_command(update, context)
+
+    mock_stats.reset_daily_stats.assert_called_once()
+    update.message.reply_text.assert_awaited_once_with("reset")
+
+
+@pytest.mark.asyncio
+async def test_save_stats_command(mocker):
+    """Test the save_stats command."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.check_admin_rights", return_value=True
+    )
+    mock_stats = mocker.patch("telegram_auto_poster.bot.commands.stats")
+
+    await commands.save_stats_command(update, context)
+
+    mock_stats.force_save.assert_called_once()
+    update.message.reply_text.assert_awaited_once_with("Stats saved!")
+
+

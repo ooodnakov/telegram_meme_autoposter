@@ -1,5 +1,4 @@
 import importlib
-import os
 import sys
 import fakeredis
 import valkey
@@ -7,11 +6,9 @@ import pytest
 from unittest.mock import patch
 import sqlalchemy
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 
 @pytest.fixture
-def stats_module(monkeypatch):
+def stats_module(monkeypatch, mocker):
     """Prepare test environment with in-memory DB and fake Redis."""
     engine = sqlalchemy.create_engine("sqlite:///:memory:")
     monkeypatch.setattr(sqlalchemy, "create_engine", lambda *a, **k: engine)
@@ -35,16 +32,17 @@ def stats_module(monkeypatch):
     if "telegram_auto_poster.config" in sys.modules:
         del sys.modules["telegram_auto_poster.config"]
 
-    with patch("minio.Minio"):
-        import telegram_auto_poster.config
+    mocker.patch("minio.Minio")
+    import telegram_auto_poster.config
 
-        importlib.reload(telegram_auto_poster.config)
-        import telegram_auto_poster.utils.storage
-        import telegram_auto_poster.utils.stats
+    importlib.reload(telegram_auto_poster.config)
+    import telegram_auto_poster.utils.storage
+    import telegram_auto_poster.utils.stats
 
-        importlib.reload(telegram_auto_poster.utils.storage)
-        importlib.reload(telegram_auto_poster.utils.stats)
-        yield telegram_auto_poster.utils.stats
+    importlib.reload(telegram_auto_poster.utils.storage)
+    importlib.reload(telegram_auto_poster.utils.stats)
+    telegram_auto_poster.utils.stats.init_stats()
+    yield telegram_auto_poster.utils.stats
 
 
 def test_generate_stats_report_format(stats_module):
