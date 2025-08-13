@@ -74,3 +74,33 @@ luba_chat = @luba
     assert conf["api_id"] == 123
     assert conf["bot_chat_id"] == "1"
     assert conf["selected_chats"] == ["@test1", "@test2"]
+    assert conf["quiet_hours_start"] == 22
+    assert conf["quiet_hours_end"] == 10
+
+
+def test_custom_schedule_config(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channel = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Schedule]
+quiet_hours_start = 20
+quiet_hours_end = 8
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    conf = config_module.load_config()
+    assert conf["quiet_hours_start"] == 20
+    assert conf["quiet_hours_end"] == 8

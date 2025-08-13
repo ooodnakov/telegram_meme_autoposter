@@ -78,6 +78,12 @@ class TelegramMemeBot:
         # Store important information in bot_data
         self.application.bot_data["chat_id"] = self.bot_chat_id
         self.application.bot_data["target_channel_id"] = self.config["target_channel"]
+        self.application.bot_data["quiet_hours_start"] = self.config.get(
+            "quiet_hours_start", 22
+        )
+        self.application.bot_data["quiet_hours_end"] = self.config.get(
+            "quiet_hours_end", 10
+        )
 
         # Store admin IDs
         if "admin_ids" in self.config:

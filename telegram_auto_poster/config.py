@@ -56,6 +56,16 @@ def load_config() -> dict:
         "luba_chat": config["Chats"]["luba_chat"],
     }
 
+    try:
+        quiet_start = config.getint("Schedule", "quiet_hours_start", fallback=22)
+        quiet_end = config.getint("Schedule", "quiet_hours_end", fallback=10)
+    except ValueError as exc:
+        raise RuntimeError(
+            "quiet_hours_start and quiet_hours_end must be integers"
+        ) from exc
+    conf_dict["quiet_hours_start"] = quiet_start
+    conf_dict["quiet_hours_end"] = quiet_end
+
     # Add admin IDs if they exist in config
     if config.has_option("Bot", "admin_ids"):
         # Admin IDs can be comma-separated list of user IDs
