@@ -37,6 +37,7 @@ from telegram_auto_poster.utils.timezone import (
     format_display,
     now_utc,
 )
+from telegram_auto_poster.utils.scheduler import find_next_available_slot
 
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -63,22 +64,12 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # 1. Find next available slot
         now = now_utc()
         scheduled_posts = db.get_scheduled_posts()
-
-        next_slot = now.replace(minute=0, second=0, microsecond=0)
-        if next_slot.hour >= 22:
-            next_slot += datetime.timedelta(days=1)
-            next_slot = next_slot.replace(hour=10)
-        elif next_slot.hour < 10:
-            next_slot = next_slot.replace(hour=10)
-        else:
-            next_slot += datetime.timedelta(hours=1)
-
-        occupied_slots = {int(post[1]) for post in scheduled_posts}
-        while int(next_slot.timestamp()) in occupied_slots:
-            next_slot += datetime.timedelta(hours=1)
-            if next_slot.hour > 22:
-                next_slot += datetime.timedelta(days=1)
-                next_slot = next_slot.replace(hour=10)
+        bot_data = context.application.bot_data
+        quiet_start = bot_data.get("quiet_hours_start", 22)
+        quiet_end = bot_data.get("quiet_hours_end", 10)
+        next_slot = find_next_available_slot(
+            now, scheduled_posts, quiet_start, quiet_end
+        )
 
         # 2. Add to approved dedup corpus (use stored hash or compute)
         media_hash = None
