@@ -44,15 +44,33 @@ from .handlers import handle_media
 
 
 class TelegramMemeBot:
-    def __init__(self, config):
+    """High level wrapper around ``python-telegram-bot`` for meme posting.
+
+    Attributes:
+        bot_token (str): Authentication token for the bot account.
+        bot_chat_id (str): Chat ID where administrative commands are accepted.
+        application (Application | None): Underlying PTB application instance.
+        config (dict): Original configuration dictionary.
+    """
+
+    def __init__(self, config: dict) -> None:
+        """Store configuration and prepare for later setup.
+
+        Args:
+            config: Parsed configuration mapping from :mod:`configparser`.
+        """
         self.bot_token = config["bot_token"]
         self.bot_chat_id = config["bot_chat_id"]
         self.application = None
         self.config = config
         logger.info(f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}")
 
-    async def setup(self):
-        """Initialize the bot with all handlers and start updating."""
+    async def setup(self) -> "Application":
+        """Initialize the bot application and register all handlers.
+
+        Returns:
+            Application: The initialized application instance.
+        """
         logger.info("Setting up bot application...")
         self.application = ApplicationBuilder().token(self.bot_token).build()
 
@@ -142,7 +160,7 @@ class TelegramMemeBot:
 
         return self.application
 
-    async def start_polling(self):
+    async def start_polling(self) -> None:
         """Start receiving updates without running a separate event loop."""
         # Start the bot without using run_polling (which creates its own event loop)
         logger.info("Starting bot application...")
@@ -163,8 +181,8 @@ class TelegramMemeBot:
         )
         logger.info("Bot polling started successfully!")
 
-    async def stop(self):
-        """Stop the bot."""
+    async def stop(self) -> None:
+        """Gracefully stop the bot and shut down its resources."""
         logger.info("Stopping bot...")
         if (
             self.application

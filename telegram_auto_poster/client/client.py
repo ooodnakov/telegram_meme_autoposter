@@ -11,7 +11,25 @@ client_instance = None
 
 
 class TelegramMemeClient:
-    def __init__(self, application, config):
+    """Utility class that listens to Telegram channels using Telethon.
+
+    Attributes:
+        client (TelegramClient): Underlying Telethon client instance.
+        application (Application): Telegram bot application used for
+            processing.
+        target_channel (str): Channel username or ID where media is forwarded.
+        bot_chat_id (str): Chat ID of the controlling bot.
+        selected_chats (list[str]): Channels to monitor for new media.
+    """
+
+    def __init__(self, application, config: dict) -> None:
+        """Initialize the Telethon client and store configuration values.
+
+        Args:
+            application: PTB ``Application`` instance used for coordination.
+            config: Configuration dictionary with Telegram credentials and
+                channel information.
+        """
         self.client = TelegramClient(
             config["username"], config["api_id"], config["api_hash"]
         )
@@ -39,7 +57,7 @@ class TelegramMemeClient:
     async def _run(self):
         await self.client.run_until_disconnected()
 
-    async def start(self):
+    async def start(self) -> None:
         """Start the client and register event handlers."""
         await self.client.start()
         logger.info("TelegramClient started successfully")
@@ -99,8 +117,8 @@ class TelegramMemeClient:
             return
         self._task = asyncio.create_task(self._run())
 
-    async def stop(self):
-        """Stop the client."""
+    async def stop(self) -> None:
+        """Disconnect the Telethon client."""
         if self.client.is_connected():
             await self.client.disconnect()
         logger.info("TelegramClient disconnected")

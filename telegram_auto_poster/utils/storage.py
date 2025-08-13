@@ -24,19 +24,27 @@ MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
 
 
 class MinioStorage:
-    """MinIO storage client for handling file operations."""
+    """Wrapper around :class:`minio.Minio` providing convenience helpers.
+
+    The class exposes a singleton interface used throughout the project to
+    upload and download media files.  It also records timing information about
+    storage operations for later analysis.
+
+    Attributes:
+        client (Minio): Underlying MinIO client instance.
+        submission_metadata (dict): In-memory metadata indexed by object name.
+    """
 
     _instance = None
-
-    def __new__(cls, *args, **kwargs):
-        """Singleton pattern to ensure only one client instance."""
+    def __new__(cls):
+        """Implement the singleton pattern for the storage client."""
         if cls._instance is None:
             cls._instance = super(MinioStorage, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, client=None):
-        """Initialize MinIO client if not already done."""
+    def __init__(self):
+        """Connect to MinIO and prepare buckets on first instantiation."""
         if self._initialized:
             return
 
@@ -72,8 +80,12 @@ class MinioStorage:
             stats.record_error("storage", f"Failed to initialize MinIO client: {e}")
             raise
 
-    def _ensure_bucket_exists(self, bucket_name):
-        """Create bucket if it doesn't exist."""
+    def _ensure_bucket_exists(self, bucket_name: str) -> None:
+        """Create the given bucket in MinIO if it has not been created yet.
+
+        Args:
+            bucket_name: Bucket to verify or create.
+        """
         try:
             if not self.client.bucket_exists(bucket_name):
                 self.client.make_bucket(bucket_name)
@@ -92,14 +104,19 @@ class MinioStorage:
         message_id=None,
         media_hash: str | None = None,
     ):
-        """Store metadata about who submitted media for later feedback
+        """Store information about who submitted a particular media object.
+
+        The metadata is kept in memory for quick feedback to users and also
+        mirrored in MinIO object metadata so it survives restarts.
 
         Args:
-            object_name: Name of the object in MinIO
-            user_id: The Telegram user_id of the submitter
-            chat_id: The Telegram chat_id where the media was submitted
-            media_type: Type of media ('photo' or 'video')
-            message_id: Optional Telegram message_id of the original submission
+            object_name: Name of the object in MinIO.
+            user_id: The Telegram ``user_id`` of the submitter.
+            chat_id: The Telegram ``chat_id`` where the media was submitted.
+            media_type: Type of media (``'photo'`` or ``'video'``).
+            message_id: Optional Telegram ``message_id`` of the original
+                submission.
+            media_hash: Optional hash used for deduplication.
         """
         self.submission_metadata[object_name] = {
             "user_id": user_id,
@@ -114,8 +131,15 @@ class MinioStorage:
             f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}, message_id={message_id}"
         )
 
-    def get_submission_metadata(self, object_name):
-        """Get metadata about a submission from in-memory or MinIO object metadata."""
+    def get_submission_metadata(self, object_name: str) -> dict | None:
+        """Return metadata for a stored object if available.
+
+        Args:
+            object_name: Name of the object stored in MinIO.
+
+        Returns:
+            dict | None: Metadata dictionary or ``None`` if not found.
+        """
         # Check in-memory metadata first
         meta = self.submission_metadata.get(object_name)
         if meta:
@@ -143,13 +167,14 @@ class MinioStorage:
         return None
 
     def mark_notified(self, object_name):
-        """Mark that the user has been notified about their submission
+        """Mark that the user has been notified about their submission.
 
         Args:
-            object_name: Name of the object in MinIO
+            object_name: Name of the object in MinIO.
 
         Returns:
-            bool: True if marked, False if metadata not found
+            bool: ``True`` if metadata exists and was updated, ``False``
+            otherwise.
         """
         if object_name in self.submission_metadata:
             self.submission_metadata[object_name]["notified"] = True
@@ -166,18 +191,26 @@ class MinioStorage:
         message_id=None,
         media_hash: str | None = None,
     ):
-        """Upload a file to MinIO with timing metrics and optional user metadata.
+        """Upload a file to MinIO and record how long the operation took.
+
+        Additional metadata about the submitting user can be attached to the
+        object for later feedback or auditing.  The appropriate bucket and
+        object name are determined automatically when not supplied.
 
         Args:
-            file_path: Path to the local file
-            bucket: Bucket name (default determined by file extension)
-            object_name: Name for the object in MinIO (default is filename)
-            user_id: Optional user_id of the submitter for feedback
-            chat_id: Optional chat_id where the submission was made
-            message_id: Optional Telegram message_id of the original submission
+            file_path: Path to the local file.
+            bucket: Bucket name (defaults to ``BUCKET_MAIN`` or based on
+                extension).
+            object_name: Name for the object in MinIO (defaults to the file
+                name).
+            user_id: Optional ``user_id`` of the submitter for feedback.
+            chat_id: Optional ``chat_id`` where the submission was made.
+            message_id: Optional Telegram ``message_id`` of the original
+                submission.
+            media_hash: Optional hash of the file for deduplication purposes.
 
         Returns:
-            bool: True if upload was successful, False otherwise
+            bool: ``True`` if upload was successful, ``False`` otherwise.
         """
         start_time = time.time()
         try:
@@ -253,15 +286,15 @@ class MinioStorage:
             return False
 
     def download_file(self, object_name, bucket, file_path=None):
-        """Download a file from MinIO with timing metrics.
+        """Download an object from MinIO and measure the duration.
 
         Args:
-            object_name: Name of the object in MinIO
-            bucket: Bucket name
-            file_path: Local path to save file (default is temp file)
+            object_name: Name of the object in MinIO.
+            bucket: Bucket name.
+            file_path: Local path to save file (defaults to a temporary file).
 
         Returns:
-            bool: True if download was successful, False otherwise
+            bool: ``True`` if download was successful, ``False`` otherwise.
         """
         start_time = time.time()
         try:
@@ -300,14 +333,14 @@ class MinioStorage:
             return False
 
     def get_object_data(self, object_name, bucket):
-        """Get object data as bytes.
+        """Return raw object data as bytes.
 
         Args:
-            object_name: Name of the object in MinIO
-            bucket: Bucket name
+            object_name: Name of the object in MinIO.
+            bucket: Bucket name.
 
         Returns:
-            bytes: Object data
+            bytes: The object's contents.
         """
         try:
             response = self.client.get_object(
@@ -324,14 +357,14 @@ class MinioStorage:
             raise
 
     def delete_file(self, object_name, bucket):
-        """Delete an object from MinIO with timing metrics.
+        """Remove an object from MinIO and record the operation time.
 
         Args:
-            object_name: Name of the object to delete
-            bucket: Bucket name
+            object_name: Name of the object to delete.
+            bucket: Bucket name.
 
         Returns:
-            bool: True if deletion was successful, False otherwise
+            bool: ``True`` if deletion was successful, ``False`` otherwise.
         """
         try:
             self.client.remove_object(bucket_name=bucket, object_name=object_name)
@@ -351,14 +384,14 @@ class MinioStorage:
             return False
 
     def list_files(self, bucket, prefix=None):
-        """List all files in a bucket with optional prefix with timing metrics.
+        """List objects in a bucket and record how long the listing took.
 
         Args:
-            bucket: Bucket name
-            prefix: Optional prefix filter
+            bucket: Bucket name.
+            prefix: Optional prefix filter.
 
         Returns:
-            list: List of object names
+            list: List of object names.
         """
         start_time = time.time()
         try:
@@ -390,14 +423,14 @@ class MinioStorage:
             return []
 
     def file_exists(self, object_name, bucket):
-        """Check if a file exists in MinIO with timing metrics.
+        """Check if a file exists in MinIO by attempting to stat it.
 
         Args:
-            object_name: Name of the object
-            bucket: Bucket name
+            object_name: Name of the object.
+            bucket: Bucket name.
 
         Returns:
-            bool: True if file exists, False otherwise
+            bool: ``True`` if file exists, ``False`` otherwise.
         """
         try:
             self.client.stat_object(bucket_name=bucket, object_name=object_name)
