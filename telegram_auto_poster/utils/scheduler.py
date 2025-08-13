@@ -23,9 +23,7 @@ def find_next_available_slot(
         if quiet_start < quiet_end:
             next_slot = next_slot.replace(hour=quiet_end)
         elif next_slot.hour >= quiet_start:
-            next_slot = (next_slot + datetime.timedelta(days=1)).replace(
-                hour=quiet_end
-            )
+            next_slot = (next_slot + datetime.timedelta(days=1)).replace(hour=quiet_end)
         else:
             next_slot = next_slot.replace(hour=quiet_end)
 
