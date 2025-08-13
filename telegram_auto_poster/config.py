@@ -1,3 +1,5 @@
+"""Configuration helpers for the Telegram meme autoposter."""
+
 import configparser
 import os
 
@@ -8,7 +10,18 @@ REQUIRED_FIELDS = {
 }
 
 
-def load_config():
+def load_config() -> dict:
+    """Read ``config.ini`` and return a dictionary of settings.
+
+    The function validates that all required sections and fields are present and
+    converts certain values to the appropriate types.
+
+    Returns:
+        dict: Parsed configuration mapping.
+
+    Raises:
+        RuntimeError: If required sections or values are missing or invalid.
+    """
     config = configparser.ConfigParser()
     config_path = os.getenv("CONFIG_PATH", "config.ini")
     config.read(config_path)

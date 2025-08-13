@@ -8,11 +8,13 @@ Valkey = None
 _redis_client = None
 
 
-def get_redis_client():
+def get_redis_client() -> "Valkey":
+    """Return a singleton instance of the Valkey (Redis) client.
+
+    Returns:
+        Valkey: Connected Valkey client instance.
     """
-    Initializes and returns the Valkey client instance.
-    Uses a global variable to ensure it's a singleton.
-    """
+
     global _redis_client
     if _redis_client is None:
         global Valkey
@@ -38,33 +40,58 @@ def get_redis_client():
 
 
 def _redis_prefix() -> str:
-    """Return the Redis key prefix, defaulting to project name."""
+    """Return the Redis key prefix, defaulting to the project name."""
     return os.getenv("REDIS_PREFIX", "telegram_auto_poster")
 
 
 def _redis_key(scope: str, name: str) -> str:
+    """Compose a Redis key using the global prefix, ``scope`` and ``name``.
+
+    Args:
+        scope: Namespace for the counter (e.g. ``"daily"``).
+        name: Metric or object name.
+
+    Returns:
+        str: Combined key.
+    """
     prefix = _redis_prefix()
     return f"{prefix}:{scope}:{name}" if prefix else f"{scope}:{name}"
 
 
 def _redis_meta_key() -> str:
+    """Return the key used for storing metadata such as last reset time.
+
+    Returns:
+        str: Metadata key name.
+    """
     prefix = _redis_prefix()
     return f"{prefix}:daily_last_reset" if prefix else "daily_last_reset"
 
 
-def add_scheduled_post(scheduled_time: int, file_path: str):
-    """Adds a post to the scheduled list."""
+def add_scheduled_post(scheduled_time: int, file_path: str) -> None:
+    """Add a post to the sorted set of scheduled posts.
+
+    Args:
+        scheduled_time: Unix timestamp when the post should be published.
+        file_path: Path identifier for the media item.
+    """
     client = get_redis_client()
     key = _redis_key("scheduled_posts", "schedule")
     client.zadd(key, {file_path: scheduled_time})
 
 
-def get_scheduled_posts(min_score: int = 0, max_score: int | None = None):
-    """
-    Retrieve scheduled posts by score (Unix timestamp).
+def get_scheduled_posts(
+    min_score: int = 0, max_score: int | None = None
+) -> list[tuple[str, float]]:
+    """Retrieve scheduled posts by score (Unix timestamp).
 
-    - When called without arguments, returns all items (score >= 0).
-    - When `max_score` is provided, returns items with score <= `max_score`.
+    Args:
+        min_score: Minimum score (timestamp) to include.
+        max_score: Maximum score (timestamp) to include. ``None`` means no
+            upper bound.
+
+    Returns:
+        list[tuple[str, float]]: List of ``(file_path, timestamp)`` pairs.
     """
     client = get_redis_client()
     key = _redis_key("scheduled_posts", "schedule")
@@ -75,8 +102,12 @@ def get_scheduled_posts(min_score: int = 0, max_score: int | None = None):
     return client.zrangebyscore(key, min_bound, max_bound, withscores=True)
 
 
-def remove_scheduled_post(file_path: str):
-    """Removes a post from the schedule."""
+def remove_scheduled_post(file_path: str) -> None:
+    """Remove a post from the schedule.
+
+    Args:
+        file_path: Path identifier of the media to remove.
+    """
     client = get_redis_client()
     key = _redis_key("scheduled_posts", "schedule")
     client.zrem(key, file_path)

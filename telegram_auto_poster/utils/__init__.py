@@ -1,7 +1,7 @@
 import asyncio
 import os
 import tempfile
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from loguru import logger
 from telegram.error import BadRequest, NetworkError, TimedOut
@@ -17,33 +17,36 @@ storage_client = storage_module.storage
 
 
 class MinioError(Exception):
-    """Exception raised for errors in MinIO operations"""
+    """Raised when a MinIO storage operation fails."""
 
     pass
 
 
 class MediaError(Exception):
-    """Exception raised for errors in media processing"""
+    """Raised when processing an uploaded piece of media fails."""
 
     pass
 
 
 class TelegramMediaError(Exception):
-    """Exception raised for errors when sending media to Telegram"""
+    """Raised when sending media to Telegram results in an error."""
 
     pass
 
 
 def extract_filename(text: str) -> Optional[str]:
-    """
-    Extract filename from the message text.
+    """Pull a file name from an arbitrary text message.
+
+    The bot often receives captions that contain the original file name on the
+    last line.  This helper tries to extract such a name by scanning the text
+    from bottom to top.
 
     Args:
-        text: Message text that contains a filename
-             (usually in the format "Some text\nfilename.ext")
+        text: Message text that potentially contains a filename (usually in the
+            format ``"Some text\nfilename.ext"``).
 
     Returns:
-        Extracted filename or None if not found
+        Extracted filename or ``None`` if no filename could be determined.
     """
     if not text:
         return None
@@ -64,8 +67,12 @@ def extract_filename(text: str) -> Optional[str]:
     return lines[-1].strip()
 
 
-def cleanup_temp_file(file_path):
-    """Safely remove a temporary file if it exists"""
+def cleanup_temp_file(file_path: str | None) -> None:
+    """Safely remove a temporary file if it exists.
+
+    Args:
+        file_path: Path to the temporary file.
+    """
     if file_path and os.path.exists(file_path):
         try:
             os.unlink(file_path)
@@ -76,16 +83,16 @@ def cleanup_temp_file(file_path):
 async def download_from_minio(
     object_name, bucket, extension=None
 ) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Download a file from MinIO to a temporary file.
+    """Fetch an object from MinIO into a temporary file on disk.
 
     Args:
-        object_name: The name of the object in MinIO
-        bucket: The MinIO bucket to download from
-        extension: Optional file extension to use
+        object_name: The name of the object in MinIO.
+        bucket: The MinIO bucket to download from.
+        extension: Optional file extension to use for the temporary file.
 
     Returns:
-        Tuple of (temp_file_path, mime_type) or (None, None) if download fails
+        Tuple of ``(temp_file_path, mime_type)`` or ``(None, None)`` if the
+        download fails.
     """
     if not object_name or not bucket:
         logger.error(f"Invalid parameters: object_name={object_name}, bucket={bucket}")
@@ -144,7 +151,15 @@ async def download_from_minio(
 
 
 # Helper function to get file extension
-def get_file_extension(filename):
+def get_file_extension(filename: str) -> str:
+    """Return the extension of ``filename`` or ``.unknown`` if absent.
+
+    Args:
+        filename: File name to inspect.
+
+    Returns:
+        str: Extension including the leading dot.
+    """
     _, ext = os.path.splitext(filename)
     return ext if ext else ".unknown"
 
@@ -152,23 +167,22 @@ def get_file_extension(filename):
 # Helper function to send media to Telegram
 async def send_media_to_telegram(
     bot, chat_id, file_path, caption=None, supports_streaming=True
-):
-    """
-    Send media to Telegram based on file extension.
+) -> Any:
+    """Send media to Telegram based on file extension.
 
     Args:
-        bot: The Telegram bot instance
-        chat_id: The chat ID to send to
-        file_path: The path to the media file
-        caption: Optional caption for the media
-        supports_streaming: Whether video streaming is supported
+        bot: The Telegram bot instance.
+        chat_id: Chat ID to send the media to.
+        file_path: Path to the media file.
+        caption: Optional caption for the media.
+        supports_streaming: Whether video streaming is supported.
 
     Returns:
-        The message sent or None if sending fails
+        telegram.Message | None: Message sent on success, otherwise ``None``.
 
     Raises:
-        TelegramMediaError: If there's an issue sending media to Telegram
-        FileNotFoundError: If the file does not exist
+        TelegramMediaError: If there's an issue sending media to Telegram.
+        FileNotFoundError: If the file does not exist.
     """
 
     # Define error constants
