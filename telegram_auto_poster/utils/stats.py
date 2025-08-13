@@ -57,10 +57,25 @@ port = os.getenv("DB_MYSQL_PORT", "3306")
 dbname = os.getenv("DB_MYSQL_NAME")
 DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 
-engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine)
+engine = None
+SessionLocal = lambda: None
 
-Base.metadata.create_all(bind=engine)
+
+class DummyStats:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
+stats = DummyStats()
+
+
+def init_stats():
+    global engine, SessionLocal, stats
+    engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+    SessionLocal = sessionmaker(bind=engine)
+
+    Base.metadata.create_all(bind=engine)
+    stats = MediaStats()
 
 
 class MediaStats:
@@ -514,6 +529,3 @@ class MediaStats:
     def force_save(self):
         """Force commit any pending transactions"""
         self.db.commit()
-
-
-stats = MediaStats()

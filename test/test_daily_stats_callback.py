@@ -1,22 +1,18 @@
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
-import sys
+from unittest.mock import AsyncMock
 
 import pytest
-
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from telegram_auto_poster.bot import commands
 
 
 @pytest.mark.asyncio
-async def test_daily_stats_callback_sends_report(monkeypatch):
+async def test_daily_stats_callback_sends_report(mocker):
     report_text = "report"
-    gen_stats_mock = MagicMock(return_value=report_text)
-    monkeypatch.setattr(commands.stats, "generate_stats_report", gen_stats_mock)
-    reset_mock = MagicMock()
-    monkeypatch.setattr(commands.stats, "reset_daily_stats", reset_mock)
+    gen_stats_mock = mocker.patch.object(
+        commands.stats, "generate_stats_report", return_value=report_text
+    )
+    reset_mock = mocker.patch.object(commands.stats, "reset_daily_stats")
     bot = SimpleNamespace(send_message=AsyncMock())
     context = SimpleNamespace(
         bot=bot,
@@ -29,4 +25,3 @@ async def test_daily_stats_callback_sends_report(monkeypatch):
     )
     gen_stats_mock.assert_called_once_with(reset_daily=False)
     reset_mock.assert_called_once()
-

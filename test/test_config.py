@@ -1,13 +1,8 @@
 from pathlib import Path
-import sys
-import importlib
-
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
 from telegram_auto_poster import config as config_module
-config_module = importlib.reload(config_module)
 
 
 def write_config(path: Path, content: str) -> None:
