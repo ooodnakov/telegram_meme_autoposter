@@ -3,6 +3,7 @@ import datetime
 from loguru import logger
 from telegram import Update
 from telegram.ext import (
+    Application,
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,

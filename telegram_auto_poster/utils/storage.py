@@ -36,6 +36,7 @@ class MinioStorage:
     """
 
     _instance = None
+
     def __new__(cls):
         """Implement the singleton pattern for the storage client."""
         if cls._instance is None:
@@ -49,22 +50,19 @@ class MinioStorage:
             return
 
         try:
-            if client:
-                self.client = client
-            else:
-                # Get MinIO config from environment or config
-                host = os.getenv("MINIO_HOST", "minio")
-                port = os.getenv("MINIO_PORT", "9000")
-                access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-                secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+            # Get MinIO config from environment or config
+            host = os.getenv("MINIO_HOST", "minio")
+            port = os.getenv("MINIO_PORT", "9000")
+            access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+            secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 
-                self.client = Minio(
-                    f"{host}:{port}",
-                    access_key=access_key,
-                    secret_key=secret_key,
-                    secure=False,
-                    region="ru-west",
-                )
+            self.client = Minio(
+                f"{host}:{port}",
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=False,
+                region="ru-west",
+            )
 
             # Store metadata about submissions
             self.submission_metadata = {}

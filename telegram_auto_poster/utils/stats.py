@@ -91,7 +91,10 @@ dbname = os.getenv("DB_MYSQL_NAME")
 DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 
 engine = None
-SessionLocal = lambda: None
+
+
+def SessionLocal():
+    return None
 
 
 class DummyStats:
