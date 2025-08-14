@@ -252,7 +252,7 @@ async def process_photo(
 
         await add_watermark_to_image(
             input_path,
-            f"photos/{processed_name}",
+            processed_name,
             user_metadata=user_metadata,
             media_hash=media_hash,
         )
@@ -303,7 +303,9 @@ async def process_photo(
             await application.bot.send_photo(
                 bot_chat_id,
                 open(temp_path, "rb"),
-                custom_text + "\nNew post found\n" + f"photos/{processed_name}",
+                custom_text
+                + "\nNew post found\n"
+                + f"{PHOTOS_PATH}/{processed_name}",
                 reply_markup=keyboard,
                 read_timeout=60,
                 write_timeout=60,
@@ -402,7 +404,7 @@ async def process_video(
                     video=media_file,
                     caption=custom_text
                     + "\nNew post found\n"
-                    + f"videos/{processed_name}",
+                    + f"{VIDEOS_PATH}/{processed_name}",
                     supports_streaming=True,
                     reply_markup=keyboard,
                     read_timeout=60,

@@ -56,9 +56,8 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     file_name = os.path.basename(file_path)
-    "photo" if file_path.startswith("photos/") else "video"
     file_prefix = (
-        PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+        f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
     )
 
     try:
@@ -83,7 +82,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     file_prefix + file_name, BUCKET_MAIN
                 )
                 try:
-                    if file_path.startswith("photos/"):
+                    if file_path.startswith(f"{PHOTOS_PATH}/"):
                         media_hash = calculate_image_hash(temp_path)
                     else:
                         media_hash = calculate_video_hash(temp_path)
@@ -137,9 +136,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     file_name = os.path.basename(file_path)
-    media_type = "photo" if file_path.startswith("photos/") else "video"
+    media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
     file_prefix = (
-        PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+        f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
     )
 
     try:
@@ -329,9 +328,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     file_name = os.path.basename(file_path)
-    media_type = "photo" if file_path.startswith("photos/") else "video"
+    media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
     file_prefix = (
-        PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+        f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
     )
 
     try:
@@ -440,14 +439,14 @@ async def notok_callback(update, context) -> None:
             return
 
         file_name = os.path.basename(file_path)
-        media_type = "photo" if file_path.startswith("photos/") else "video"
+        media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
 
         await query.message.edit_caption(
             f"Post disapproved with media {file_name}!", reply_markup=None
         )
 
         file_prefix = (
-            PHOTOS_PATH + "/" if file_path.startswith("photos/") else VIDEOS_PATH + "/"
+            f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
         )
         # Get user metadata
         user_metadata = storage.get_submission_metadata(file_name)
