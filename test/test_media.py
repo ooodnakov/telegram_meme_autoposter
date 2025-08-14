@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
+from telegram_auto_poster.utils import MinioError
 
 
 @pytest.fixture
@@ -57,6 +58,18 @@ async def test_add_watermark_to_image(mocker, sample_image):
     assert exif_data["0th"][270] == "t.me/ooodnakov_memes"  # ImageDescription
     assert exif_data["0th"][315] == "t.me/ooodnakov_memes"  # Artist
     assert exif_data["0th"][33432] == "t.me/ooodnakov_memes"  # Copyright
+
+
+@pytest.mark.asyncio
+async def test_add_watermark_to_image_upload_failure(mocker, sample_image):
+    """Ensure an error is raised if upload to MinIO fails."""
+    mock_storage = mocker.patch("telegram_auto_poster.media.photo.storage")
+    mock_storage.get_submission_metadata.return_value = None
+    mock_storage.upload_file.return_value = False
+    mocker.patch("piexif.dump", return_value=b"")
+
+    with pytest.raises(MinioError):
+        await add_watermark_to_image(sample_image, "output.jpg")
 
 
 @pytest.mark.asyncio
@@ -131,3 +144,24 @@ async def test_add_watermark_to_video(mocker, sample_video):
     assert call_kwargs["chat_id"] == 456
     assert call_kwargs["message_id"] == 789
     assert call_kwargs["media_hash"] == "some_hash"
+
+
+@pytest.mark.asyncio
+async def test_add_watermark_to_video_upload_failure(mocker, sample_video):
+    """Ensure an error is raised if upload to MinIO fails."""
+    mock_storage = mocker.patch("telegram_auto_poster.media.video.storage")
+    mock_storage.upload_file.return_value = False
+    mocker.patch(
+        "telegram_auto_poster.media.video._probe_video_size",
+        return_value=(1920, 1080),
+    )
+    mock_ffmpeg = AsyncMock()
+    mock_ffmpeg.communicate = AsyncMock(return_value=(b"", b""))
+    mock_ffmpeg.returncode = 0
+    mocker.patch(
+        "asyncio.create_subprocess_exec",
+        return_value=mock_ffmpeg,
+    )
+
+    with pytest.raises(MinioError):
+        await add_watermark_to_video(sample_video, "output.mp4")

@@ -6,6 +6,7 @@ from telethon import TelegramClient, events, types
 
 from ..bot.handlers import process_photo, process_video
 from ..utils.stats import stats
+
 # Create a global client variable that can be accessed from other modules
 client_instance = None
 

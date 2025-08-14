@@ -281,7 +281,7 @@ async def process_photo(
                 file_found = True
                 break
             logger.warning(
-                f"Attempt {i+1}/{max_retries}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+                f"Attempt {i + 1}/{max_retries}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
             )
             time.sleep(retry_delay)
 
@@ -391,7 +391,7 @@ async def process_video(
                 file_found = True
                 break
             logger.warning(
-                f"Attempt {i+1}/{max_retries}: Processed video not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+                f"Attempt {i + 1}/{max_retries}: Processed video not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
             )
             time.sleep(retry_delay)
 
