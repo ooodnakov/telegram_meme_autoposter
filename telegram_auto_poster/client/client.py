@@ -4,8 +4,8 @@ import os
 from loguru import logger
 from telethon import TelegramClient, events, types
 
+from ..bot.handlers import process_photo, process_video
 from ..utils.stats import stats
-
 # Create a global client variable that can be accessed from other modules
 client_instance = None
 
@@ -63,8 +63,6 @@ class TelegramMemeClient:
         logger.info("TelegramClient started successfully")
 
         # Import process_photo and process_video here to avoid circular imports
-        from ..bot.handlers import process_photo, process_video
-
         # Register event handler for new messages
         @self.client.on(events.NewMessage(chats=self.selected_chats))
         async def handle_new_message(event):

@@ -272,13 +272,27 @@ async def process_photo(
         processing_time = time.time() - start_time
         stats.record_processed("photo", processing_time)
 
-        # Check if processed file exists in MinIO
-        if not storage.file_exists(PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN):
-            logger.error(f"Processed photo not found in MinIO: {processed_name}")
+        # Check if processed file exists in MinIO, with retries for eventual consistency
+        max_retries = 5
+        retry_delay = 1  # seconds
+        file_found = False
+        for i in range(max_retries):
+            if storage.file_exists(PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN):
+                file_found = True
+                break
+            logger.warning(
+                f"Attempt {i+1}/{max_retries}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+            )
+            time.sleep(retry_delay)
+
+        if not file_found:
+            logger.error(
+                f"Processed photo not found in MinIO after {max_retries} retries: {processed_name}"
+            )
             stats.record_error(
                 "processing", f"Processed photo not found: {processed_name}"
             )
-            return
+            raise MinioError(f"Processed photo not found in MinIO: {processed_name}")
 
         keyboard = InlineKeyboardMarkup(
             [
@@ -368,13 +382,27 @@ async def process_video(
         processing_time = time.time() - start_time
         stats.record_processed("video", processing_time)
 
-        # Check if processed file exists in MinIO
-        if not storage.file_exists(VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN):
-            logger.error(f"Processed video not found in MinIO: {processed_name}")
+        # Check if processed file exists in MinIO, with retries for eventual consistency
+        max_retries = 5
+        retry_delay = 1  # seconds
+        file_found = False
+        for i in range(max_retries):
+            if storage.file_exists(VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN):
+                file_found = True
+                break
+            logger.warning(
+                f"Attempt {i+1}/{max_retries}: Processed video not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+            )
+            time.sleep(retry_delay)
+
+        if not file_found:
+            logger.error(
+                f"Processed video not found in MinIO after {max_retries} retries: {processed_name}"
+            )
             stats.record_error(
                 "processing", f"Processed video not found: {processed_name}"
             )
-            return
+            raise MinioError(f"Processed video not found in MinIO: {processed_name}")
 
         keyboard = InlineKeyboardMarkup(
             [
