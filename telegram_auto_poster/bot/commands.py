@@ -13,6 +13,7 @@ from telegram_auto_poster.config import (
     DOWNLOADS_PATH,
     PHOTOS_PATH,
     VIDEOS_PATH,
+    SCHEDULED_PATH
 )
 from telegram_auto_poster.utils import (
     MinioError,
@@ -386,7 +387,7 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             temp_path = None
             try:
                 # Download from MinIO
-                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+                temp_path, _ = await download_from_minio(SCHEDULED_PATH+ "/" + file_path, BUCKET_MAIN)
 
                 # Send to channel without caption, enabling streaming for videos
                 await send_media_to_telegram(
@@ -401,7 +402,7 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
 
                 # Clean up
-                storage.delete_file(file_path, BUCKET_MAIN)
+                storage.delete_file(SCHEDULED_PATH + "/" + file_path, BUCKET_MAIN)
                 db.remove_scheduled_post(file_path)
 
                 logger.info(f"Successfully posted scheduled media: {file_path}")

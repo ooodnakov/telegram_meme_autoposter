@@ -13,6 +13,7 @@ from telegram_auto_poster.bot.handlers import (
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     PHOTOS_PATH,
+    SCHEDULED_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils import (
@@ -95,7 +96,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             logger.warning(f"Failed to add approved hash for {file_name}: {_e}")
 
         # 3. Move file in MinIO
-        new_object_name = f"scheduled/{file_name}"
+        new_object_name = SCHEDULED_PATH + "/" + file_name
         # Copy object within the same bucket using proper CopySource
         source = CopySource(BUCKET_MAIN, f"{file_prefix}{file_name}")
         storage.client.copy_object(

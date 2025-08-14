@@ -88,4 +88,5 @@ def load_config() -> dict:
 BUCKET_MAIN = "telegram-auto-poster"
 PHOTOS_PATH = "photos"
 VIDEOS_PATH = "videos"
+SCHEDULED_PATH = "scheduled"
 DOWNLOADS_PATH = "downloads"
