@@ -12,9 +12,8 @@ from telegram_auto_poster.config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
-from telegram_auto_poster.utils.timezone import now_utc
-
 from telegram_auto_poster.utils.stats import stats
+from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from environment variables
 MINIO_HOST = os.environ.get("MINIO_HOST", "localhost")

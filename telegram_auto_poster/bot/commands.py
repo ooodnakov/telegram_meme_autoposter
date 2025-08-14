@@ -12,8 +12,8 @@ from telegram_auto_poster.config import (
     BUCKET_MAIN,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
+    SCHEDULED_PATH,
     VIDEOS_PATH,
-    SCHEDULED_PATH
 )
 from telegram_auto_poster.utils import (
     MinioError,
@@ -387,7 +387,9 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             temp_path = None
             try:
                 # Download from MinIO
-                temp_path, _ = await download_from_minio(SCHEDULED_PATH+ "/" + file_path, BUCKET_MAIN)
+                temp_path, _ = await download_from_minio(
+                    SCHEDULED_PATH + "/" + file_path, BUCKET_MAIN
+                )
 
                 # Send to channel without caption, enabling streaming for videos
                 await send_media_to_telegram(

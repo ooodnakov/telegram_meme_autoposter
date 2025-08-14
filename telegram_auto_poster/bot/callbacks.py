@@ -30,6 +30,7 @@ from telegram_auto_poster.utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
 )
+from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import (
@@ -38,7 +39,6 @@ from telegram_auto_poster.utils.timezone import (
     format_display,
     now_utc,
 )
-from telegram_auto_poster.utils.scheduler import find_next_available_slot
 
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

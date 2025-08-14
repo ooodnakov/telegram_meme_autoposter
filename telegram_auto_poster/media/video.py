@@ -7,8 +7,9 @@ from pathlib import Path
 
 from loguru import logger
 
-from ..config import BUCKET_MAIN, VIDEOS_PATH
 from telegram_auto_poster.utils.storage import storage
+
+from ..config import BUCKET_MAIN, VIDEOS_PATH
 
 
 async def _probe_video_size(path: str) -> tuple[int, int]:
