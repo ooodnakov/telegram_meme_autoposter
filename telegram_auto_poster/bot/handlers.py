@@ -303,9 +303,7 @@ async def process_photo(
             await application.bot.send_photo(
                 bot_chat_id,
                 open(temp_path, "rb"),
-                custom_text
-                + "\nNew post found\n"
-                + f"{PHOTOS_PATH}/{processed_name}",
+                custom_text + "\nNew post found\n" + f"{PHOTOS_PATH}/{processed_name}",
                 reply_markup=keyboard,
                 read_timeout=60,
                 write_timeout=60,

@@ -5,13 +5,13 @@ from typing import Any, Optional, Tuple
 
 from loguru import logger
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram_auto_poster.config import PHOTOS_PATH, VIDEOS_PATH
 
 # Import stats and storage modules but expose their singletons under distinct
 # names so the submodules remain importable as
 # ``telegram_auto_poster.utils.stats`` and ``telegram_auto_poster.utils.storage``.
 import telegram_auto_poster.utils.stats as stats_module
 import telegram_auto_poster.utils.storage as storage_module
+from telegram_auto_poster.config import PHOTOS_PATH, VIDEOS_PATH
 
 stats_client = stats_module.stats
 storage_client = storage_module.storage
@@ -62,7 +62,8 @@ def extract_filename(text: str) -> Optional[str]:
     video_prefix = f"{VIDEOS_PATH}/"
     for line in reversed(lines):
         if any(
-            path_prefix in line for path_prefix in [photo_prefix, video_prefix, "downloaded_"]
+            path_prefix in line
+            for path_prefix in [photo_prefix, video_prefix, "downloaded_"]
         ):
             return line.strip()
 

@@ -57,7 +57,9 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     file_name = os.path.basename(file_path)
     file_prefix = (
-        f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
+        f"{PHOTOS_PATH}/"
+        if file_path.startswith(f"{PHOTOS_PATH}/")
+        else f"{VIDEOS_PATH}/"
     )
 
     try:
@@ -138,7 +140,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     file_name = os.path.basename(file_path)
     media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
     file_prefix = (
-        f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
+        f"{PHOTOS_PATH}/"
+        if file_path.startswith(f"{PHOTOS_PATH}/")
+        else f"{VIDEOS_PATH}/"
     )
 
     try:
@@ -330,7 +334,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     file_name = os.path.basename(file_path)
     media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
     file_prefix = (
-        f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
+        f"{PHOTOS_PATH}/"
+        if file_path.startswith(f"{PHOTOS_PATH}/")
+        else f"{VIDEOS_PATH}/"
     )
 
     try:
@@ -446,7 +452,9 @@ async def notok_callback(update, context) -> None:
         )
 
         file_prefix = (
-            f"{PHOTOS_PATH}/" if file_path.startswith(f"{PHOTOS_PATH}/") else f"{VIDEOS_PATH}/"
+            f"{PHOTOS_PATH}/"
+            if file_path.startswith(f"{PHOTOS_PATH}/")
+            else f"{VIDEOS_PATH}/"
         )
         # Get user metadata
         user_metadata = storage.get_submission_metadata(file_name)
