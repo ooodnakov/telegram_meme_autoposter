@@ -7,6 +7,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from telegram_auto_poster.utils import MinioError
 from telegram_auto_poster.utils.storage import storage
 
 from ..config import BUCKET_MAIN, VIDEOS_PATH
@@ -121,7 +122,7 @@ async def add_watermark_to_video(
         if not meta:
             original_name = os.path.basename(input_path)
             meta = storage.get_submission_metadata(original_name)
-        storage.upload_file(
+        uploaded = storage.upload_file(
             output_path,
             BUCKET_MAIN,
             VIDEOS_PATH + "/" + output_object,
@@ -129,6 +130,13 @@ async def add_watermark_to_video(
             chat_id=meta.get("chat_id") if meta else None,
             message_id=meta.get("message_id") if meta else None,
             media_hash=media_hash,
+        )
+        if not uploaded:
+            raise MinioError(
+                f"Failed to upload processed video to MinIO: {output_object}"
+            )
+        logger.debug(
+            f"Uploaded processed video to MinIO: {BUCKET_MAIN}/{VIDEOS_PATH}/{output_object}"
         )
 
         # The original local file is a temporary file and will be cleaned up

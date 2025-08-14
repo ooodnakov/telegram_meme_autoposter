@@ -109,6 +109,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         # Generate statistics report
         report = stats.generate_stats_report()
+        if not report or not report.strip():
+            report = "No statistics available."
         await update.message.reply_text(report, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error generating stats report: {e}")
@@ -130,6 +132,8 @@ async def reset_stats_command(
     try:
         # Reset daily statistics
         result = stats.reset_daily_stats()
+        if not result or not result.strip():
+            result = "Daily statistics have been reset."
         await update.message.reply_text(result)
     except Exception as e:
         logger.error(f"Error resetting stats: {e}")

@@ -171,6 +171,27 @@ async def test_stats_command(mocker):
 
 
 @pytest.mark.asyncio
+async def test_stats_command_empty_report(mocker):
+    """Fallback message is sent when report is empty."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.check_admin_rights", return_value=True
+    )
+    mock_stats = mocker.patch("telegram_auto_poster.bot.commands.stats")
+    mock_stats.generate_stats_report.return_value = ""
+
+    await commands.stats_command(update, context)
+
+    update.message.reply_text.assert_awaited_once_with(
+        "No statistics available.", parse_mode="HTML"
+    )
+
+
+@pytest.mark.asyncio
 async def test_reset_stats_command(mocker):
     """Test the reset_stats command."""
     update = SimpleNamespace(
@@ -188,6 +209,27 @@ async def test_reset_stats_command(mocker):
 
     mock_stats.reset_daily_stats.assert_called_once()
     update.message.reply_text.assert_awaited_once_with("reset")
+
+
+@pytest.mark.asyncio
+async def test_reset_stats_command_empty(mocker):
+    """Fallback message is sent when reset response is empty."""
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.check_admin_rights", return_value=True
+    )
+    mock_stats = mocker.patch("telegram_auto_poster.bot.commands.stats")
+    mock_stats.reset_daily_stats.return_value = ""
+
+    await commands.reset_stats_command(update, context)
+
+    update.message.reply_text.assert_awaited_once_with(
+        "Daily statistics have been reset."
+    )
 
 
 @pytest.mark.asyncio
