@@ -95,25 +95,14 @@ dbname = os.getenv("DB_MYSQL_NAME")
 DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 
 engine = None
-
-
-def SessionLocal():
-    return None
-
-
-class DummyStats:
-    def __getattr__(self, name):
-        return lambda *args, **kwargs: None
-
-
-stats = DummyStats()
+SessionLocal = sessionmaker()
+stats = None
 
 
 def init_stats():
     global engine, SessionLocal, stats
     engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
     SessionLocal = sessionmaker(bind=engine)
-
     Base.metadata.create_all(bind=engine)
     stats = MediaStats()
 
