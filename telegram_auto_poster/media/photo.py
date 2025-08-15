@@ -10,7 +10,7 @@ from PIL.ImageFile import ImageFile
 from telegram_auto_poster.utils import MinioError
 from telegram_auto_poster.utils.storage import storage
 
-from ..config import BUCKET_MAIN, PHOTOS_PATH
+from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
 
 
 async def add_watermark_to_image(

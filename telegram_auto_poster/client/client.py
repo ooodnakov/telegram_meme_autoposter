@@ -4,8 +4,8 @@ import os
 from loguru import logger
 from telethon import TelegramClient, events, types
 
-from ..bot.handlers import process_photo, process_video
-from ..utils.stats import stats
+from telegram_auto_poster.bot.handlers import process_photo, process_video
+from telegram_auto_poster.utils.stats import stats
 
 # Create a global client variable that can be accessed from other modules
 client_instance = None
