@@ -2,12 +2,12 @@ import asyncio
 import signal
 from pathlib import Path
 
-from .bot.bot import TelegramMemeBot
-from .client.client import TelegramMemeClient
-from .config import load_config
-from .utils.logger_setup import setup_logger
-from .utils.stats import init_stats, stats
-from .utils.storage import init_storage
+from telegram_auto_poster.bot.bot import TelegramMemeBot
+from telegram_auto_poster.client.client import TelegramMemeClient
+from telegram_auto_poster.config import load_config
+from telegram_auto_poster.utils.logger_setup import setup_logger
+from telegram_auto_poster.utils.stats import init_stats, stats
+from telegram_auto_poster.utils.storage import init_storage
 
 # Setup logger
 logger = setup_logger()

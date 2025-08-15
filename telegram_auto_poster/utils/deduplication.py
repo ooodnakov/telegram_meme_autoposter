@@ -4,7 +4,7 @@ import imagehash
 from loguru import logger
 from PIL import Image
 
-from .db import get_redis_client
+from telegram_auto_poster.utils.db import get_redis_client
 
 DEDUPLICATION_SET_KEY = (
     "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
