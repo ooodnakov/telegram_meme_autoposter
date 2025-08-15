@@ -6,13 +6,13 @@ from loguru import logger
 from minio import Minio
 from minio.error import MinioException, S3Error
 
+import telegram_auto_poster.utils.stats as stats_module
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
-from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from environment variables
@@ -77,7 +77,7 @@ class MinioStorage:
             self._initialized = True
         except Exception as e:
             logger.error(f"Error initializing MinIO client: {e}")
-            stats.record_error("storage", f"Failed to initialize MinIO client: {e}")
+            _stats_record_error("storage", f"Failed to initialize MinIO client: {e}")
             raise
 
     def _ensure_bucket_exists(self, bucket_name: str) -> None:
@@ -92,7 +92,9 @@ class MinioStorage:
                 logger.info(f"Created new bucket: {bucket_name}")
         except Exception as e:
             logger.error(f"Error creating bucket {bucket_name}: {e}")
-            stats.record_error("storage", f"Failed to create bucket {bucket_name}: {e}")
+            _stats_record_error(
+                "storage", f"Failed to create bucket {bucket_name}: {e}"
+            )
             raise
 
     def store_submission_metadata(
@@ -272,15 +274,15 @@ class MinioStorage:
                 )
 
             duration = time.time() - start_time
-            stats.record_storage_operation("upload", duration)
+            _stats_record_operation("upload", duration)
             return True
         except MinioException as e:
             logger.error(f"MinIO error uploading {file_path}: {e}")
-            stats.record_error("storage", f"Failed to upload {file_path}: {e}")
+            _stats_record_error("storage", f"Failed to upload {file_path}: {e}")
             return False
         except Exception as e:
             logger.error(f"Error uploading {file_path}: {e}")
-            stats.record_error(
+            _stats_record_error(
                 "storage", f"Unexpected error uploading {file_path}: {e}"
             )
             return False
@@ -313,11 +315,11 @@ class MinioStorage:
             logger.debug(f"Downloaded {bucket}/{object_name} to {file_path}")
 
             duration = time.time() - start_time
-            stats.record_storage_operation("download", duration)
+            _stats_record_operation("download", duration)
             return True
         except MinioException as e:
             logger.error(f"MinIO error downloading {bucket}/{object_name}: {e}")
-            stats.record_error(
+            _stats_record_error(
                 "storage", f"Failed to download {bucket}/{object_name}: {e}"
             )
             if temp_file and os.path.exists(file_path):
@@ -327,7 +329,7 @@ class MinioStorage:
             logger.error(f"Error downloading {bucket}/{object_name}: {e}")
             if temp_file and os.path.exists(file_path):
                 os.unlink(file_path)
-            stats.record_error(
+            _stats_record_error(
                 "storage", f"Unexpected error downloading {bucket}/{object_name}: {e}"
             )
             return False
@@ -372,13 +374,13 @@ class MinioStorage:
             return True
         except MinioException as e:
             logger.error(f"MinIO error deleting {bucket}/{object_name}: {e}")
-            stats.record_error(
+            _stats_record_error(
                 "storage", f"Failed to delete {bucket}/{object_name}: {e}"
             )
             return False
         except Exception as e:
             logger.error(f"Error deleting {bucket}/{object_name}: {e}")
-            stats.record_error(
+            _stats_record_error(
                 "storage", f"Unexpected error deleting {bucket}/{object_name}: {e}"
             )
             return False
@@ -403,20 +405,20 @@ class MinioStorage:
             )
 
             duration = time.time() - start_time
-            stats.record_storage_operation("list", duration)
+            _stats_record_operation("list", duration)
             return objects
         except MinioException as e:
             logger.error(
                 f"MinIO error listing objects in {bucket} with prefix {prefix}: {e}"
             )
-            stats.record_error(
+            _stats_record_error(
                 "storage",
                 f"Failed to list objects in {bucket} with prefix {prefix}: {e}",
             )
             return []
         except Exception as e:
             logger.error(f"Error listing objects in {bucket} with prefix {prefix}: {e}")
-            stats.record_error(
+            _stats_record_error(
                 "storage",
                 f"Unexpected error listing objects in {bucket} with prefix {prefix}: {e}",
             )
@@ -439,7 +441,7 @@ class MinioStorage:
             return False
         except Exception as e:
             logger.error(f"Error checking if {bucket}/{object_name} exists: {e}")
-            stats.record_error(
+            _stats_record_error(
                 "storage",
                 f"Unexpected error checking if {bucket}/{object_name} exists: {e}",
             )
@@ -447,12 +449,17 @@ class MinioStorage:
 
 
 # Create a singleton instance
-class DummyStorage:
-    def __getattr__(self, name):
-        return lambda *args, **kwargs: None
+storage = None
 
 
-storage = DummyStorage()
+def _stats_record_error(*args, **kwargs):
+    if stats_module.stats:
+        stats_module.stats.record_error(*args, **kwargs)
+
+
+def _stats_record_operation(*args, **kwargs):
+    if stats_module.stats:
+        stats_module.stats.record_storage_operation(*args, **kwargs)
 
 
 def init_storage():

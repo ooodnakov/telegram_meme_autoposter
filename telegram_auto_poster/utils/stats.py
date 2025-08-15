@@ -15,13 +15,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from telegram_auto_poster.utils.timezone import UTC, now_utc
-
 from telegram_auto_poster.utils.db import (
     _redis_key,
     _redis_meta_key,
     get_redis_client,
 )
+from telegram_auto_poster.utils.timezone import UTC, now_utc
 
 Base = declarative_base()
 
@@ -95,25 +94,14 @@ dbname = os.getenv("DB_MYSQL_NAME")
 DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 
 engine = None
-
-
-def SessionLocal():
-    return None
-
-
-class DummyStats:
-    def __getattr__(self, name):
-        return lambda *args, **kwargs: None
-
-
-stats = DummyStats()
+SessionLocal = sessionmaker()
+stats = None
 
 
 def init_stats():
     global engine, SessionLocal, stats
     engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
     SessionLocal = sessionmaker(bind=engine)
-
     Base.metadata.create_all(bind=engine)
     stats = MediaStats()
 
