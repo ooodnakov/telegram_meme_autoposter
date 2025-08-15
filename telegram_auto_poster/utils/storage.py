@@ -450,20 +450,18 @@ class MinioStorage:
 
 # Create a singleton instance
 storage = None
-stats = stats_module.stats
 
 
 def _stats_record_error(*args, **kwargs):
-    if stats:
-        stats.record_error(*args, **kwargs)
+    if stats_module.stats:
+        stats_module.stats.record_error(*args, **kwargs)
 
 
 def _stats_record_operation(*args, **kwargs):
-    if stats:
-        stats.record_storage_operation(*args, **kwargs)
+    if stats_module.stats:
+        stats_module.stats.record_storage_operation(*args, **kwargs)
 
 
 def init_storage():
-    global storage, stats
+    global storage
     storage = MinioStorage()
-    stats = stats_module.stats

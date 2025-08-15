@@ -11,7 +11,6 @@ def mock_dependencies(mocker):
 
     stats_targets = [
         "telegram_auto_poster.utils.stats.stats",
-        "telegram_auto_poster.utils.storage.stats",
         "telegram_auto_poster.bot.handlers.stats",
         "telegram_auto_poster.bot.commands.stats",
         "telegram_auto_poster.utils.stats_client",
