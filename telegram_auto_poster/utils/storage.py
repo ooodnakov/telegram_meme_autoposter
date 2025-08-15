@@ -6,13 +6,13 @@ from loguru import logger
 from minio import Minio
 from minio.error import MinioException, S3Error
 
+import telegram_auto_poster.utils.stats as stats_module
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
-import telegram_auto_poster.utils.stats as stats_module
 from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from environment variables
@@ -92,7 +92,9 @@ class MinioStorage:
                 logger.info(f"Created new bucket: {bucket_name}")
         except Exception as e:
             logger.error(f"Error creating bucket {bucket_name}: {e}")
-            _stats_record_error("storage", f"Failed to create bucket {bucket_name}: {e}")
+            _stats_record_error(
+                "storage", f"Failed to create bucket {bucket_name}: {e}"
+            )
             raise
 
     def store_submission_metadata(

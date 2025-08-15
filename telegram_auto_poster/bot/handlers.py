@@ -10,14 +10,6 @@ from telegram import (
 )
 from telegram.ext import ContextTypes
 
-from telegram_auto_poster.utils import (
-    MediaError,
-    MinioError,
-    TelegramMediaError,
-    cleanup_temp_file,
-    download_from_minio,
-)
-
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     PHOTOS_PATH,
@@ -25,6 +17,13 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
+from telegram_auto_poster.utils import (
+    MediaError,
+    MinioError,
+    TelegramMediaError,
+    cleanup_temp_file,
+    download_from_minio,
+)
 from telegram_auto_poster.utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,

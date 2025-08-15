@@ -15,13 +15,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from telegram_auto_poster.utils.timezone import UTC, now_utc
-
 from telegram_auto_poster.utils.db import (
     _redis_key,
     _redis_meta_key,
     get_redis_client,
 )
+from telegram_auto_poster.utils.timezone import UTC, now_utc
 
 Base = declarative_base()
 

@@ -11,8 +11,6 @@ from telegram.ext import (
     filters,
 )
 
-from telegram_auto_poster.utils.timezone import now_utc
-
 # Import callbacks from callbacks.py
 from telegram_auto_poster.bot.callbacks import (
     notok_callback,
@@ -42,6 +40,7 @@ from telegram_auto_poster.bot.commands import (
 
 # Import media handlers from handlers.py
 from telegram_auto_poster.bot.handlers import handle_media
+from telegram_auto_poster.utils.timezone import now_utc
 
 
 class TelegramMemeBot:
