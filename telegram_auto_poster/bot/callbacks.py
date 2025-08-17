@@ -16,15 +16,15 @@ from telegram_auto_poster.config import (
     SCHEDULED_PATH,
     VIDEOS_PATH,
 )
-from telegram_auto_poster.utils import (
+from telegram_auto_poster.utils.general import (
     MinioError,
     TelegramMediaError,
     cleanup_temp_file,
-    db,
     download_from_minio,
     extract_filename,
     send_media_to_telegram,
 )
+import telegram_auto_poster.utils.db as db
 from telegram_auto_poster.utils.deduplication import (
     add_approved_hash,
     calculate_image_hash,

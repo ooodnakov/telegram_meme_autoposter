@@ -6,15 +6,9 @@ from typing import Any, Optional, Tuple
 from loguru import logger
 from telegram.error import BadRequest, NetworkError, TimedOut
 
-# Import stats and storage modules but expose their singletons under distinct
-# names so the submodules remain importable as
-# ``telegram_auto_poster.utils.stats`` and ``telegram_auto_poster.utils.storage``.
-import telegram_auto_poster.utils.stats as stats_module
-import telegram_auto_poster.utils.storage as storage_module
+from telegram_auto_poster.utils.stats import stats
+from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.config import PHOTOS_PATH, VIDEOS_PATH
-
-stats_client = stats_module.stats
-storage_client = storage_module.storage
 
 
 class MinioError(Exception):
@@ -103,7 +97,7 @@ async def download_from_minio(
         return None, None
 
     try:
-        if not storage_client.file_exists(object_name, bucket):
+        if not storage.file_exists(object_name, bucket):
             logger.warning(f"File {object_name} does not exist in bucket {bucket}")
             raise MinioError(f"File not found: {object_name} in {bucket}")
 
@@ -118,14 +112,14 @@ async def download_from_minio(
             temp_file.close()
         except (IOError, OSError) as e:
             logger.error(f"Failed to create temporary file: {e}")
-            stats_client.record_error(
+            stats.record_error(
                 "processing", f"Failed to create temporary file: {str(e)}"
             )
             raise MinioError(f"Failed to create temporary file: {str(e)}")
 
         try:
             # Download file from MinIO to temp file
-            storage_client.download_file(object_name, bucket, temp_path)
+            storage.download_file(object_name, bucket, temp_path)
             logger.debug(
                 f"Successfully downloaded {object_name} from {bucket} to {temp_path}"
             )
@@ -143,14 +137,14 @@ async def download_from_minio(
         except Exception as e:
             logger.error(f"Error downloading file from MinIO: {e}")
             cleanup_temp_file(temp_path)
-            stats_client.record_error("storage", f"Failed to download file: {str(e)}")
+            stats.record_error("storage", f"Failed to download file: {str(e)}")
             raise MinioError(f"Failed to download file: {str(e)}")
     except MinioError:
         # Re-raise MinioError to be caught by caller
         raise
     except Exception as e:
         logger.error(f"Unexpected error in download_from_minio: {e}")
-        stats_client.record_error("storage", f"Unexpected error: {str(e)}")
+        stats.record_error("storage", f"Unexpected error: {str(e)}")
         raise MinioError(f"Unexpected error: {str(e)}")
 
 
@@ -195,7 +189,7 @@ async def send_media_to_telegram(
 
     if not os.path.exists(file_path):
         logger.error(f"File {file_path} does not exist")
-        stats_client.record_error("telegram", f"File {file_path} does not exist")
+        stats.record_error("telegram", f"File {file_path} does not exist")
         raise FileNotFoundError(f"File {file_path} does not exist")
 
     try:
@@ -238,7 +232,7 @@ async def send_media_to_telegram(
                         )
                 else:
                     logger.warning(f"Unsupported file type {ext}, sending as document")
-                    stats_client.record_error(
+                    stats.record_error(
                         "processing", f"{ERROR_FILE_NOT_SUPPORTED}: {ext}"
                     )
                     with open(file_path, "rb") as media_file:
@@ -257,14 +251,12 @@ async def send_media_to_telegram(
                 logger.warning(
                     f"Network error, retrying in {wait_time}s (attempt {retry_count}/{max_retries}): {e}"
                 )
-                stats_client.record_error(
-                    "telegram", f"Network error (retrying): {str(e)}"
-                )
+                stats.record_error("telegram", f"Network error (retrying): {str(e)}")
                 await asyncio.sleep(wait_time)
             except BadRequest as e:
                 # Bad request errors are usually not retryable
                 logger.error(f"Bad request error when sending media: {e}")
-                stats_client.record_error(
+                stats.record_error(
                     "telegram", f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}"
                 )
                 raise TelegramMediaError(
@@ -272,13 +264,13 @@ async def send_media_to_telegram(
                 )
             except Exception as e:
                 logger.error(f"Unexpected error in send_media_to_telegram: {e}")
-                stats_client.record_error("telegram", f"Unexpected error: {str(e)}")
+                stats.record_error("telegram", f"Unexpected error: {str(e)}")
                 raise TelegramMediaError(f"Unexpected error: {str(e)}")
 
         # If we've exhausted retries
         if last_error:
             logger.error(f"Failed to send media after {max_retries} retries")
-            stats_client.record_error(
+            stats.record_error(
                 "telegram",
                 f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}",
             )
@@ -291,5 +283,5 @@ async def send_media_to_telegram(
         raise
     except Exception as e:
         logger.error(f"Unexpected error in send_media_to_telegram: {e}")
-        stats_client.record_error("telegram", f"Unexpected error: {str(e)}")
+        stats.record_error("telegram", f"Unexpected error: {str(e)}")
         raise TelegramMediaError(f"Unexpected error: {str(e)}")

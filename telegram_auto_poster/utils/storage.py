@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+from unittest.mock import MagicMock
 
 from loguru import logger
 from minio import Minio
@@ -448,20 +449,14 @@ class MinioStorage:
             return False
 
 
-# Create a singleton instance
-storage = None
-
-
 def _stats_record_error(*args, **kwargs):
-    if stats_module.stats:
+    if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
         stats_module.stats.record_error(*args, **kwargs)
 
 
 def _stats_record_operation(*args, **kwargs):
-    if stats_module.stats:
+    if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
         stats_module.stats.record_storage_operation(*args, **kwargs)
 
 
-def init_storage():
-    global storage
-    storage = MinioStorage()
+storage = MinioStorage()

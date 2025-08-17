@@ -93,18 +93,6 @@ port = os.getenv("DB_MYSQL_PORT", "3306")
 dbname = os.getenv("DB_MYSQL_NAME")
 DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 
-engine = None
-SessionLocal = sessionmaker()
-stats = None
-
-
-def init_stats():
-    global engine, SessionLocal, stats
-    engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
-    SessionLocal = sessionmaker(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    stats = MediaStats()
-
 
 class MediaStats:
     """High level interface for collecting and retrieving statistics.
@@ -121,6 +109,7 @@ class MediaStats:
     _instance = None
 
     def __new__(cls):
+        print("Creating a new MediaStats instance")
         if cls._instance is None:
             cls._instance = super(MediaStats, cls).__new__(cls)
             cls._instance.db = SessionLocal()
@@ -712,3 +701,9 @@ class MediaStats:
     def force_save(self) -> None:
         """Persist any outstanding database transactions."""
         self.db.commit()
+
+
+engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+SessionLocal = sessionmaker(bind=engine)
+Base.metadata.create_all(bind=engine)
+stats = MediaStats()

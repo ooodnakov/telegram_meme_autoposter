@@ -36,6 +36,7 @@ dependencies = [
     "valkey==6.1.0",
     "imagehash==4.3.1",
     "watchfiles",
+    "pytest-mock>=3.14.1",
 ]
 
 [dependency-groups]

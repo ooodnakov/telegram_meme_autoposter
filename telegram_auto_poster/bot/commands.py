@@ -15,14 +15,16 @@ from telegram_auto_poster.config import (
     SCHEDULED_PATH,
     VIDEOS_PATH,
 )
-from telegram_auto_poster.utils import (
+from telegram_auto_poster.utils.general import (
     MinioError,
     TelegramMediaError,
     cleanup_temp_file,
-    db,
     download_from_minio,
     send_media_to_telegram,
 )
+
+import telegram_auto_poster.utils.db as db
+
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import DISPLAY_TZ, UTC, format_display, now_utc

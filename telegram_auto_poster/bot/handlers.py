@@ -17,7 +17,7 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
-from telegram_auto_poster.utils import (
+from telegram_auto_poster.utils.general import (
     MediaError,
     MinioError,
     TelegramMediaError,

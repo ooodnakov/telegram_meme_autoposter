@@ -6,8 +6,7 @@ from telegram_auto_poster.bot.bot import TelegramMemeBot
 from telegram_auto_poster.client.client import TelegramMemeClient
 from telegram_auto_poster.config import load_config
 from telegram_auto_poster.utils.logger_setup import setup_logger
-from telegram_auto_poster.utils.stats import init_stats, stats
-from telegram_auto_poster.utils.storage import init_storage
+from telegram_auto_poster.utils.stats import stats
 
 # Setup logger
 logger = setup_logger()
@@ -19,8 +18,8 @@ Path("videos").mkdir(exist_ok=True)
 
 async def main():
     """Main entry point for the Telegram Meme Autoposter."""
-    init_stats()
-    init_storage()
+    # init_stats()
+    # init_storage()
     config = load_config()
     bot = None
     client = None

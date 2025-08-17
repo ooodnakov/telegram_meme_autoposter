@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
-from telegram_auto_poster.utils import MinioError
+from telegram_auto_poster.utils.general import MinioError
 
 
 @pytest.fixture
