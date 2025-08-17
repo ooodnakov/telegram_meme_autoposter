@@ -1,33 +1,13 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+patch("sqlalchemy.create_engine").start()
+patch("valkey.Valkey").start()
+patch("minio.Minio").start()
 
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def mock_dependencies(mocker):
-    """Mock storage and stats singletons used across the project."""
-    stats_mock = MagicMock()
-    storage_mock = MagicMock()
 
-    stats_targets = [
-        "telegram_auto_poster.utils.stats.stats",
-        "telegram_auto_poster.bot.handlers.stats",
-        "telegram_auto_poster.bot.commands.stats",
-        "telegram_auto_poster.utils.stats_client",
-    ]
-    for target in stats_targets:
-        mocker.patch(target, stats_mock)
-
-    storage_targets = [
-        "telegram_auto_poster.utils.storage.storage",
-        "telegram_auto_poster.bot.handlers.storage",
-        "telegram_auto_poster.bot.commands.storage",
-        "telegram_auto_poster.media.photo.storage",
-        "telegram_auto_poster.media.video.storage",
-        "telegram_auto_poster.utils.storage_client",
-    ]
-    for target in storage_targets:
-        mocker.patch(target, storage_mock)
 
 
 

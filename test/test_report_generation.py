@@ -25,13 +25,6 @@ def stats_module(monkeypatch, mocker):
     monkeypatch.setenv("VALKEY_PASS", "redis")
     monkeypatch.setenv("REDIS_PREFIX", "telegram_auto_poster_test")
 
-    if "telegram_auto_poster.utils.stats" in sys.modules:
-        del sys.modules["telegram_auto_poster.utils.stats"]
-    if "telegram_auto_poster.utils.storage" in sys.modules:
-        del sys.modules["telegram_auto_poster.utils.storage"]
-    if "telegram_auto_poster.config" in sys.modules:
-        del sys.modules["telegram_auto_poster.config"]
-
     mocker.patch("minio.Minio")
     import telegram_auto_poster.config
 
@@ -41,13 +34,18 @@ def stats_module(monkeypatch, mocker):
 
     importlib.reload(telegram_auto_poster.utils.storage)
     importlib.reload(telegram_auto_poster.utils.stats)
-    telegram_auto_poster.utils.stats.init_stats()
     yield telegram_auto_poster.utils.stats
 
 
-def test_generate_stats_report_format(stats_module):
+def test_generate_stats_report_format(stats_module, mocker):
     """Test the HTML formatting of the stats report."""
     stats = stats_module.stats
+    mocker.patch.object(stats, 'get_performance_metrics', return_value={
+        'avg_photo_processing_time': 1.0,
+        'avg_video_processing_time': 2.0,
+        'avg_upload_time': 3.0,
+        'avg_download_time': 4.0,
+    })
     # Act
     report = stats.generate_stats_report()
 
