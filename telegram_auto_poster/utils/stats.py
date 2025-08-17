@@ -354,7 +354,7 @@ class MediaStats:
             lambda dt: dt.replace(tzinfo=UTC)
             if dt.tzinfo is None
             else dt.astimezone(UTC)
-        )(datetime.datetime.fromisoformat(meta.value))
+        )(datetime.datetime.fromisoformat(meta.value) if isinstance(meta.value, str) else now_utc())
 
         now = now_utc()
         if reset_if_new_day and last_reset.date() < now.date():
