@@ -68,9 +68,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 2.  **Create a virtual environment and install dependencies**
     ```bash
-    uv venv
-    source .venv/bin/activate
-    uv pip sync
+    uv sync
     ```
 
 3.  **Set up environment variables**
@@ -83,7 +81,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 4.  **Run the application**
     ```bash
-    python -m telegram_auto_poster.main
+    uv run python -m telegram_auto_poster.main
     ```
 
 ## Running with Docker

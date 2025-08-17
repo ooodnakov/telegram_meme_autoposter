@@ -35,7 +35,7 @@ The application is divided into two main components:
 3.  Install the dependencies:
 
     ```bash
-    pip install -r requirements.txt
+    uv sync
     ```
 
 ### Running the Application
@@ -67,7 +67,7 @@ The project uses the `ruff` linter and formatter to enforce a consistent code st
 The project uses `pytest` for testing. The tests are located in the `test/` directory. To run the tests, use the following command:
 
 ```bash
-uv run pytest
+uv run pytest -n auto
 ```
 
 ### Logging
