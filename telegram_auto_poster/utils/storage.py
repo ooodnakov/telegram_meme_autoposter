@@ -3,11 +3,10 @@ import tempfile
 import time
 from unittest.mock import MagicMock
 
+import telegram_auto_poster.utils.stats as stats_module
 from loguru import logger
 from minio import Minio
 from minio.error import MinioException, S3Error
-
-import telegram_auto_poster.utils.stats as stats_module
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     DOWNLOADS_PATH,

@@ -3,7 +3,6 @@ import sys
 import fakeredis
 import valkey
 import pytest
-from unittest.mock import patch
 import sqlalchemy
 
 

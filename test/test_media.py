@@ -1,7 +1,7 @@
 import pytest
 from PIL import Image
 import os
-from unittest.mock import AsyncMock
+from pytest_mock import MockerFixture
 
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
@@ -87,7 +87,7 @@ async def test_probe_video_size(sample_video):
 
 
 @pytest.mark.asyncio
-async def test_add_watermark_to_video_ffmpeg_error(mocker, sample_video):
+async def test_add_watermark_to_video_ffmpeg_error(mocker: MockerFixture, sample_video):
     """Test that an error is raised if ffmpeg fails."""
     mocker.patch("telegram_auto_poster.media.video.storage")
     mocker.patch(
@@ -95,8 +95,8 @@ async def test_add_watermark_to_video_ffmpeg_error(mocker, sample_video):
         return_value=(1920, 1080),
     )
 
-    mock_ffmpeg = AsyncMock()
-    mock_ffmpeg.communicate = AsyncMock(return_value=(b"", b"ffmpeg error"))
+    mock_ffmpeg = mocker.AsyncMock()
+    mock_ffmpeg.communicate = mocker.AsyncMock(return_value=(b"", b"ffmpeg error"))
     mock_ffmpeg.returncode = 1
     mocker.patch(
         "asyncio.create_subprocess_exec",
@@ -108,7 +108,7 @@ async def test_add_watermark_to_video_ffmpeg_error(mocker, sample_video):
 
 
 @pytest.mark.asyncio
-async def test_add_watermark_to_video(mocker, sample_video):
+async def test_add_watermark_to_video(mocker: MockerFixture, sample_video):
     """Test that a watermark is added to a video and uploaded."""
     mock_storage = mocker.patch("telegram_auto_poster.media.video.storage")
     mock_storage.get_submission_metadata.return_value = {
@@ -122,8 +122,8 @@ async def test_add_watermark_to_video(mocker, sample_video):
         return_value=(1920, 1080),
     )
 
-    mock_ffmpeg = AsyncMock()
-    mock_ffmpeg.communicate = AsyncMock(return_value=(b"", b""))
+    mock_ffmpeg = mocker.AsyncMock()
+    mock_ffmpeg.communicate = mocker.AsyncMock(return_value=(b"", b""))
     mock_ffmpeg.returncode = 0
     mocker.patch(
         "asyncio.create_subprocess_exec",
@@ -147,7 +147,7 @@ async def test_add_watermark_to_video(mocker, sample_video):
 
 
 @pytest.mark.asyncio
-async def test_add_watermark_to_video_upload_failure(mocker, sample_video):
+async def test_add_watermark_to_video_upload_failure(mocker: MockerFixture, sample_video):
     """Ensure an error is raised if upload to MinIO fails."""
     mock_storage = mocker.patch("telegram_auto_poster.media.video.storage")
     mock_storage.upload_file.return_value = False
@@ -155,8 +155,8 @@ async def test_add_watermark_to_video_upload_failure(mocker, sample_video):
         "telegram_auto_poster.media.video._probe_video_size",
         return_value=(1920, 1080),
     )
-    mock_ffmpeg = AsyncMock()
-    mock_ffmpeg.communicate = AsyncMock(return_value=(b"", b""))
+    mock_ffmpeg = mocker.AsyncMock()
+    mock_ffmpeg.communicate = mocker.AsyncMock(return_value=(b"", b""))
     mock_ffmpeg.returncode = 0
     mocker.patch(
         "asyncio.create_subprocess_exec",

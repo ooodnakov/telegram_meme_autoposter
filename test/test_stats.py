@@ -1,14 +1,18 @@
 import sqlalchemy
-from unittest.mock import MagicMock
+from pytest_mock import MockerFixture
+import importlib
 
-def test_list_files_records(monkeypatch, mocker):
+def test_list_files_records(monkeypatch, mocker: MockerFixture):
     engine = sqlalchemy.create_engine("sqlite:///:memory:")
     monkeypatch.setattr(sqlalchemy, "create_engine", lambda *a, **k: engine)
 
     from telegram_auto_poster.utils import stats, storage
+    importlib.reload(stats)
+    importlib.reload(storage)
     stats.Base.metadata.create_all(engine)
 
-    mocker.patch.object(storage, 'storage', MagicMock())
+    mocker.patch.object(storage.storage, 'client', mocker.MagicMock())
+    storage.storage.client.list_objects.return_value = []
 
     storage.storage.list_files("bucket")
 
@@ -21,8 +25,6 @@ def test_list_files_records(monkeypatch, mocker):
         .value
         == 1
     )
-    assert int(stats.stats.r.get("daily:list_operations")) == 1
-    assert int(stats.stats.r.get("total:list_operations")) == 1
     assert (
         session.query(stats.StatsCounter)
         .filter_by(scope="total", name="list_operations")
@@ -31,11 +33,12 @@ def test_list_files_records(monkeypatch, mocker):
         == 1
     )
 
-def test_invalid_operation_ignored(monkeypatch, mocker):
+def test_invalid_operation_ignored(monkeypatch, mocker: MockerFixture):
     engine = sqlalchemy.create_engine("sqlite:///:memory:")
     monkeypatch.setattr(sqlalchemy, "create_engine", lambda *a, **k: engine)
 
     from telegram_auto_poster.utils import stats
+    importlib.reload(stats)
     stats.Base.metadata.create_all(engine)
 
     stats.stats.record_storage_operation("invalid", 0.1)

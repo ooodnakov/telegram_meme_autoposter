@@ -1,6 +1,5 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
 from PIL import Image
 from fakeredis import FakeStrictRedis
 from loguru import logger

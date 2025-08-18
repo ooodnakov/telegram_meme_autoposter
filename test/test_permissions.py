@@ -1,16 +1,17 @@
 import pytest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+
+from pytest_mock import MockerFixture
 
 from telegram_auto_poster.bot.permissions import check_admin_rights
 
 
 @pytest.fixture
-def mock_update(mocker):
+def mock_update(mocker: MockerFixture):
     """Fixture to create a mock update object."""
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=123),
-        message=SimpleNamespace(reply_text=AsyncMock()),
+        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
     )
     return update
 

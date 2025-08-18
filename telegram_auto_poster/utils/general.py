@@ -5,10 +5,9 @@ from typing import Any, Optional, Tuple
 
 from loguru import logger
 from telegram.error import BadRequest, NetworkError, TimedOut
-
+from telegram_auto_poster.config import PHOTOS_PATH, VIDEOS_PATH
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.config import PHOTOS_PATH, VIDEOS_PATH
 
 
 class MinioError(Exception):

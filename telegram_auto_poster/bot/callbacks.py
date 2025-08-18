@@ -6,6 +6,7 @@ from minio.commonconfig import CopySource
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+import telegram_auto_poster.utils.db as db
 from telegram_auto_poster.bot.handlers import (
     get_user_friendly_error_message,
     notify_user,
@@ -16,6 +17,11 @@ from telegram_auto_poster.config import (
     SCHEDULED_PATH,
     VIDEOS_PATH,
 )
+from telegram_auto_poster.utils.deduplication import (
+    add_approved_hash,
+    calculate_image_hash,
+    calculate_video_hash,
+)
 from telegram_auto_poster.utils.general import (
     MinioError,
     TelegramMediaError,
@@ -23,12 +29,6 @@ from telegram_auto_poster.utils.general import (
     download_from_minio,
     extract_filename,
     send_media_to_telegram,
-)
-import telegram_auto_poster.utils.db as db
-from telegram_auto_poster.utils.deduplication import (
-    add_approved_hash,
-    calculate_image_hash,
-    calculate_video_hash,
 )
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats

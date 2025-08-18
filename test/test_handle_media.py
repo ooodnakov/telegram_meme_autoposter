@@ -1,21 +1,21 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from telegram_auto_poster.bot import handlers
 
 
 @pytest.fixture
-def mock_update(mocker):
+def mock_update(mocker: MockerFixture):
     """Fixture to create a mock update object."""
     update = SimpleNamespace(
         effective_chat=SimpleNamespace(id=123),
         message=SimpleNamespace(
             photo=None,
             video=None,
-            reply_text=AsyncMock(),
+            reply_text=mocker.AsyncMock(),
         ),
     )
     return update
@@ -26,11 +26,11 @@ def run(coro):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_photo(mocker, mock_update, mock_config):
+async def test_handle_media_photo(mocker: MockerFixture, mock_update, mock_config):
     mock_update.message.photo = [object()]
     context = mocker.MagicMock()
     handle_photo_mock = mocker.patch.object(
-        handlers, "handle_photo", new_callable=AsyncMock
+        handlers, "handle_photo", new_callable=mocker.AsyncMock
     )
 
     await handlers.handle_media(mock_update, context)
@@ -40,11 +40,11 @@ async def test_handle_media_photo(mocker, mock_update, mock_config):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_video(mocker, mock_update, mock_config):
+async def test_handle_media_video(mocker: MockerFixture, mock_update, mock_config):
     mock_update.message.video = object()
     context = mocker.MagicMock()
     handle_video_mock = mocker.patch.object(
-        handlers, "handle_video", new_callable=AsyncMock
+        handlers, "handle_video", new_callable=mocker.AsyncMock
     )
 
     await handlers.handle_media(mock_update, context)
@@ -54,13 +54,13 @@ async def test_handle_media_video(mocker, mock_update, mock_config):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_exception(mocker, mock_update, mock_config):
+async def test_handle_media_exception(mocker: MockerFixture, mock_update, mock_config):
     mock_update.message.photo = [object()]
     context = mocker.MagicMock()
     mocker.patch.object(
         handlers,
         "handle_photo",
-        new_callable=AsyncMock,
+        new_callable=mocker.AsyncMock,
         side_effect=Exception("boom"),
     )
 
