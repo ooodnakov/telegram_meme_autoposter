@@ -6,6 +6,7 @@ from loguru import logger
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+import telegram_auto_poster.utils.db as db
 from telegram_auto_poster.bot.handlers import notify_user
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.config import (
@@ -22,9 +23,6 @@ from telegram_auto_poster.utils.general import (
     download_from_minio,
     send_media_to_telegram,
 )
-
-import telegram_auto_poster.utils.db as db
-
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import DISPLAY_TZ, UTC, format_display, now_utc

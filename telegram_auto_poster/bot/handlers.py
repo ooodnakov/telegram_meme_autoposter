@@ -17,17 +17,17 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
+from telegram_auto_poster.utils.deduplication import (
+    calculate_image_hash,
+    calculate_video_hash,
+    is_duplicate_hash,
+)
 from telegram_auto_poster.utils.general import (
     MediaError,
     MinioError,
     TelegramMediaError,
     cleanup_temp_file,
     download_from_minio,
-)
-from telegram_auto_poster.utils.deduplication import (
-    calculate_image_hash,
-    calculate_video_hash,
-    is_duplicate_hash,
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage

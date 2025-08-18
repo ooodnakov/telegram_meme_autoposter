@@ -14,7 +14,6 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
-
 from telegram_auto_poster.utils.db import (
     _redis_key,
     _redis_meta_key,
@@ -354,7 +353,11 @@ class MediaStats:
             lambda dt: dt.replace(tzinfo=UTC)
             if dt.tzinfo is None
             else dt.astimezone(UTC)
-        )(datetime.datetime.fromisoformat(meta.value) if isinstance(meta.value, str) else now_utc())
+        )(
+            datetime.datetime.fromisoformat(meta.value)
+            if isinstance(meta.value, str)
+            else now_utc()
+        )
 
         now = now_utc()
         if reset_if_new_day and last_reset.date() < now.date():

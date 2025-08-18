@@ -3,7 +3,6 @@ import hashlib
 import imagehash
 from loguru import logger
 from PIL import Image
-
 from telegram_auto_poster.utils.db import get_redis_client
 
 DEDUPLICATION_SET_KEY = (
