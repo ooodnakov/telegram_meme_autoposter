@@ -1,19 +1,19 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
+from pytest_mock import MockerFixture
 
 from telegram_auto_poster.bot import commands
 
 
 @pytest.mark.asyncio
-async def test_daily_stats_callback_sends_report(mocker):
+async def test_daily_stats_callback_sends_report(mocker: MockerFixture):
     report_text = "report"
     gen_stats_mock = mocker.patch.object(
         commands.stats, "generate_stats_report", return_value=report_text
     )
     reset_mock = mocker.patch.object(commands.stats, "reset_daily_stats")
-    bot = SimpleNamespace(send_message=AsyncMock())
+    bot = SimpleNamespace(send_message=mocker.AsyncMock())
     context = SimpleNamespace(
         bot=bot,
         job=SimpleNamespace(chat_id=123),

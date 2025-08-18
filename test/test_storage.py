@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from pytest_mock import MockerFixture
 from minio.error import MinioException
 
 from telegram_auto_poster.utils.storage import MinioStorage
@@ -7,9 +7,9 @@ from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
 
 
 @pytest.fixture
-def mock_minio_client():
+def mock_minio_client(mocker: MockerFixture):
     """Fixture to create a mock Minio client."""
-    return MagicMock()
+    return mocker.MagicMock()
 
 
 def test_init_storage(mock_minio_client):
@@ -47,9 +47,9 @@ def test_store_and_get_submission_metadata(mock_minio_client):
     assert meta["chat_id"] == 456
 
 
-def test_get_submission_metadata_from_minio(mock_minio_client):
+def test_get_submission_metadata_from_minio(mock_minio_client, mocker: MockerFixture):
     """Test retrieving submission metadata from Minio if not in memory."""
-    mock_stat = MagicMock()
+    mock_stat = mocker.MagicMock()
     mock_stat.metadata = {
         "user_id": "123",
         "chat_id": "456",
@@ -112,9 +112,9 @@ def test_download_file(mock_minio_client, tmp_path):
     )
 
 
-def test_get_object_data(mock_minio_client):
+def test_get_object_data(mock_minio_client, mocker: MockerFixture):
     """Test getting object data."""
-    mock_response = MagicMock()
+    mock_response = mocker.MagicMock()
     mock_response.read.return_value = b"data"
     mock_minio_client.get_object.return_value = mock_response
     storage = MinioStorage(client=mock_minio_client)
