@@ -3,7 +3,7 @@ import os
 
 from loguru import logger
 from minio.commonconfig import CopySource
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
 import telegram_auto_poster.utils.db as db
@@ -39,6 +39,11 @@ from telegram_auto_poster.utils.timezone import (
     format_display,
     now_utc,
 )
+
+
+def _is_streaming_video(file_path: str) -> bool:
+    """Checks if a file is a video that supports streaming."""
+    return os.path.splitext(file_path)[1].lower() in [".mp4", ".avi", ".mov"]
 
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -533,3 +538,117 @@ async def unschedule_callback(
     except Exception as e:
         logger.error(f"Error in unschedule_callback: {e}")
         await query.message.reply_text(f"Failed to remove scheduled post: {str(e)}")
+
+
+async def send_schedule_preview(bot, chat_id: int, file_path: str, index: int):
+    """Send a preview of a scheduled post with navigation buttons."""
+    buttons = [
+        [
+            InlineKeyboardButton("Prev", callback_data=f"/sch_prev:{index}"),
+            InlineKeyboardButton(
+                "Unschedule",
+                callback_data=f"/sch_unschedule:{index}:{file_path}",
+            ),
+            InlineKeyboardButton(
+                "Push", callback_data=f"/sch_push:{index}:{file_path}"
+            ),
+            InlineKeyboardButton("Next", callback_data=f"/sch_next:{index}"),
+        ]
+    ]
+    markup = InlineKeyboardMarkup(buttons)
+
+    temp_path = None
+    try:
+        temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+        message = await send_media_to_telegram(
+            bot,
+            chat_id,
+            temp_path,
+            caption=file_path,
+            supports_streaming=_is_streaming_video(temp_path),
+        )
+        await message.edit_reply_markup(reply_markup=markup)
+        return message
+    finally:
+        cleanup_temp_file(temp_path)
+
+
+async def _remove_post_and_show_next(
+    query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE, index: int, file_path: str
+):
+    """Remove a post then display the next available one."""
+    db.remove_scheduled_post(file_path)
+    if storage.file_exists(file_path, BUCKET_MAIN):
+        storage.delete_file(file_path, BUCKET_MAIN)
+
+    scheduled_posts = db.get_scheduled_posts()
+    if not scheduled_posts:
+        await query.message.edit_text("No posts scheduled.")
+        return
+
+    await query.message.delete()
+    idx = min(index, len(scheduled_posts) - 1)
+    next_path = scheduled_posts[idx][0]
+    await send_schedule_preview(context.bot, query.message.chat_id, next_path, idx)
+
+
+async def schedule_browser_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle navigation and actions for scheduled posts."""
+    logger.info(
+        f"Received schedule browser callback from user {update.callback_query.from_user.id}"
+    )
+
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        data = query.data or ""
+        action_part, *payload_parts = data.split(":")
+        action = action_part.split("_", 1)[1]
+
+        if action in {"prev", "next"}:
+            idx = int(payload_parts[0])
+            scheduled_posts = db.get_scheduled_posts()
+            if not scheduled_posts:
+                await query.message.edit_text("No posts scheduled.")
+                return
+
+            if action == "prev":
+                idx = (idx - 1) % len(scheduled_posts)
+            else:
+                idx = (idx + 1) % len(scheduled_posts)
+
+            await query.message.delete()
+            file_path = scheduled_posts[idx][0]
+            await send_schedule_preview(
+                context.bot, query.message.chat_id, file_path, idx
+            )
+            return
+
+        if action == "unschedule":
+            idx, file_path = int(payload_parts[0]), payload_parts[1]
+            await _remove_post_and_show_next(query, context, idx, file_path)
+            return
+
+        if action == "push":
+            idx, file_path = int(payload_parts[0]), payload_parts[1]
+            temp_path = None
+            try:
+                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+                target_channel = context.bot_data.get("target_channel_id")
+                if target_channel:
+                    await send_media_to_telegram(
+                        context.bot,
+                        target_channel,
+                        temp_path,
+                        caption=None,
+                        supports_streaming=_is_streaming_video(temp_path),
+                    )
+            finally:
+                cleanup_temp_file(temp_path)
+            await _remove_post_and_show_next(query, context, idx, file_path)
+    except Exception as e:
+        logger.error(f"Error in schedule_browser_callback: {e}")
+        await query.message.reply_text("Failed to process request")

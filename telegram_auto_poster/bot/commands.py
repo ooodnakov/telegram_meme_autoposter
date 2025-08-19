@@ -3,10 +3,11 @@ import datetime
 import os
 
 from loguru import logger
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update
 from telegram.ext import ContextTypes
 
 import telegram_auto_poster.utils.db as db
+from telegram_auto_poster.bot.callbacks import send_schedule_preview
 from telegram_auto_poster.bot.handlers import notify_user
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.config import (
@@ -437,21 +438,9 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text("No posts scheduled.")
             return
 
-        # Build inline keyboard with one button per scheduled post (delete action)
-        buttons = []
-        for file_path, ts in scheduled_posts:
-            dt = datetime.datetime.fromtimestamp(int(ts), tz=UTC).astimezone(DISPLAY_TZ)
-            # Show time and filename for clarity
-            label = f"{dt.strftime('%m-%d %H:%M')} • {file_path.split('/')[-1]}"
-            # Ensure callback_data stays compact
-            callback_data = f"/unschedule:{file_path}"
-            buttons.append(
-                [InlineKeyboardButton(text=label, callback_data=callback_data)]
-            )
-
-        markup = InlineKeyboardMarkup(buttons)
-        await update.message.reply_text(
-            "Choose a scheduled post to remove:", reply_markup=markup
+        first_path = scheduled_posts[0][0]
+        await send_schedule_preview(
+            context.bot, update.effective_chat.id, first_path, 0
         )
     except Exception as e:
         logger.error(f"Error in sch_command: {e}")

@@ -16,6 +16,7 @@ from telegram_auto_poster.bot.callbacks import (
     notok_callback,
     ok_callback,
     push_callback,
+    schedule_browser_callback,
     schedule_callback,
     unschedule_callback,
 )
@@ -132,6 +133,12 @@ class TelegramMemeBot:
         )
         self.application.add_handler(
             CallbackQueryHandler(unschedule_callback, pattern=r"^/unschedule:")
+        )
+        self.application.add_handler(
+            CallbackQueryHandler(
+                schedule_browser_callback,
+                pattern=r"^/sch_(prev|next|unschedule|push):",
+            )
         )
 
         # Register media handler
