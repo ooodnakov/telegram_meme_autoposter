@@ -9,17 +9,18 @@ from minio import Minio
 from minio.error import MinioException, S3Error
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
+    CONFIG,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.timezone import now_utc
 
-# Get MinIO configuration from environment variables
-MINIO_HOST = os.environ.get("MINIO_HOST", "localhost")
-MINIO_PORT = os.environ.get("MINIO_PORT", "9000")
-MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+# Get MinIO configuration from centralized config
+MINIO_HOST = CONFIG["minio"]["host"]
+MINIO_PORT = str(CONFIG["minio"]["port"])
+MINIO_ACCESS_KEY = CONFIG["minio"]["access_key"]
+MINIO_SECRET_KEY = CONFIG["minio"]["secret_key"]
 
 
 class MinioStorage:
@@ -52,16 +53,10 @@ class MinioStorage:
             if client:
                 self.client = client
             else:
-                # Get MinIO config from environment or config
-                host = os.getenv("MINIO_HOST", "minio")
-                port = os.getenv("MINIO_PORT", "9000")
-                access_key = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-                secret_key = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-
                 self.client = Minio(
-                    f"{host}:{port}",
-                    access_key=access_key,
-                    secret_key=secret_key,
+                    f"{MINIO_HOST}:{MINIO_PORT}",
+                    access_key=MINIO_ACCESS_KEY,
+                    secret_key=MINIO_SECRET_KEY,
                     secure=False,
                     region="ru-west",
                 )

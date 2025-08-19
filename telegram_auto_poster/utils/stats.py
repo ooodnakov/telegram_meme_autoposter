@@ -1,6 +1,5 @@
 import datetime
 import logging
-import os
 from collections import defaultdict
 
 from sqlalchemy import (
@@ -14,6 +13,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
+from telegram_auto_poster.config import CONFIG
 from telegram_auto_poster.utils.db import (
     _redis_key,
     _redis_meta_key,
@@ -85,11 +85,12 @@ class History(Base):
 
 
 # Database connection
-user = os.getenv("DB_MYSQL_USER")
-password = os.getenv("DB_MYSQL_PASSWORD")
-host = os.getenv("DB_MYSQL_HOST", "localhost")
-port = os.getenv("DB_MYSQL_PORT", "3306")
-dbname = os.getenv("DB_MYSQL_NAME")
+db_conf = CONFIG["mysql"]
+user = db_conf["user"]
+password = db_conf["password"]
+host = db_conf["host"]
+port = db_conf["port"]
+dbname = db_conf["name"]
 DATABASE_URL = f"mysql+pymysql://{user}:{password}@{host}:{port}/{dbname}"
 
 
