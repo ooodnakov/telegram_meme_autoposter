@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 import sqlalchemy
 from pytest_mock import MockerFixture
+from telegram_auto_poster.config import SCHEDULED_PATH
 
 
 @pytest.fixture
@@ -51,9 +52,7 @@ async def test_send_batch_photo_closes_file_and_cleans(
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
     mock_storage.get_submission_metadata.return_value = None
     mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
-    mock_cleanup = mocker.patch(
-        "telegram_auto_poster.bot.commands.cleanup_temp_file"
-    )
+    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
     context.bot_data["video_batch"] = []
@@ -78,7 +77,9 @@ async def test_start_command(mocker: MockerFixture, commands):
     )
     context = mocker.MagicMock()
     await commands.start_command(update, context)
-    update.message.reply_text.assert_awaited_once_with("Привет! Присылай сюда свои мемы)")
+    update.message.reply_text.assert_awaited_once_with(
+        "Привет! Присылай сюда свои мемы)"
+    )
 
 
 @pytest.mark.asyncio
@@ -137,9 +138,7 @@ async def test_send_batch_video_closes_file_and_cleans(
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
     mock_storage.get_submission_metadata.return_value = None
     mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
-    mock_cleanup = mocker.patch(
-        "telegram_auto_poster.bot.commands.cleanup_temp_file"
-    )
+    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
     context.bot_data["photo_batch"] = []
@@ -246,3 +245,32 @@ async def test_save_stats_command(mocker: MockerFixture, commands):
     update.message.reply_text.assert_awaited_once_with("Stats saved!")
 
 
+@pytest.mark.asyncio
+async def test_post_scheduled_media_job_uses_correct_path(
+    mocker: MockerFixture, commands
+):
+    """Ensure scheduled media job uses full stored paths without re-prefixing."""
+    scheduled_path = f"{SCHEDULED_PATH}/foo.jpg"
+    mocker.patch.object(
+        commands.db, "get_scheduled_posts", return_value=[(scheduled_path, 0)]
+    )
+    mocker.patch.object(
+        commands,
+        "download_from_minio",
+        new=mocker.AsyncMock(return_value=("/tmp/foo.jpg", None)),
+    )
+    mocker.patch.object(commands, "send_media_to_telegram", new=mocker.AsyncMock())
+    mocker.patch.object(commands.storage, "delete_file")
+    mocker.patch.object(commands.db, "remove_scheduled_post")
+
+    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={"target_channel_id": 1})
+
+    await commands.post_scheduled_media_job(context)
+
+    commands.download_from_minio.assert_awaited_once_with(
+        scheduled_path, commands.BUCKET_MAIN
+    )
+    commands.storage.delete_file.assert_called_once_with(
+        scheduled_path, commands.BUCKET_MAIN
+    )
+    commands.db.remove_scheduled_post.assert_called_once_with(scheduled_path)
