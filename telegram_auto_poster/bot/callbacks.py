@@ -533,3 +533,124 @@ async def unschedule_callback(
     except Exception as e:
         logger.error(f"Error in unschedule_callback: {e}")
         await query.message.reply_text(f"Failed to remove scheduled post: {str(e)}")
+
+
+async def send_schedule_preview(bot, chat_id: int, file_path: str, index: int):
+    """Send a preview of a scheduled post with navigation buttons."""
+    buttons = [
+        [
+            InlineKeyboardButton("Prev", callback_data=f"/sch_prev:{index}"),
+            InlineKeyboardButton(
+                "Unschedule", callback_data=f"/sch_unschedule:{file_path}"
+            ),
+            InlineKeyboardButton("Push", callback_data=f"/sch_push:{file_path}"),
+            InlineKeyboardButton("Next", callback_data=f"/sch_next:{index}"),
+        ]
+    ]
+    markup = InlineKeyboardMarkup(buttons)
+
+    temp_path = None
+    try:
+        temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+        message = await send_media_to_telegram(
+            bot,
+            chat_id,
+            temp_path,
+            caption=file_path,
+            supports_streaming=os.path.splitext(temp_path)[1].lower()
+            in [".mp4", ".avi", ".mov"],
+        )
+        await message.edit_reply_markup(reply_markup=markup)
+        return message
+    finally:
+        cleanup_temp_file(temp_path)
+
+
+async def schedule_browser_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle navigation and actions for scheduled posts."""
+    logger.info(
+        f"Received schedule browser callback from user {update.callback_query.from_user.id}"
+    )
+
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        data = query.data or ""
+        action_part, payload = data.split(":", 1)
+        action = action_part.split("_", 1)[1]
+
+        if action in {"prev", "next"}:
+            idx = int(payload)
+            scheduled_posts = db.get_scheduled_posts()
+            if not scheduled_posts:
+                await query.message.edit_text("No posts scheduled.")
+                return
+
+            if action == "prev":
+                idx = (idx - 1) % len(scheduled_posts)
+            else:
+                idx = (idx + 1) % len(scheduled_posts)
+
+            await query.message.delete()
+            file_path = scheduled_posts[idx][0]
+            await send_schedule_preview(
+                context.bot, query.message.chat_id, file_path, idx
+            )
+            return
+
+        if action == "unschedule":
+            file_path = payload
+            db.remove_scheduled_post(file_path)
+            if storage.file_exists(file_path, BUCKET_MAIN):
+                storage.delete_file(file_path, BUCKET_MAIN)
+
+            scheduled_posts = db.get_scheduled_posts()
+            if not scheduled_posts:
+                await query.message.edit_text("No posts scheduled.")
+                return
+
+            await query.message.delete()
+            next_path = scheduled_posts[0][0]
+            await send_schedule_preview(
+                context.bot, query.message.chat_id, next_path, 0
+            )
+            return
+
+        if action == "push":
+            file_path = payload
+            temp_path = None
+            try:
+                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+                target_channel = context.bot_data.get("target_channel_id")
+                if target_channel:
+                    await send_media_to_telegram(
+                        context.bot,
+                        target_channel,
+                        temp_path,
+                        caption=None,
+                        supports_streaming=os.path.splitext(temp_path)[1].lower()
+                        in [".mp4", ".avi", ".mov"],
+                    )
+            finally:
+                cleanup_temp_file(temp_path)
+
+            db.remove_scheduled_post(file_path)
+            if storage.file_exists(file_path, BUCKET_MAIN):
+                storage.delete_file(file_path, BUCKET_MAIN)
+
+            scheduled_posts = db.get_scheduled_posts()
+            if not scheduled_posts:
+                await query.message.edit_text("No posts scheduled.")
+                return
+
+            await query.message.delete()
+            next_path = scheduled_posts[0][0]
+            await send_schedule_preview(
+                context.bot, query.message.chat_id, next_path, 0
+            )
+    except Exception as e:
+        logger.error(f"Error in schedule_browser_callback: {e}")
+        await query.message.reply_text("Failed to process request")
