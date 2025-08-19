@@ -73,7 +73,7 @@ class TelegramMemeClient:
                     photo = event.media.photo
                     file_path = f"downloaded_image_{event.id}.jpg"
                     if stats_module.stats:
-                        stats_module.stats.record_received("photo")
+                        await stats_module.stats.record_received("photo")
                     await self.client.download_media(photo, file=file_path)
                     await process_photo(
                         "New post found with image",
@@ -88,7 +88,7 @@ class TelegramMemeClient:
                             f"Video with eventid {event.id} has started downloading!"
                         )
                         if stats_module.stats:
-                            stats_module.stats.record_received("video")
+                            await stats_module.stats.record_received("video")
                         video = event.media.document
                         file_path = f"downloaded_video_{event.id}.mp4"
                         await self.client.download_media(video, file=file_path)

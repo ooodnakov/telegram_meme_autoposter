@@ -182,7 +182,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         supports_streaming=True,
                         caption=caption_to_send,
                     )
-                stats.record_approved(
+                await stats.record_approved(
                     media_type, filename=file_name, source="ok_callback"
                 )
                 # Add to approved dedup corpus
@@ -283,7 +283,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     f"Post added to batch! There are {batch_count} posts in the batch.",
                     reply_markup=None,
                 )
-                stats.record_added_to_batch(media_type)
+                await stats.record_added_to_batch(media_type)
                 logger.info(
                     f"Added {file_prefix + file_name} to batch ({batch_count} total)"
                 )
@@ -314,7 +314,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await query.message.reply_text(get_user_friendly_error_message(e))
     except Exception as e:
         logger.error(f"Unexpected error in ok_callback: {e}")
-        stats.record_error("processing", f"Error in ok_callback: {str(e)}")
+        await stats.record_error("processing", f"Error in ok_callback: {str(e)}")
         await query.message.reply_text(f"An unexpected error occurred: {str(e)}")
 
 
@@ -392,7 +392,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             # Delete from MinIO
             storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
-            stats.record_approved(
+            await stats.record_approved(
                 media_type, filename=file_name, source="push_callback"
             )
 
@@ -426,7 +426,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await query.message.reply_text(get_user_friendly_error_message(e))
     except Exception as e:
         logger.error(f"Error in push_callback: {e}")
-        stats.record_error("processing", f"Error in push_callback: {str(e)}")
+        await stats.record_error("processing", f"Error in push_callback: {str(e)}")
         await query.message.reply_text(f"Error sending to channel: {str(e)}")
 
 
@@ -471,7 +471,9 @@ async def notok_callback(update, context) -> None:
                 f"File not found for deletion: {BUCKET_MAIN}/{file_prefix + file_name}"
             )
 
-        stats.record_rejected(media_type, filename=file_name, source="notok_callback")
+        await stats.record_rejected(
+            media_type, filename=file_name, source="notok_callback"
+        )
 
         # Notify original submitter using notify_user reply functionality
         if (

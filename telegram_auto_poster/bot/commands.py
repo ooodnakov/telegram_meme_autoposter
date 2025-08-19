@@ -108,7 +108,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     try:
         # Generate statistics report
-        report = stats.generate_stats_report()
+        report = await stats.generate_stats_report()
         if not report or not report.strip():
             report = "No statistics available."
         await update.message.reply_text(report, parse_mode="HTML")
@@ -131,7 +131,7 @@ async def reset_stats_command(
 
     try:
         # Reset daily statistics
-        result = stats.reset_daily_stats()
+        result = await stats.reset_daily_stats()
         if not result or not result.strip():
             result = "Daily statistics have been reset."
         await update.message.reply_text(result)
@@ -154,7 +154,7 @@ async def save_stats_command(
 
     try:
         # Save statistics
-        stats.force_save()
+        await stats.force_save()
         await update.message.reply_text("Stats saved!")
     except Exception as e:
         logger.error(f"Error saving stats: {e}")
@@ -166,14 +166,14 @@ async def save_stats_command(
 async def daily_stats_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send daily statistics report to the admin chat at midnight."""
     try:
-        report = stats.generate_stats_report(reset_daily=False)
+        report = await stats.generate_stats_report(reset_daily=False)
         chat_id = (
             context.job.chat_id
             if getattr(context, "job", None) and context.job.chat_id
             else context.application.bot_data.get("chat_id")
         )
         await context.bot.send_message(chat_id=chat_id, text=report, parse_mode="HTML")
-        stats.reset_daily_stats()
+        await stats.reset_daily_stats()
     except Exception as e:
         logger.error(f"Error sending daily stats report: {e}")
 
@@ -213,7 +213,9 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # Record stats
         media_type = "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
-        stats.record_approved(media_type, filename=object_name, source="ok_command")
+        await stats.record_approved(
+            media_type, filename=object_name, source="ok_command"
+        )
 
     except MinioError as e:
         logger.error(f"MinIO error in ok_command: {e}")
@@ -249,7 +251,7 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
-            stats.record_rejected(
+            await stats.record_rejected(
                 media_type, filename=object_name, source="notok_command"
             )
         else:
@@ -289,7 +291,9 @@ async def delete_batch_command(
                 deleted_count += 1
             except Exception as e:
                 logger.error(f"Error deleting {object_name}: {e}")
-                stats.record_error("storage", f"Failed to delete batch file: {str(e)}")
+                await stats.record_error(
+                    "storage", f"Failed to delete batch file: {str(e)}"
+                )
                 # Continue with other files
 
         await update.message.reply_text(
@@ -482,7 +486,7 @@ async def send_batch_command(update, context):
                     # Send to target channel
                     with open(temp_path, "rb") as f:
                         await context.bot.send_photo(chat_id=target_channel, photo=f)
-                    stats.record_approved(
+                    await stats.record_approved(
                         "photo", filename=file_name, source="send_batch_command"
                     )
 
@@ -505,7 +509,7 @@ async def send_batch_command(update, context):
 
                 except Exception as e:
                     logger.error(f"Error sending photo {file_name}: {e}")
-                    stats.record_error(
+                    await stats.record_error(
                         "telegram", f"Failed to send photo in batch: {str(e)}"
                     )
                 finally:
@@ -536,7 +540,7 @@ async def send_batch_command(update, context):
                             video=f,
                             supports_streaming=True,
                         )
-                    stats.record_approved(
+                    await stats.record_approved(
                         "video", filename=file_name, source="send_batch_command"
                     )
 
@@ -559,7 +563,7 @@ async def send_batch_command(update, context):
 
                 except Exception as e:
                     logger.error(f"Error sending video {file_name}: {e}")
-                    stats.record_error(
+                    await stats.record_error(
                         "telegram", f"Failed to send video in batch: {str(e)}"
                     )
                 finally:
@@ -569,11 +573,11 @@ async def send_batch_command(update, context):
             context.bot_data["video_batch"] = []
 
         if batch_sent:
-            stats.record_batch_sent(1)
+            await stats.record_batch_sent(1)
             await update.message.reply_text("Batch sent to channel!")
         else:
             await update.message.reply_text("No items in batch!")
     except Exception as e:
         logger.error(f"Error sending batch: {e}")
-        stats.record_error("processing", f"Error sending batch: {str(e)}")
+        await stats.record_error("processing", f"Error sending batch: {str(e)}")
         await update.message.reply_text(f"Error sending batch: {str(e)}")

@@ -3,6 +3,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import fakeredis
+import fakeredis.aioredis
 import minio
 import pytest
 import sqlalchemy as sa
@@ -11,6 +12,9 @@ import valkey
 _real_create_engine = sa.create_engine
 sa.create_engine = lambda *args, **kwargs: _real_create_engine("sqlite:///:memory:")
 valkey.Valkey = lambda *a, **k: fakeredis.FakeRedis(decode_responses=True)
+valkey.asyncio.Valkey = (
+    lambda *a, **k: fakeredis.aioredis.FakeRedis(decode_responses=True)
+)
 minio.Minio = lambda *a, **k: SimpleNamespace(
     bucket_exists=lambda *a, **k: True,
     make_bucket=lambda *a, **k: None,

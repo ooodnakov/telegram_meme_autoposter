@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import time
@@ -443,14 +444,22 @@ class MinioStorage:
             return False
 
 
+def _run_coro(coro):
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        asyncio.run(coro)
+
+
 def _stats_record_error(*args, **kwargs):
     if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
-        stats_module.stats.record_error(*args, **kwargs)
+        _run_coro(stats_module.stats.record_error(*args, **kwargs))
 
 
 def _stats_record_operation(*args, **kwargs):
     if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
-        stats_module.stats.record_storage_operation(*args, **kwargs)
+        _run_coro(stats_module.stats.record_storage_operation(*args, **kwargs))
 
 
 storage = MinioStorage()

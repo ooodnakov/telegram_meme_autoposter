@@ -51,7 +51,10 @@ async def test_send_batch_photo_closes_file_and_cleans(
     )
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
     mock_storage.get_submission_metadata.return_value = None
-    mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
+    mocker.patch(
+        "telegram_auto_poster.utils.stats.stats.record_approved",
+        new=mocker.AsyncMock(),
+    )
     mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
@@ -137,7 +140,10 @@ async def test_send_batch_video_closes_file_and_cleans(
     )
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
     mock_storage.get_submission_metadata.return_value = None
-    mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
+    mocker.patch(
+        "telegram_auto_poster.utils.stats.stats.record_approved",
+        new=mocker.AsyncMock(),
+    )
     mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
@@ -164,11 +170,11 @@ async def test_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.generate_stats_report.return_value = "report"
+    mock_stats.generate_stats_report = mocker.AsyncMock(return_value="report")
 
     await commands.stats_command(update, context)
 
-    mock_stats.generate_stats_report.assert_called_once()
+    mock_stats.generate_stats_report.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("report", parse_mode="HTML")
 
 
@@ -182,7 +188,7 @@ async def test_stats_command_empty_report(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.generate_stats_report.return_value = ""
+    mock_stats.generate_stats_report = mocker.AsyncMock(return_value="")
 
     await commands.stats_command(update, context)
 
@@ -201,11 +207,11 @@ async def test_reset_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.reset_daily_stats.return_value = "reset"
+    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value="reset")
 
     await commands.reset_stats_command(update, context)
 
-    mock_stats.reset_daily_stats.assert_called_once()
+    mock_stats.reset_daily_stats.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("reset")
 
 
@@ -219,7 +225,7 @@ async def test_reset_stats_command_empty(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.reset_daily_stats.return_value = ""
+    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value="")
 
     await commands.reset_stats_command(update, context)
 
@@ -238,10 +244,11 @@ async def test_save_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
+    mock_stats.force_save = mocker.AsyncMock()
 
     await commands.save_stats_command(update, context)
 
-    mock_stats.force_save.assert_called_once()
+    mock_stats.force_save.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("Stats saved!")
 
 
