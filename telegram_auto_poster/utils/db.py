@@ -1,4 +1,4 @@
-import os
+from telegram_auto_poster.config import CONFIG
 
 # Valkey is only imported when a client is requested. This allows tests to
 # monkeypatch ``valkey.Valkey`` before the import happens and avoids connection
@@ -23,9 +23,9 @@ def get_redis_client() -> "Valkey":
 
             Valkey = _Valkey
 
-        valkey_host = os.getenv("VALKEY_HOST", "127.0.0.1")
-        valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
-        valkey_pass = os.getenv("VALKEY_PASS", "redis")
+        valkey_host = CONFIG["valkey"]["host"]
+        valkey_port = CONFIG["valkey"]["port"]
+        valkey_pass = CONFIG["valkey"]["password"]
         _redis_client = Valkey(
             host=valkey_host,
             port=valkey_port,
@@ -41,7 +41,7 @@ def get_redis_client() -> "Valkey":
 
 def _redis_prefix() -> str:
     """Return the Redis key prefix, defaulting to the project name."""
-    return os.getenv("REDIS_PREFIX", "telegram_auto_poster")
+    return CONFIG["valkey"]["prefix"]
 
 
 def _redis_key(scope: str, name: str) -> str:
