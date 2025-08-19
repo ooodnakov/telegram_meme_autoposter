@@ -77,26 +77,43 @@ def load_config() -> dict:
         conf_dict["admin_ids"] = [int(conf_dict["bot_chat_id"])]
 
     # Centralized environment configuration
+    try:
+        minio_port = int(os.getenv("MINIO_PORT", "9000"))
+        valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
+        mysql_port = int(os.getenv("DB_MYSQL_PORT", "3306"))
+    except ValueError as exc:
+        raise RuntimeError("Port environment variables must be integers.") from exc
+
     conf_dict["minio"] = {
         "host": os.getenv("MINIO_HOST", "localhost"),
-        "port": int(os.getenv("MINIO_PORT", "9000")),
+        "port": minio_port,
         "access_key": os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
         "secret_key": os.getenv("MINIO_SECRET_KEY", "minioadmin"),
     }
 
     conf_dict["valkey"] = {
         "host": os.getenv("VALKEY_HOST", "127.0.0.1"),
-        "port": int(os.getenv("VALKEY_PORT", "6379")),
+        "port": valkey_port,
         "password": os.getenv("VALKEY_PASS", "redis"),
         "prefix": os.getenv("REDIS_PREFIX", "telegram_auto_poster"),
     }
 
+    mysql_user = os.getenv("DB_MYSQL_USER")
+    mysql_password = os.getenv("DB_MYSQL_PASSWORD")
+    mysql_name = os.getenv("DB_MYSQL_NAME")
+
+    if not all((mysql_user, mysql_password, mysql_name)):
+        raise RuntimeError(
+            "Missing required MySQL environment variables: "
+            "DB_MYSQL_USER, DB_MYSQL_PASSWORD, DB_MYSQL_NAME"
+        )
+
     conf_dict["mysql"] = {
         "host": os.getenv("DB_MYSQL_HOST", "localhost"),
-        "port": int(os.getenv("DB_MYSQL_PORT", "3306")),
-        "user": os.getenv("DB_MYSQL_USER", ""),
-        "password": os.getenv("DB_MYSQL_PASSWORD", ""),
-        "name": os.getenv("DB_MYSQL_NAME", ""),
+        "port": mysql_port,
+        "user": mysql_user,
+        "password": mysql_password,
+        "name": mysql_name,
     }
 
     conf_dict["timezone"] = os.getenv("TZ", "UTC")
