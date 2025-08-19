@@ -20,22 +20,7 @@ services:
       - ./wm.png:/workspace/wm.png
       # - ./ooodnakov.session-journal:/workspace/ooodnakov.session-journal
       # - ./data:/app/data
-    environment:
-      - TZ=Europe/Moscow
-      - MINIO_HOST=minio
-      - MINIO_PORT=8999
-      - MINIO_ACCESS_KEY=super_secret_name
-      - MINIO_SECRET_KEY=super_secret_key
-      - VALKEY_HOST=valkey_common
-      - VALKEY_PORT=6379
-      - VALKEY_PASS=redis
-      - REDIS_PREFIX=telegram_auto_poster
-      # Mysql/Maria connection parameters:
-      - DB_MYSQL_HOST=telegram_db
-      - DB_MYSQL_PORT=3306
-      - DB_MYSQL_USER=tma
-      - DB_MYSQL_PASSWORD=tma
-      - DB_MYSQL_NAME=tma
+    env_file: .env   
     depends_on:
       - db
     deploy:

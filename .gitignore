@@ -12,3 +12,4 @@ mysql/*
 valkeydata/
 uv.lock
 .coverage
+.env
