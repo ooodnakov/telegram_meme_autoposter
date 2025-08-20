@@ -9,7 +9,16 @@ from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
 @pytest.fixture
 def mock_minio_client(mocker: MockerFixture):
     """Fixture to create a mock Minio client."""
-    return mocker.MagicMock()
+    client = mocker.MagicMock()
+    client.bucket_exists = mocker.AsyncMock(return_value=True)
+    client.make_bucket = mocker.AsyncMock()
+    client.fput_object = mocker.AsyncMock()
+    client.fget_object = mocker.AsyncMock()
+    client.stat_object = mocker.AsyncMock()
+    client.remove_object = mocker.AsyncMock()
+    client.list_objects = mocker.AsyncMock(return_value=[])
+    client.get_object = mocker.AsyncMock()
+    return client
 
 
 def test_init_storage(mock_minio_client):
@@ -33,7 +42,8 @@ def test_init_storage_bucket_creation(mock_minio_client):
     mock_minio_client.make_bucket.assert_called_once_with(BUCKET_MAIN)
 
 
-def test_store_and_get_submission_metadata(mock_minio_client):
+@pytest.mark.asyncio
+async def test_store_and_get_submission_metadata(mock_minio_client):
     """Test storing and retrieving submission metadata."""
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
@@ -42,12 +52,15 @@ def test_store_and_get_submission_metadata(mock_minio_client):
     storage.store_submission_metadata(
         "obj1", 123, 456, "photo", message_id=789, media_hash="hash1"
     )
-    meta = storage.get_submission_metadata("obj1")
+    meta = await storage.get_submission_metadata("obj1")
     assert meta["user_id"] == 123
     assert meta["chat_id"] == 456
 
 
-def test_get_submission_metadata_from_minio(mock_minio_client, mocker: MockerFixture):
+@pytest.mark.asyncio
+async def test_get_submission_metadata_from_minio(
+    mock_minio_client, mocker: MockerFixture
+):
     """Test retrieving submission metadata from Minio if not in memory."""
     mock_stat = mocker.MagicMock()
     mock_stat.metadata = {
@@ -64,26 +77,30 @@ def test_get_submission_metadata_from_minio(mock_minio_client, mocker: MockerFix
     storage = MinioStorage(client=mock_minio_client)
     # Make get_submission_metadata return None from memory
     storage.submission_metadata = {}
-    meta = storage.get_submission_metadata("obj2")
-    mock_minio_client.stat_object.assert_called_with(
+    meta = await storage.get_submission_metadata("obj2")
+    mock_minio_client.stat_object.assert_awaited_with(
         bucket_name=BUCKET_MAIN, object_name=f"{PHOTOS_PATH}/obj2"
     )
     assert meta["user_id"] == 123
 
 
-def test_mark_notified(mock_minio_client):
+@pytest.mark.asyncio
+async def test_mark_notified(mock_minio_client):
     """Test marking a submission as notified."""
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
     storage.store_submission_metadata("obj1", 123, 456, "photo")
-    assert storage.get_submission_metadata("obj1")["notified"] is False
+    meta = await storage.get_submission_metadata("obj1")
+    assert meta["notified"] is False
     storage.mark_notified("obj1")
-    assert storage.get_submission_metadata("obj1")["notified"] is True
+    meta = await storage.get_submission_metadata("obj1")
+    assert meta["notified"] is True
 
 
-def test_upload_file(mock_minio_client, tmp_path):
+@pytest.mark.asyncio
+async def test_upload_file(mock_minio_client, tmp_path):
     """Test uploading a file."""
     file = tmp_path / "test.jpg"
     file.write_text("content")
@@ -91,43 +108,48 @@ def test_upload_file(mock_minio_client, tmp_path):
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    storage.upload_file(str(file), user_id=123, chat_id=456)
-    mock_minio_client.fput_object.assert_called_once()
-    kwargs = mock_minio_client.fput_object.call_args.kwargs
+    await storage.upload_file(str(file), user_id=123, chat_id=456)
+    mock_minio_client.fput_object.assert_awaited_once()
+    kwargs = mock_minio_client.fput_object.await_args.kwargs
     assert kwargs["bucket_name"] == BUCKET_MAIN
     assert kwargs["object_name"].startswith(PHOTOS_PATH)
     assert kwargs["metadata"]["user_id"] == "123"
 
 
-def test_download_file(mock_minio_client, tmp_path):
+@pytest.mark.asyncio
+async def test_download_file(mock_minio_client, tmp_path):
     """Test downloading a file."""
     file = tmp_path / "download.jpg"
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    storage.download_file("obj1", BUCKET_MAIN, file_path=str(file))
-    mock_minio_client.fget_object.assert_called_once_with(
+    await storage.download_file("obj1", BUCKET_MAIN, file_path=str(file))
+    mock_minio_client.fget_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1", file_path=str(file)
     )
 
 
-def test_get_object_data(mock_minio_client, mocker: MockerFixture):
+@pytest.mark.asyncio
+async def test_get_object_data(mock_minio_client, mocker: MockerFixture):
     """Test getting object data."""
     mock_response = mocker.MagicMock()
-    mock_response.read.return_value = b"data"
+    mock_response.read = mocker.AsyncMock(return_value=b"data")
+    mock_response.close = mocker.AsyncMock()
+    mock_response.release_conn = mocker.AsyncMock()
     mock_minio_client.get_object.return_value = mock_response
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    data = storage.get_object_data("obj1", BUCKET_MAIN)
+    data = await storage.get_object_data("obj1", BUCKET_MAIN)
     assert data == b"data"
-    mock_response.close.assert_called_once()
-    mock_response.release_conn.assert_called_once()
+    mock_response.close.assert_awaited_once()
+    mock_response.release_conn.assert_awaited_once()
 
 
-def test_get_object_data_minio_error(mock_minio_client):
+@pytest.mark.asyncio
+async def test_get_object_data_minio_error(mock_minio_client):
     """Test MinioException is raised when getting object data fails."""
     mock_minio_client.get_object.side_effect = MinioException("Failed to get object")
     storage = MinioStorage(client=mock_minio_client)
@@ -135,28 +157,30 @@ def test_get_object_data_minio_error(mock_minio_client):
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
     with pytest.raises(MinioException):
-        storage.get_object_data("obj1", BUCKET_MAIN)
+        await storage.get_object_data("obj1", BUCKET_MAIN)
 
 
-def test_delete_file(mock_minio_client):
+@pytest.mark.asyncio
+async def test_delete_file(mock_minio_client):
     """Test deleting a file."""
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    storage.delete_file("obj1", BUCKET_MAIN)
-    mock_minio_client.remove_object.assert_called_once_with(
+    await storage.delete_file("obj1", BUCKET_MAIN)
+    mock_minio_client.remove_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1"
     )
 
 
-def test_file_exists(mock_minio_client):
+@pytest.mark.asyncio
+async def test_file_exists(mock_minio_client):
     """Test checking if a file exists."""
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    storage.file_exists("obj1", BUCKET_MAIN)
-    mock_minio_client.stat_object.assert_called_once_with(
+    await storage.file_exists("obj1", BUCKET_MAIN)
+    mock_minio_client.stat_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1"
     )

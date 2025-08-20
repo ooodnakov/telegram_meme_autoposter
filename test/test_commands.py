@@ -50,7 +50,7 @@ async def test_send_batch_photo_closes_file_and_cleans(
         return_value=(str(temp_file), "ext"),
     )
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
-    mock_storage.get_submission_metadata.return_value = None
+    mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
     mocker.patch(
         "telegram_auto_poster.utils.stats.stats.record_approved",
         new=mocker.AsyncMock(),
@@ -139,7 +139,7 @@ async def test_send_batch_video_closes_file_and_cleans(
         return_value=(str(temp_file), "ext"),
     )
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
-    mock_storage.get_submission_metadata.return_value = None
+    mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
     mocker.patch(
         "telegram_auto_poster.utils.stats.stats.record_approved",
         new=mocker.AsyncMock(),
@@ -267,7 +267,7 @@ async def test_post_scheduled_media_job_uses_correct_path(
         new=mocker.AsyncMock(return_value=("/tmp/foo.jpg", None)),
     )
     mocker.patch.object(commands, "send_media_to_telegram", new=mocker.AsyncMock())
-    mocker.patch.object(commands.storage, "delete_file")
+    mocker.patch.object(commands.storage, "delete_file", new=mocker.AsyncMock())
     mocker.patch.object(commands.db, "remove_scheduled_post")
 
     context = SimpleNamespace(bot=SimpleNamespace(), bot_data={"target_channel_id": 1})
@@ -277,7 +277,7 @@ async def test_post_scheduled_media_job_uses_correct_path(
     commands.download_from_minio.assert_awaited_once_with(
         scheduled_path, commands.BUCKET_MAIN
     )
-    commands.storage.delete_file.assert_called_once_with(
+    commands.storage.delete_file.assert_awaited_once_with(
         scheduled_path, commands.BUCKET_MAIN
     )
     commands.db.remove_scheduled_post.assert_called_once_with(scheduled_path)

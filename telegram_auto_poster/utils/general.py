@@ -96,7 +96,7 @@ async def download_from_minio(
         return None, None
 
     try:
-        if not storage.file_exists(object_name, bucket):
+        if not await storage.file_exists(object_name, bucket):
             logger.warning(f"File {object_name} does not exist in bucket {bucket}")
             raise MinioError(f"File not found: {object_name} in {bucket}")
 
@@ -118,7 +118,7 @@ async def download_from_minio(
 
         try:
             # Download file from MinIO to temp file
-            storage.download_file(object_name, bucket, temp_path)
+            await storage.download_file(object_name, bucket, temp_path)
             logger.debug(
                 f"Successfully downloaded {object_name} from {bucket} to {temp_path}"
             )

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import time
@@ -276,13 +277,15 @@ async def process_photo(
         retry_delay = 1  # seconds
         file_found = False
         for i in range(max_retries):
-            if storage.file_exists(PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN):
+            if await storage.file_exists(
+                PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN
+            ):
                 file_found = True
                 break
             logger.warning(
                 f"Attempt {i + 1}/{max_retries}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
             )
-            time.sleep(retry_delay)
+            await asyncio.sleep(retry_delay)
 
         if not file_found:
             logger.error(
@@ -386,13 +389,15 @@ async def process_video(
         retry_delay = 1  # seconds
         file_found = False
         for i in range(max_retries):
-            if storage.file_exists(VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN):
+            if await storage.file_exists(
+                VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN
+            ):
                 file_found = True
                 break
             logger.warning(
                 f"Attempt {i + 1}/{max_retries}: Processed video not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
             )
-            time.sleep(retry_delay)
+            await asyncio.sleep(retry_delay)
 
         if not file_found:
             logger.error(

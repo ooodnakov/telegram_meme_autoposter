@@ -208,7 +208,7 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await send_media_to_telegram(context.bot, target_channel, temp_path, "photo")
 
         # Clean up
-        storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
+        await storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
         logger.info("Created new post!")
 
         # Record stats
@@ -246,8 +246,8 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         media_type = "photo"  # Default
 
         # Delete from MinIO if exists
-        if storage.file_exists(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN):
-            storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
+        if await storage.file_exists(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN):
+            await storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
@@ -273,8 +273,12 @@ async def delete_batch_command(
 
     try:
         # Get all files with batch_ prefix from photos and videos directories
-        photo_batch = storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
-        video_batch = storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+        photo_batch = await storage.list_files(
+            BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_"
+        )
+        video_batch = await storage.list_files(
+            BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_"
+        )
         batch_files = photo_batch + video_batch
 
         if not batch_files:
@@ -287,7 +291,7 @@ async def delete_batch_command(
         deleted_count = 0
         for object_name in batch_files:
             try:
-                storage.delete_file(object_name, BUCKET_MAIN)
+                await storage.delete_file(object_name, BUCKET_MAIN)
                 deleted_count += 1
             except Exception as e:
                 logger.error(f"Error deleting {object_name}: {e}")
@@ -316,7 +320,7 @@ async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     try:
         # Get all files from downloads bucket
-        download_files = storage.list_files(BUCKET_MAIN, prefix=DOWNLOADS_PATH)
+        download_files = await storage.list_files(BUCKET_MAIN, prefix=DOWNLOADS_PATH)
 
         if not download_files:
             await update.message.reply_text("No files to send to Luba.")
@@ -410,7 +414,7 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
 
                 # Clean up
-                storage.delete_file(file_path, BUCKET_MAIN)
+                await storage.delete_file(file_path, BUCKET_MAIN)
                 db.remove_scheduled_post(file_path)
 
                 logger.info(f"Successfully posted scheduled media: {file_path}")
@@ -491,7 +495,7 @@ async def send_batch_command(update, context):
                     )
 
                     # Notify the user if this is their media
-                    user_metadata = storage.get_submission_metadata(file_name)
+                    user_metadata = await storage.get_submission_metadata(file_name)
                     if user_metadata and not user_metadata.get("notified"):
                         user_id = user_metadata["user_id"]
 
@@ -545,7 +549,7 @@ async def send_batch_command(update, context):
                     )
 
                     # Notify the user if this is their media
-                    user_metadata = storage.get_submission_metadata(file_name)
+                    user_metadata = await storage.get_submission_metadata(file_name)
                     if user_metadata and not user_metadata.get("notified"):
                         user_id = user_metadata["user_id"]
 

@@ -23,7 +23,6 @@ def stats_module(monkeypatch, mocker):
     monkeypatch.setenv("VALKEY_PASS", "redis")
     monkeypatch.setenv("REDIS_PREFIX", "telegram_auto_poster_test")
 
-    mocker.patch("minio.Minio")
     import telegram_auto_poster.config as cfg
     importlib.reload(cfg)
     import telegram_auto_poster.utils.storage as storage_module

@@ -120,8 +120,8 @@ async def add_watermark_to_video(
         meta = user_metadata
         if not meta:
             original_name = os.path.basename(input_path)
-            meta = storage.get_submission_metadata(original_name)
-        uploaded = storage.upload_file(
+            meta = await storage.get_submission_metadata(original_name)
+        uploaded = await storage.upload_file(
             output_path,
             BUCKET_MAIN,
             VIDEOS_PATH + "/" + output_object,

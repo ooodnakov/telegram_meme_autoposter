@@ -1,8 +1,8 @@
+import os
+
 import pytest
 from PIL import Image
-import os
 from pytest_mock import MockerFixture
-
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
 from telegram_auto_poster.utils.general import MinioError
@@ -30,11 +30,14 @@ def sample_video(tmpdir):
 async def test_add_watermark_to_image(mocker, sample_image):
     """Test that a watermark is added and the image is uploaded."""
     mock_storage = mocker.patch("telegram_auto_poster.media.photo.storage")
-    mock_storage.get_submission_metadata.return_value = {
-        "user_id": 123,
-        "chat_id": 456,
-        "message_id": 789,
-    }
+    mock_storage.get_submission_metadata = mocker.AsyncMock(
+        return_value={
+            "user_id": 123,
+            "chat_id": 456,
+            "message_id": 789,
+        }
+    )
+    mock_storage.upload_file = mocker.AsyncMock(return_value=True)
     mock_piexif_dump = mocker.patch("piexif.dump", return_value=b"")
 
     await add_watermark_to_image(sample_image, "output.jpg", media_hash="some_hash")
@@ -42,11 +45,11 @@ async def test_add_watermark_to_image(mocker, sample_image):
     # Check that upload_file was called with the correct arguments
     from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
 
-    mock_storage.upload_file.assert_called_once()
-    call_args = mock_storage.upload_file.call_args[0]
+    mock_storage.upload_file.assert_awaited_once()
+    call_args = mock_storage.upload_file.await_args.args
     assert call_args[1] == BUCKET_MAIN
     assert call_args[2] == f"{PHOTOS_PATH}/output.jpg"
-    call_kwargs = mock_storage.upload_file.call_args[1]
+    call_kwargs = mock_storage.upload_file.await_args.kwargs
     assert call_kwargs["user_id"] == 123
     assert call_kwargs["chat_id"] == 456
     assert call_kwargs["message_id"] == 789
@@ -64,8 +67,8 @@ async def test_add_watermark_to_image(mocker, sample_image):
 async def test_add_watermark_to_image_upload_failure(mocker, sample_image):
     """Ensure an error is raised if upload to MinIO fails."""
     mock_storage = mocker.patch("telegram_auto_poster.media.photo.storage")
-    mock_storage.get_submission_metadata.return_value = None
-    mock_storage.upload_file.return_value = False
+    mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
+    mock_storage.upload_file = mocker.AsyncMock(return_value=False)
     mocker.patch("piexif.dump", return_value=b"")
 
     with pytest.raises(MinioError):
@@ -111,11 +114,14 @@ async def test_add_watermark_to_video_ffmpeg_error(mocker: MockerFixture, sample
 async def test_add_watermark_to_video(mocker: MockerFixture, sample_video):
     """Test that a watermark is added to a video and uploaded."""
     mock_storage = mocker.patch("telegram_auto_poster.media.video.storage")
-    mock_storage.get_submission_metadata.return_value = {
-        "user_id": 123,
-        "chat_id": 456,
-        "message_id": 789,
-    }
+    mock_storage.get_submission_metadata = mocker.AsyncMock(
+        return_value={
+            "user_id": 123,
+            "chat_id": 456,
+            "message_id": 789,
+        }
+    )
+    mock_storage.upload_file = mocker.AsyncMock(return_value=True)
 
     mock_probe = mocker.patch(
         "telegram_auto_poster.media.video._probe_video_size",
@@ -135,11 +141,11 @@ async def test_add_watermark_to_video(mocker: MockerFixture, sample_video):
     # Check that upload_file was called with the correct arguments
     from telegram_auto_poster.config import BUCKET_MAIN, VIDEOS_PATH
 
-    mock_storage.upload_file.assert_called_once()
-    call_args = mock_storage.upload_file.call_args[0]
+    mock_storage.upload_file.assert_awaited_once()
+    call_args = mock_storage.upload_file.await_args.args
     assert call_args[1] == BUCKET_MAIN
     assert call_args[2] == f"{VIDEOS_PATH}/output.mp4"
-    call_kwargs = mock_storage.upload_file.call_args[1]
+    call_kwargs = mock_storage.upload_file.await_args.kwargs
     assert call_kwargs["user_id"] == 123
     assert call_kwargs["chat_id"] == 456
     assert call_kwargs["message_id"] == 789
@@ -147,10 +153,13 @@ async def test_add_watermark_to_video(mocker: MockerFixture, sample_video):
 
 
 @pytest.mark.asyncio
-async def test_add_watermark_to_video_upload_failure(mocker: MockerFixture, sample_video):
+async def test_add_watermark_to_video_upload_failure(
+    mocker: MockerFixture, sample_video
+):
     """Ensure an error is raised if upload to MinIO fails."""
     mock_storage = mocker.patch("telegram_auto_poster.media.video.storage")
-    mock_storage.upload_file.return_value = False
+    mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
+    mock_storage.upload_file = mocker.AsyncMock(return_value=False)
     mocker.patch(
         "telegram_auto_poster.media.video._probe_video_size",
         return_value=(1920, 1080),
