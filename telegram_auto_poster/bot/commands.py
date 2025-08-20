@@ -25,7 +25,7 @@ from telegram_auto_poster.utils.general import (
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.timezone import DISPLAY_TZ, UTC, format_display, now_utc
+from telegram_auto_poster.utils.timezone import UTC, format_display, now_utc
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -509,7 +509,7 @@ async def send_batch_command(update, context):
                             notified_users.add(user_id)
 
                         # Mark as notified regardless
-                        storage.mark_notified(file_name)
+                        await storage.mark_notified(file_name)
 
                 except Exception as e:
                     logger.error(f"Error sending photo {file_name}: {e}")
@@ -563,7 +563,7 @@ async def send_batch_command(update, context):
                             notified_users.add(user_id)
 
                         # Mark as notified regardless
-                        storage.mark_notified(file_name)
+                        await storage.mark_notified(file_name)
 
                 except Exception as e:
                     logger.error(f"Error sending video {file_name}: {e}")

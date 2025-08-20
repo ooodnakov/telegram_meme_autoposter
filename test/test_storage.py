@@ -1,6 +1,6 @@
 import pytest
 from pytest_mock import MockerFixture
-from minio.error import MinioException
+from miniopy_async.error import MinioException
 
 from telegram_auto_poster.utils.storage import MinioStorage
 from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
@@ -49,7 +49,7 @@ async def test_store_and_get_submission_metadata(mock_minio_client):
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    storage.store_submission_metadata(
+    await storage.store_submission_metadata(
         "obj1", 123, 456, "photo", message_id=789, media_hash="hash1"
     )
     meta = await storage.get_submission_metadata("obj1")
@@ -91,10 +91,10 @@ async def test_mark_notified(mock_minio_client):
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    storage.store_submission_metadata("obj1", 123, 456, "photo")
+    await storage.store_submission_metadata("obj1", 123, 456, "photo")
     meta = await storage.get_submission_metadata("obj1")
     assert meta["notified"] is False
-    storage.mark_notified("obj1")
+    await storage.mark_notified("obj1")
     meta = await storage.get_submission_metadata("obj1")
     assert meta["notified"] is True
 

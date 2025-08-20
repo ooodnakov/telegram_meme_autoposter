@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import telegram_auto_poster.utils.stats as stats_module
 from loguru import logger
-from minio import Minio
-from minio.error import MinioException, S3Error
+from miniopy_async import Minio
+from miniopy_async.error import MinioException, S3Error
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     CONFIG,
@@ -102,7 +102,7 @@ class MinioStorage:
             )
             raise
 
-    def store_submission_metadata(
+    async def store_submission_metadata(
         self,
         object_name,
         user_id,
@@ -173,7 +173,7 @@ class MinioStorage:
                 continue
         return None
 
-    def mark_notified(self, object_name):
+    async def mark_notified(self, object_name):
         """Mark that the user has been notified about their submission.
 
         Args:
@@ -274,7 +274,7 @@ class MinioStorage:
             )
             # Store submission metadata in-memory as well
             if user_id and chat_id:
-                self.store_submission_metadata(
+                await self.store_submission_metadata(
                     object_name, user_id, chat_id, media_type, message_id
                 )
 

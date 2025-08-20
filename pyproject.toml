@@ -36,7 +36,7 @@ dependencies = [
     "imagehash==4.3.1",
     "watchfiles",
     "pytest-mock>=3.14.1",
-    "minio-async>=1.0.1",
+    "miniopy-async>=1.21.1",
 ]
 
 [dependency-groups]

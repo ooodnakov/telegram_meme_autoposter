@@ -2,7 +2,7 @@ import datetime
 import os
 
 from loguru import logger
-from minio.commonconfig import CopySource
+from miniopy_async.commonconfig import CopySource
 from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -220,7 +220,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
                         reply_to_message_id=user_metadata.get("message_id"),
                     )
-                    storage.mark_notified(file_name)
+                    await storage.mark_notified(file_name)
                     logger.info(
                         f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
                     )
@@ -304,7 +304,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                         f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
                         reply_to_message_id=user_metadata.get("message_id"),
                     )
-                    storage.mark_notified(file_name)
+                    await storage.mark_notified(file_name)
                     logger.info(
                         f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
                     )
@@ -413,7 +413,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
                     reply_to_message_id=user_metadata.get("message_id"),
                 )
-                storage.mark_notified(file_name)
+                await storage.mark_notified(file_name)
                 logger.info(
                     f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
                 )
@@ -492,7 +492,7 @@ async def notok_callback(update, context) -> None:
                 f"Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
                 reply_to_message_id=user_metadata.get("message_id"),
             )
-            storage.mark_notified(file_name)
+            await storage.mark_notified(file_name)
             logger.info(
                 f"Notified user {user_metadata.get('user_id')} about rejection of {file_name} from message_id {user_metadata.get('message_id')}"
             )

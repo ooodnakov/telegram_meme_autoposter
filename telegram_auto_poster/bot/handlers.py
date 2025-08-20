@@ -259,7 +259,7 @@ async def process_photo(
 
         # Copy user metadata to processed file if exists
         if user_metadata:
-            storage.store_submission_metadata(
+            await storage.store_submission_metadata(
                 processed_name,
                 user_metadata["user_id"],
                 user_metadata["chat_id"],
@@ -371,7 +371,7 @@ async def process_video(
 
         # Copy user metadata to processed file if exists
         if user_metadata:
-            storage.store_submission_metadata(
+            await storage.store_submission_metadata(
                 processed_name,
                 user_metadata["user_id"],
                 user_metadata["chat_id"],
