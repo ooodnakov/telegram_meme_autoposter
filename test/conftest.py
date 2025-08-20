@@ -17,9 +17,10 @@ valkey.asyncio.Valkey = lambda *a, **k: fakeredis.aioredis.FakeRedis(
     decode_responses=True
 )
 
-# Provide a minimal async Minio stub so imports succeed without the real library
-minio_module = types.ModuleType("minio")
-error_module = types.ModuleType("minio.error")
+# Provide a minimal async MiniO stub so imports succeed without the real library
+# miniopy_async is the async variant of the MinIO client used by the project.
+miniopy_module = types.ModuleType("miniopy_async")
+error_module = types.ModuleType("miniopy_async.error")
 
 
 class MinioException(Exception):
@@ -67,12 +68,13 @@ class DummyMinio:
         return []
 
 
-minio_module.Minio = DummyMinio
-minio_module.error = error_module
+# Expose the dummy client and error classes on the module
+miniopy_module.Minio = DummyMinio
+miniopy_module.error = error_module
 error_module.MinioException = MinioException
 error_module.S3Error = S3Error
 
-commonconfig_module = types.ModuleType("minio.commonconfig")
+commonconfig_module = types.ModuleType("miniopy_async.commonconfig")
 
 class CopySource:
     def __init__(self, *a, **k):
@@ -80,11 +82,17 @@ class CopySource:
 
 
 commonconfig_module.CopySource = CopySource
-minio_module.commonconfig = commonconfig_module
-sys.modules["minio.commonconfig"] = commonconfig_module
+miniopy_module.commonconfig = commonconfig_module
 
-sys.modules["minio"] = minio_module
+# Register stub modules so that imports of miniopy_async work without the real package
+sys.modules["miniopy_async"] = miniopy_module
+sys.modules["miniopy_async.error"] = error_module
+sys.modules["miniopy_async.commonconfig"] = commonconfig_module
+
+# Backwards compatibility if any code still imports the old package name
+sys.modules["minio"] = miniopy_module
 sys.modules["minio.error"] = error_module
+sys.modules["minio.commonconfig"] = commonconfig_module
 
 # Prepare minimal configuration for tests
 CONFIG_CONTENT = """
