@@ -54,10 +54,12 @@ async def test_schedule_browser_unschedule_removes_and_shows_next(
         "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
     )
     exists = mocker.patch(
-        "telegram_auto_poster.bot.callbacks.storage.file_exists", return_value=True
+        "telegram_auto_poster.bot.callbacks.storage.file_exists",
+        new=mocker.AsyncMock(return_value=True),
     )
     delete = mocker.patch(
-        "telegram_auto_poster.bot.callbacks.storage.delete_file"
+        "telegram_auto_poster.bot.callbacks.storage.delete_file",
+        new=mocker.AsyncMock(),
     )
     preview = mocker.patch(
         "telegram_auto_poster.bot.callbacks.send_schedule_preview",
@@ -78,8 +80,8 @@ async def test_schedule_browser_unschedule_removes_and_shows_next(
     await schedule_browser_callback(update, context)
 
     remove.assert_called_once_with("p2")
-    exists.assert_called_once()
-    delete.assert_called_once()
+    exists.assert_awaited_once()
+    delete.assert_awaited_once()
     preview.assert_awaited_once_with(context.bot, 1, "p3", 1)
 
 
@@ -93,7 +95,8 @@ async def test_schedule_browser_push_sends_and_shows_next(mocker: MockerFixture)
         "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
     )
     mocker.patch(
-        "telegram_auto_poster.bot.callbacks.storage.file_exists", return_value=False
+        "telegram_auto_poster.bot.callbacks.storage.file_exists",
+        new=mocker.AsyncMock(return_value=False),
     )
     preview = mocker.patch(
         "telegram_auto_poster.bot.callbacks.send_schedule_preview",
@@ -139,9 +142,13 @@ async def test_schedule_browser_unschedule_last_shows_none(mocker: MockerFixture
         "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
     )
     mocker.patch(
-        "telegram_auto_poster.bot.callbacks.storage.file_exists", return_value=False
+        "telegram_auto_poster.bot.callbacks.storage.file_exists",
+        new=mocker.AsyncMock(return_value=False),
     )
-    mocker.patch("telegram_auto_poster.bot.callbacks.storage.delete_file")
+    mocker.patch(
+        "telegram_auto_poster.bot.callbacks.storage.delete_file",
+        new=mocker.AsyncMock(),
+    )
     preview = mocker.patch(
         "telegram_auto_poster.bot.callbacks.send_schedule_preview",
         new=mocker.AsyncMock(),

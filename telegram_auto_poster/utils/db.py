@@ -4,8 +4,10 @@ from telegram_auto_poster.config import CONFIG
 # monkeypatch ``valkey.Valkey`` before the import happens and avoids connection
 # attempts during module import when a Valkey server isn't available.
 Valkey = None
+AsyncValkey = None
 
 _redis_client = None
+_async_redis_client = None
 
 
 def get_redis_client() -> "Valkey":
@@ -37,6 +39,29 @@ def get_redis_client() -> "Valkey":
         if _redis_client.__class__.__module__.startswith("fakeredis"):
             _redis_client.flushdb()
     return _redis_client
+
+
+def get_async_redis_client() -> "AsyncValkey":
+    """Return a singleton instance of the async Valkey client."""
+
+    global _async_redis_client
+    if _async_redis_client is None:
+        global AsyncValkey
+        if AsyncValkey is None:  # Import here so monkeypatching works
+            from valkey.asyncio import Valkey as _AsyncValkey
+
+            AsyncValkey = _AsyncValkey
+
+        valkey_host = CONFIG["valkey"]["host"]
+        valkey_port = CONFIG["valkey"]["port"]
+        valkey_pass = CONFIG["valkey"]["password"]
+        _async_redis_client = AsyncValkey(
+            host=valkey_host,
+            port=valkey_port,
+            password=valkey_pass,
+            decode_responses=True,
+        )
+    return _async_redis_client
 
 
 def _redis_prefix() -> str:

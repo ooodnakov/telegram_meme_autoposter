@@ -70,7 +70,7 @@ async def main():
             await client.stop()
         if bot:
             await bot.stop()
-        stats.force_save()
+        await stats.force_save()
         logger.info("Shutdown complete")
 
 

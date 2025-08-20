@@ -50,8 +50,11 @@ async def test_send_batch_photo_closes_file_and_cleans(
         return_value=(str(temp_file), "ext"),
     )
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
-    mock_storage.get_submission_metadata.return_value = None
-    mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
+    mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
+    mocker.patch(
+        "telegram_auto_poster.utils.stats.stats.record_approved",
+        new=mocker.AsyncMock(),
+    )
     mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
@@ -136,8 +139,11 @@ async def test_send_batch_video_closes_file_and_cleans(
         return_value=(str(temp_file), "ext"),
     )
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
-    mock_storage.get_submission_metadata.return_value = None
-    mocker.patch("telegram_auto_poster.utils.stats.stats.record_approved")
+    mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
+    mocker.patch(
+        "telegram_auto_poster.utils.stats.stats.record_approved",
+        new=mocker.AsyncMock(),
+    )
     mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
@@ -164,11 +170,11 @@ async def test_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.generate_stats_report.return_value = "report"
+    mock_stats.generate_stats_report = mocker.AsyncMock(return_value="report")
 
     await commands.stats_command(update, context)
 
-    mock_stats.generate_stats_report.assert_called_once()
+    mock_stats.generate_stats_report.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("report", parse_mode="HTML")
 
 
@@ -182,7 +188,7 @@ async def test_stats_command_empty_report(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.generate_stats_report.return_value = ""
+    mock_stats.generate_stats_report = mocker.AsyncMock(return_value="")
 
     await commands.stats_command(update, context)
 
@@ -201,11 +207,11 @@ async def test_reset_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.reset_daily_stats.return_value = "reset"
+    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value="reset")
 
     await commands.reset_stats_command(update, context)
 
-    mock_stats.reset_daily_stats.assert_called_once()
+    mock_stats.reset_daily_stats.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("reset")
 
 
@@ -219,7 +225,7 @@ async def test_reset_stats_command_empty(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.reset_daily_stats.return_value = ""
+    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value="")
 
     await commands.reset_stats_command(update, context)
 
@@ -238,10 +244,11 @@ async def test_save_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
+    mock_stats.force_save = mocker.AsyncMock()
 
     await commands.save_stats_command(update, context)
 
-    mock_stats.force_save.assert_called_once()
+    mock_stats.force_save.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("Stats saved!")
 
 
@@ -260,7 +267,7 @@ async def test_post_scheduled_media_job_uses_correct_path(
         new=mocker.AsyncMock(return_value=("/tmp/foo.jpg", None)),
     )
     mocker.patch.object(commands, "send_media_to_telegram", new=mocker.AsyncMock())
-    mocker.patch.object(commands.storage, "delete_file")
+    mocker.patch.object(commands.storage, "delete_file", new=mocker.AsyncMock())
     mocker.patch.object(commands.db, "remove_scheduled_post")
 
     context = SimpleNamespace(bot=SimpleNamespace(), bot_data={"target_channel_id": 1})
@@ -270,7 +277,7 @@ async def test_post_scheduled_media_job_uses_correct_path(
     commands.download_from_minio.assert_awaited_once_with(
         scheduled_path, commands.BUCKET_MAIN
     )
-    commands.storage.delete_file.assert_called_once_with(
+    commands.storage.delete_file.assert_awaited_once_with(
         scheduled_path, commands.BUCKET_MAIN
     )
     commands.db.remove_scheduled_post.assert_called_once_with(scheduled_path)

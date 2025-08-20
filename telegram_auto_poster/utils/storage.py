@@ -1,6 +1,8 @@
+import asyncio
 import os
 import tempfile
 import time
+from inspect import iscoroutinefunction
 from unittest.mock import MagicMock
 
 import telegram_auto_poster.utils.stats as stats_module
@@ -67,27 +69,35 @@ class MinioStorage:
             logger.info("MinIO client initialized")
 
             # Ensure buckets exist
-            self._ensure_bucket_exists(BUCKET_MAIN)
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._ensure_bucket_exists(BUCKET_MAIN))
+            except RuntimeError:
+                asyncio.run(self._ensure_bucket_exists(BUCKET_MAIN))
 
             self._initialized = True
         except Exception as e:
             logger.error(f"Error initializing MinIO client: {e}")
-            _stats_record_error("storage", f"Failed to initialize MinIO client: {e}")
+            asyncio.run(
+                _stats_record_error(
+                    "storage", f"Failed to initialize MinIO client: {e}"
+                )
+            )
             raise
 
-    def _ensure_bucket_exists(self, bucket_name: str) -> None:
+    async def _ensure_bucket_exists(self, bucket_name: str) -> None:
         """Create the given bucket in MinIO if it has not been created yet.
 
         Args:
             bucket_name: Bucket to verify or create.
         """
         try:
-            if not self.client.bucket_exists(bucket_name):
-                self.client.make_bucket(bucket_name)
+            if not await self.client.bucket_exists(bucket_name):
+                await self.client.make_bucket(bucket_name)
                 logger.info(f"Created new bucket: {bucket_name}")
         except Exception as e:
             logger.error(f"Error creating bucket {bucket_name}: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage", f"Failed to create bucket {bucket_name}: {e}"
             )
             raise
@@ -128,7 +138,7 @@ class MinioStorage:
             f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}, message_id={message_id}"
         )
 
-    def get_submission_metadata(self, object_name: str) -> dict | None:
+    async def get_submission_metadata(self, object_name: str) -> dict | None:
         """Return metadata for a stored object if available.
 
         Args:
@@ -144,7 +154,7 @@ class MinioStorage:
         # Try to fetch metadata from MinIO across known buckets
         for prepath in [PHOTOS_PATH, VIDEOS_PATH, DOWNLOADS_PATH]:
             try:
-                stat = self.client.stat_object(
+                stat = await self.client.stat_object(
                     bucket_name=BUCKET_MAIN, object_name=prepath + "/" + object_name
                 )
                 md = stat.metadata or {}
@@ -178,7 +188,7 @@ class MinioStorage:
             return True
         return False
 
-    def upload_file(
+    async def upload_file(
         self,
         file_path,
         bucket=None,
@@ -253,7 +263,7 @@ class MinioStorage:
             logger.debug(
                 f"Uploading {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
             )
-            self.client.fput_object(
+            await self.client.fput_object(
                 bucket_name=bucket,
                 object_name=object_name,
                 file_path=file_path,
@@ -269,20 +279,20 @@ class MinioStorage:
                 )
 
             duration = time.time() - start_time
-            _stats_record_operation("upload", duration)
+            await _stats_record_operation("upload", duration)
             return True
         except MinioException as e:
             logger.error(f"MinIO error uploading {file_path}: {e}")
-            _stats_record_error("storage", f"Failed to upload {file_path}: {e}")
+            await _stats_record_error("storage", f"Failed to upload {file_path}: {e}")
             return False
         except Exception as e:
             logger.error(f"Error uploading {file_path}: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage", f"Unexpected error uploading {file_path}: {e}"
             )
             return False
 
-    def download_file(self, object_name, bucket, file_path=None):
+    async def download_file(self, object_name, bucket, file_path=None):
         """Download an object from MinIO and measure the duration.
 
         Args:
@@ -303,18 +313,18 @@ class MinioStorage:
                 temp_file.close()
 
             # Download the object
-            self.client.fget_object(
+            await self.client.fget_object(
                 bucket_name=bucket, object_name=object_name, file_path=file_path
             )
 
             logger.debug(f"Downloaded {bucket}/{object_name} to {file_path}")
 
             duration = time.time() - start_time
-            _stats_record_operation("download", duration)
+            await _stats_record_operation("download", duration)
             return True
         except MinioException as e:
             logger.error(f"MinIO error downloading {bucket}/{object_name}: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage", f"Failed to download {bucket}/{object_name}: {e}"
             )
             if temp_file and os.path.exists(file_path):
@@ -324,12 +334,12 @@ class MinioStorage:
             logger.error(f"Error downloading {bucket}/{object_name}: {e}")
             if temp_file and os.path.exists(file_path):
                 os.unlink(file_path)
-            _stats_record_error(
+            await _stats_record_error(
                 "storage", f"Unexpected error downloading {bucket}/{object_name}: {e}"
             )
             return False
 
-    def get_object_data(self, object_name, bucket):
+    async def get_object_data(self, object_name, bucket):
         """Return raw object data as bytes.
 
         Args:
@@ -340,20 +350,28 @@ class MinioStorage:
             bytes: The object's contents.
         """
         try:
-            response = self.client.get_object(
+            response = await self.client.get_object(
                 bucket_name=bucket, object_name=object_name
             )
 
-            data = response.read()
-            response.close()
-            response.release_conn()
+            data = await response.read()
+            if iscoroutinefunction(response.close):
+                await response.close()
+            else:
+                response.close()
+            if hasattr(response, "release_conn"):
+                release = response.release_conn
+                if iscoroutinefunction(release):
+                    await release()
+                else:
+                    release()
 
             return data
         except S3Error as err:
             logger.error(f"Error getting object {bucket}/{object_name}: {err}")
             raise
 
-    def delete_file(self, object_name, bucket):
+    async def delete_file(self, object_name, bucket):
         """Remove an object from MinIO and record the operation time.
 
         Args:
@@ -364,23 +382,23 @@ class MinioStorage:
             bool: ``True`` if deletion was successful, ``False`` otherwise.
         """
         try:
-            self.client.remove_object(bucket_name=bucket, object_name=object_name)
+            await self.client.remove_object(bucket_name=bucket, object_name=object_name)
             logger.debug(f"Deleted {bucket}/{object_name}")
             return True
         except MinioException as e:
             logger.error(f"MinIO error deleting {bucket}/{object_name}: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage", f"Failed to delete {bucket}/{object_name}: {e}"
             )
             return False
         except Exception as e:
             logger.error(f"Error deleting {bucket}/{object_name}: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage", f"Unexpected error deleting {bucket}/{object_name}: {e}"
             )
             return False
 
-    def list_files(self, bucket, prefix=None):
+    async def list_files(self, bucket, prefix=None):
         """List objects in a bucket and record how long the listing took.
 
         Args:
@@ -393,33 +411,36 @@ class MinioStorage:
         start_time = time.time()
         try:
             objects = []
-            for obj in self.client.list_objects(bucket, prefix=prefix, recursive=True):
+            results = await self.client.list_objects(
+                bucket, prefix=prefix, recursive=True
+            )
+            for obj in results:
                 objects.append(obj.object_name)
             logger.debug(
                 f"Listed {len(objects)} objects in {bucket} with prefix {prefix}"
             )
 
             duration = time.time() - start_time
-            _stats_record_operation("list", duration)
+            await _stats_record_operation("list", duration)
             return objects
         except MinioException as e:
             logger.error(
                 f"MinIO error listing objects in {bucket} with prefix {prefix}: {e}"
             )
-            _stats_record_error(
+            await _stats_record_error(
                 "storage",
                 f"Failed to list objects in {bucket} with prefix {prefix}: {e}",
             )
             return []
         except Exception as e:
             logger.error(f"Error listing objects in {bucket} with prefix {prefix}: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage",
                 f"Unexpected error listing objects in {bucket} with prefix {prefix}: {e}",
             )
             return []
 
-    def file_exists(self, object_name, bucket):
+    async def file_exists(self, object_name, bucket):
         """Check if a file exists in MinIO by attempting to stat it.
 
         Args:
@@ -430,27 +451,27 @@ class MinioStorage:
             bool: ``True`` if file exists, ``False`` otherwise.
         """
         try:
-            self.client.stat_object(bucket_name=bucket, object_name=object_name)
+            await self.client.stat_object(bucket_name=bucket, object_name=object_name)
             return True
         except MinioException:
             return False
         except Exception as e:
             logger.error(f"Error checking if {bucket}/{object_name} exists: {e}")
-            _stats_record_error(
+            await _stats_record_error(
                 "storage",
                 f"Unexpected error checking if {bucket}/{object_name} exists: {e}",
             )
             return False
 
 
-def _stats_record_error(*args, **kwargs):
+async def _stats_record_error(*args, **kwargs):
     if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
-        stats_module.stats.record_error(*args, **kwargs)
+        await stats_module.stats.record_error(*args, **kwargs)
 
 
-def _stats_record_operation(*args, **kwargs):
+async def _stats_record_operation(*args, **kwargs):
     if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
-        stats_module.stats.record_storage_operation(*args, **kwargs)
+        await stats_module.stats.record_storage_operation(*args, **kwargs)
 
 
 storage = MinioStorage()
