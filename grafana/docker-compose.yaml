@@ -1,0 +1,64 @@
+services:
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/collector.yaml"]
+    volumes:
+      - ./collector.yaml:/etc/collector.yaml
+    networks:
+      - prometheus_net
+      - teleg_net
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+      - ./observability_data/prometheus:/prometheus
+    user: "0:0"
+    networks:
+      - prometheus_net
+      - teleg_net
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    volumes:
+      - ./gr_data:/var/lib/grafana
+    user: "0:0"
+    networks:
+      - prometheus_net
+      - proxy
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    user: "0:0"
+    volumes:
+      - ./observability_data/loki:/loki
+    networks:
+      - prometheus_net
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    user: "0:0"
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml
+      - ./observability_data/tempo:/tmp/tempo
+    networks:
+      - prometheus_net
+
+networks:
+  proxy:
+    external: true
+    name: proxy
+  prometheus_net:
+    driver: bridge
+    external: true
+    name: prometheus_net
+  teleg_net:
+    driver: bridge
+    external: true
+    name: teleg_net

@@ -1,11 +1,11 @@
 import asyncio
 import os
 
-from loguru import logger
 from telethon import TelegramClient, events, types
 
 from telegram_auto_poster.bot.handlers import process_photo, process_video
 from telegram_auto_poster.utils import stats as stats_module
+from telegram_auto_poster.utils.logger_setup import get_logger
 
 # Create a global client variable that can be accessed from other modules
 client_instance = None
@@ -47,13 +47,17 @@ class TelegramMemeClient:
         # Also store the client in the application's bot_data
         if self.application and hasattr(self.application, "bot_data"):
             self.application.bot_data["telethon_client"] = self.client
-            logger.info("TelegramClient instance stored in application.bot_data")
+            get_logger(operation="client_init").info(
+                "TelegramClient instance stored in application.bot_data"
+            )
         else:
-            logger.error(
+            get_logger(operation="client_init").error(
                 "Could not store client in application.bot_data - application not ready"
             )
 
-        logger.info("TelegramClient instance created and globally available")
+        get_logger(operation="client_init").info(
+            "TelegramClient instance created and globally available"
+        )
 
     async def _run(self):
         await self.client.run_until_disconnected()
@@ -61,13 +65,18 @@ class TelegramMemeClient:
     async def start(self) -> None:
         """Start the client and register event handlers."""
         await self.client.start()
-        logger.info("TelegramClient started successfully")
+        get_logger(operation="client_start").info("TelegramClient started successfully")
 
         # Import process_photo and process_video here to avoid circular imports
         # Register event handler for new messages
         @self.client.on(events.NewMessage(chats=self.selected_chats))
         async def handle_new_message(event):
             file_path = None
+            log = get_logger(
+                chat_id=getattr(event, "chat_id", None),
+                user_id=getattr(event, "sender_id", None),
+                operation="handle_new_message",
+            )
             try:
                 if isinstance(event.media, types.MessageMediaPhoto):
                     photo = event.media.photo
@@ -84,17 +93,13 @@ class TelegramMemeClient:
                     )
                 elif isinstance(event.media, types.MessageMediaDocument):
                     if event.media.document:
-                        logger.info(
-                            f"Video with eventid {event.id} has started downloading!"
-                        )
+                        log.info("Video download started", event_id=event.id)
                         if stats_module.stats:
                             await stats_module.stats.record_received("video")
                         video = event.media.document
                         file_path = f"downloaded_video_{event.id}.mp4"
                         await self.client.download_media(video, file=file_path)
-                        logger.info(
-                            f"Video with eventid {event.id} has been downloaded!"
-                        )
+                        log.info("Video downloaded", event_id=event.id)
                         await process_video(
                             "New post found with video",
                             file_path,
@@ -106,15 +111,19 @@ class TelegramMemeClient:
                 if file_path and os.path.exists(file_path):
                     os.remove(file_path)
                 else:
-                    logger.info("New non photo/video in channel")
+                    log.info("New non photo/video in channel")
 
         # Try to get channel entities
         try:
             for ch in self.selected_chats:
                 channel = await self.client.get_entity(ch)
-                logger.info(f"Listening for messages in {channel.title}")
+                get_logger(operation="client_start").info(
+                    f"Listening for messages in {channel.title}"
+                )
         except (TypeError, ValueError) as e:
-            logger.error(f"Error getting channel entity: {e}")
+            get_logger(operation="client_start").error(
+                f"Error getting channel entity: {e}"
+            )
             return
         self._task = asyncio.create_task(self._run())
 
@@ -122,4 +131,4 @@ class TelegramMemeClient:
         """Disconnect the Telethon client."""
         if self.client.is_connected():
             await self.client.disconnect()
-        logger.info("TelegramClient disconnected")
+        get_logger(operation="client_stop").info("TelegramClient disconnected")

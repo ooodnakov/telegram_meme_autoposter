@@ -38,4 +38,7 @@ COPY ./telegram_auto_poster ./telegram_auto_poster
 COPY run_bg.sh /run_bg.sh
 RUN chmod +x /run_bg.sh
 
+COPY healthcheck.py /healthcheck.py
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 CMD ["python", "/healthcheck.py"]
+
 ENTRYPOINT ["/run_bg.sh"]

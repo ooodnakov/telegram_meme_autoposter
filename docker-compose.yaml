@@ -9,6 +9,7 @@ services:
     networks:
       - proxy
       - teleg_net
+      - prometheus_net
     volumes:
       - ./telegram_auto_poster:/workspace/telegram_auto_poster
       - ./pyproject.toml:/workspace/pyproject.toml
@@ -20,9 +21,19 @@ services:
       - ./wm.png:/workspace/wm.png
       # - ./ooodnakov.session-journal:/workspace/ooodnakov.session-journal
       # - ./data:/app/data
-    env_file: .env   
+    env_file: .env
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_SERVICE_NAME=telegram-auto-poster
     depends_on:
       - db
+    healthcheck:
+      test: ["CMD", "python", "/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     deploy:
       resources:
         limits:
@@ -50,6 +61,10 @@ networks:
     name: proxy
   teleg_net:
     external: true
+    driver: bridge
+  prometheus_net:
+    external: true
+    name: prometheus_net
     driver: bridge
 
 volumes:

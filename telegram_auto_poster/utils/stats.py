@@ -134,6 +134,10 @@ class MediaStats:
             await self._increment("list_operations")
             await self._increment("list_operations", scope="total")
 
+    async def record_watermark_duration(self, duration: float) -> None:
+        """Record duration spent applying watermarks."""
+        await self._record_duration("watermark", duration)
+
     async def get_daily_stats(self, reset_if_new_day: bool = True) -> dict:
         last_reset_raw = await self.r.get(_redis_meta_key())
         last_reset = (

@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 
-from loguru import logger
+from opentelemetry import trace
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -30,8 +30,11 @@ from telegram_auto_poster.utils.general import (
     cleanup_temp_file,
     download_from_minio,
 )
+from telegram_auto_poster.utils.logger_setup import get_logger
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+
+tracer = trace.get_tracer(__name__)
 
 # Define error constants
 ERROR_MINIO_FILE_NOT_FOUND = "File not found in MinIO storage"
@@ -71,7 +74,13 @@ async def handle_photo(
     message_id = update.message.message_id
     user_id = update.effective_user.id
     file_name = f"downloaded_image_{chat_id}_{file_id}_{message_id}.jpg"
-    logger.info(f"file_name {file_name}, message_id {message_id}")
+    log = get_logger(
+        chat_id=chat_id,
+        user_id=user_id,
+        object_name=file_name,
+        operation="handle_photo",
+    )
+    log.info("Received photo", message_id=message_id)
     # Record received media
     await stats.record_received("photo")
 
@@ -89,11 +98,14 @@ async def handle_photo(
         download_time = time.time() - start_time
 
         download_time = time.time() - start_time
-        logger.info(f"Photo from chat {chat_id} has downloaded in {download_time:.2f}s")
+        log.info(
+            "Photo downloaded",
+            download_duration=round(download_time, 2),
+        )
 
         image_hash = calculate_image_hash(temp_path)
         if is_duplicate_hash(image_hash):
-            logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
+            log.info("Duplicate photo detected", media_hash=image_hash)
             await stats.record_rejected("photo", file_name, "duplicate")
             await update.message.reply_text(
                 "Этот пост уже есть в канале.",
@@ -125,7 +137,7 @@ async def handle_photo(
             do_quote=True,
         )
     except Exception as e:
-        logger.error(f"Error handling photo: {e}")
+        log.error(f"Error handling photo: {e}")
         await stats.record_error("processing", f"Error handling photo: {str(e)}")
         await update.message.reply_text(
             "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже.",
@@ -141,11 +153,17 @@ async def handle_video(
     chat_id: int,
 ):
     """Handle video uploads"""
-    logger.info(f"Video from chat {chat_id} has started downloading!")
     file_id = update.message.video.file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
     file_name = f"downloaded_video_{chat_id}_{file_id}_{message_id}.mp4"
+    log = get_logger(
+        chat_id=chat_id,
+        user_id=user_id,
+        object_name=file_name,
+        operation="handle_video",
+    )
+    log.info("Video download started", message_id=message_id)
 
     # Record received media
     await stats.record_received("video")
@@ -164,11 +182,14 @@ async def handle_video(
         download_time = time.time() - start_time
 
         download_time = time.time() - start_time
-        logger.info(f"Video from chat {chat_id} has downloaded in {download_time:.2f}s")
+        log.info(
+            "Video downloaded",
+            download_duration=round(download_time, 2),
+        )
 
         video_hash = calculate_video_hash(temp_path)
         if is_duplicate_hash(video_hash):
-            logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
+            log.info("Duplicate video detected", media_hash=video_hash)
             await stats.record_rejected("video", file_name, "duplicate")
             await update.message.reply_text(
                 "Этот пост уже есть в канале.",
@@ -200,7 +221,7 @@ async def handle_video(
             do_quote=True,
         )
     except Exception as e:
-        logger.error(f"Error handling video: {e}")
+        log.error(f"Error handling video: {e}")
         await stats.record_error("processing", f"Error handling video: {str(e)}")
         await update.message.reply_text(
             "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже.",
@@ -227,11 +248,13 @@ async def notify_user(
         if reply_to_message_id and user_id:
             params["reply_to_message_id"] = reply_to_message_id
         await context.bot.send_message(**params)
-        logger.info(
-            f"Sent notification to user {user_id} with reply_to {reply_to_message_id}"
+        get_logger(user_id=user_id, operation="notify_user").info(
+            "Sent notification", reply_to=reply_to_message_id
         )
     except Exception as e:
-        logger.error(f"Failed to send notification to user {user_id}: {e}")
+        get_logger(user_id=user_id, operation="notify_user").error(
+            f"Failed to send notification to user {user_id}: {e}"
+        )
         await stats.record_error("telegram", f"Failed to notify user: {str(e)}")
 
 
@@ -246,16 +269,24 @@ async def process_photo(
 ):
     """Process a photo by adding watermark and sending to review bot"""
     start_time = time.time()
+    processed_name = f"processed_{os.path.basename(original_name)}"
+    log = get_logger(
+        chat_id=user_metadata.get("chat_id") if user_metadata else None,
+        user_id=user_metadata.get("user_id") if user_metadata else None,
+        object_name=processed_name,
+        operation="process_photo",
+    )
     try:
-        # Add watermark and upload to MinIO
-        processed_name = f"processed_{os.path.basename(original_name)}"
-
+        watermark_start = time.time()
         await add_watermark_to_image(
             input_path,
             processed_name,
             user_metadata=user_metadata,
             media_hash=media_hash,
         )
+        watermark_duration = time.time() - watermark_start
+        await stats.record_watermark_duration(watermark_duration)
+        log.info("Watermark added", watermark_duration=round(watermark_duration, 2))
 
         # Copy user metadata to processed file if exists
         if user_metadata:
@@ -282,15 +313,16 @@ async def process_photo(
             ):
                 file_found = True
                 break
-            logger.warning(
-                f"Attempt {i + 1}/{max_retries}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+            log.warning(
+                "Processed photo not yet found",
+                attempt=i + 1,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
             )
             await asyncio.sleep(retry_delay)
 
         if not file_found:
-            logger.error(
-                f"Processed photo not found in MinIO after {max_retries} retries: {processed_name}"
-            )
+            log.error("Processed photo not found after retries")
             await stats.record_error(
                 "processing", f"Processed photo not found: {processed_name}"
             )
@@ -326,22 +358,22 @@ async def process_photo(
                 connect_timeout=60,
                 pool_timeout=60,
             )
-            logger.info(f"New photo {processed_name} in channel!")
+            log.info("Photo sent to review")
         except Exception as e:
-            logger.error(f"Failed to send photo to review channel: {e}")
+            log.error(f"Failed to send photo to review channel: {e}")
             await stats.record_error("telegram", f"Failed to send to review: {str(e)}")
             raise TelegramMediaError(f"Failed to send photo to review: {str(e)}")
         finally:
             cleanup_temp_file(temp_path)
         return True
     except MinioError as e:
-        logger.error(f"MinIO error in process_photo: {e}")
+        log.error(f"MinIO error in process_photo: {e}")
         await stats.record_error("storage", f"MinIO error: {str(e)}")
     except MediaError as e:
-        logger.error(f"Media processing error in process_photo: {e}")
+        log.error(f"Media processing error in process_photo: {e}")
         await stats.record_error("processing", f"Media error: {str(e)}")
     except Exception as e:
-        logger.error(f"Unexpected error in process_photo: {e}")
+        log.error(f"Unexpected error in process_photo: {e}")
         await stats.record_error("processing", f"Unexpected error: {str(e)}")
     return False
 
@@ -357,17 +389,24 @@ async def process_video(
 ):
     """Process a video and send to review bot"""
     start_time = time.time()
+    processed_name = f"processed_{os.path.basename(original_name)}"
+    log = get_logger(
+        chat_id=user_metadata.get("chat_id") if user_metadata else None,
+        user_id=user_metadata.get("user_id") if user_metadata else None,
+        object_name=processed_name,
+        operation="process_video",
+    )
     try:
-        # Add watermark and upload to MinIO
-        processed_name = f"processed_{os.path.basename(original_name)}"
-
-        # Add watermark to video and upload to MinIO
+        watermark_start = time.time()
         await add_watermark_to_video(
             input_path,
             processed_name,
             user_metadata=user_metadata,
             media_hash=media_hash,
         )
+        watermark_duration = time.time() - watermark_start
+        await stats.record_watermark_duration(watermark_duration)
+        log.info("Watermark added", watermark_duration=round(watermark_duration, 2))
 
         # Copy user metadata to processed file if exists
         if user_metadata:
@@ -394,15 +433,16 @@ async def process_video(
             ):
                 file_found = True
                 break
-            logger.warning(
-                f"Attempt {i + 1}/{max_retries}: Processed video not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+            log.warning(
+                "Processed video not yet found",
+                attempt=i + 1,
+                max_retries=max_retries,
+                retry_delay=retry_delay,
             )
             await asyncio.sleep(retry_delay)
 
         if not file_found:
-            logger.error(
-                f"Processed video not found in MinIO after {max_retries} retries: {processed_name}"
-            )
+            log.error("Processed video not found after retries")
             await stats.record_error(
                 "processing", f"Processed video not found: {processed_name}"
             )
@@ -442,9 +482,9 @@ async def process_video(
                     connect_timeout=60,
                     pool_timeout=60,
                 )
-            logger.info(f"New video {processed_name} in channel!")
+            log.info("Video sent to review")
         except Exception as e:
-            logger.error(f"Failed to send video to review channel: {e}")
+            log.error(f"Failed to send video to review channel: {e}")
             await stats.record_error(
                 "telegram", f"Failed to send video to review: {str(e)}"
             )
@@ -453,13 +493,13 @@ async def process_video(
             cleanup_temp_file(temp_path)
         return True
     except MinioError as e:
-        logger.error(f"MinIO error in process_video: {e}")
+        log.error(f"MinIO error in process_video: {e}")
         await stats.record_error("storage", f"MinIO error: {str(e)}")
     except MediaError as e:
-        logger.error(f"Media processing error in process_video: {e}")
+        log.error(f"Media processing error in process_video: {e}")
         await stats.record_error("processing", f"Media error: {str(e)}")
     except Exception as e:
-        logger.error(f"Unexpected error in process_video: {e}")
+        log.error(f"Unexpected error in process_video: {e}")
         await stats.record_error("processing", f"Unexpected error: {str(e)}")
     return False
 
@@ -467,17 +507,19 @@ async def process_video(
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle media uploads from users"""
     chat_id = update.effective_chat.id
-    try:
-        if update.message and update.message.photo:
-            await handle_photo(update, context, chat_id)
-        elif update.message and update.message.video:
-            await handle_video(update, context, chat_id)
-        else:
-            logger.warning(f"Unsupported media type from chat {chat_id}")
-    except Exception as e:
-        logger.error(f"Error in handle_media: {e}")
-        await stats.record_error("processing", f"Error handling media: {str(e)}")
-        await update.message.reply_text(
-            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
-            do_quote=True,
-        )
+    log = get_logger(chat_id=chat_id, operation="handle_media")
+    with tracer.start_as_current_span("handle_media", attributes={"chat_id": chat_id}):
+        try:
+            if update.message and update.message.photo:
+                await handle_photo(update, context, chat_id)
+            elif update.message and update.message.video:
+                await handle_video(update, context, chat_id)
+            else:
+                log.warning("Unsupported media type")
+        except Exception as e:
+            log.error(f"Error in handle_media: {e}")
+            await stats.record_error("processing", f"Error handling media: {str(e)}")
+            await update.message.reply_text(
+                "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
+                do_quote=True,
+            )

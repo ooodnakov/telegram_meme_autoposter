@@ -1,6 +1,7 @@
 """Helpers for configuring logging with :mod:`loguru`."""
 
 import logging
+import os
 import sys
 
 from loguru import logger
@@ -36,7 +37,23 @@ def setup_logger() -> logger.__class__:
     )
 
     logger.remove()
-    logger.add(sys.stderr, format=logging_format)
+    if os.getenv("JSON_LOGS"):
+        logger.add(sys.stderr, serialize=True)
+    else:
+        logger.add(sys.stderr, format=logging_format)
     logger.add(PropagateHandler(), format="{message}")
 
     return logger
+
+
+def get_logger(
+    chat_id: int | None = None,
+    user_id: int | None = None,
+    object_name: str | None = None,
+    operation: str | None = None,
+):
+    """Return a logger bound with standard contextual fields."""
+
+    return logger.bind(
+        chat_id=chat_id, user_id=user_id, object_name=object_name, operation=operation
+    )

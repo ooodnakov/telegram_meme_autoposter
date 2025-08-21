@@ -7,9 +7,11 @@ from telegram_auto_poster.client.client import TelegramMemeClient
 from telegram_auto_poster.config import load_config
 from telegram_auto_poster.utils.logger_setup import setup_logger
 from telegram_auto_poster.utils.stats import stats
+from telegram_auto_poster.utils.telemetry import init_telemetry
 
 # Setup logger
 logger = setup_logger()
+init_telemetry(logger)
 
 # Ensure required directories exist
 Path("photos").mkdir(exist_ok=True)

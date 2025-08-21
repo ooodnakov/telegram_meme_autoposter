@@ -37,6 +37,8 @@ dependencies = [
     "watchfiles",
     "pytest-mock>=3.14.1",
     "miniopy-async>=1.21.1",
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
 ]
 
 [dependency-groups]
