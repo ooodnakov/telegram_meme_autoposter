@@ -31,22 +31,12 @@ async def check_admin_rights(
 
         # If not found in bot_data, get admin IDs from config
         config = load_config()
-        admin_ids = config.get("admin_ids", [])
-
-        # If admin_ids is a single value, convert to list
-        if not isinstance(admin_ids, list):
-            admin_ids = [admin_ids]
+        admin_ids = config.bot.admin_ids
 
         # Check if user is in admin list
         if user_id in admin_ids:
             logger.debug(f"User {user_id} has admin rights (from config)")
             return True
-
-        # Fall back to bot_chat_id for backward compatibility
-        if not admin_ids:
-            if "bot_chat_id" in config and user_id == int(config["bot_chat_id"]):
-                logger.debug(f"User {user_id} has admin rights (from bot_chat_id)")
-                return True
 
         # User does not have admin rights
         logger.warning(

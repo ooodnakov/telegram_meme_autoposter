@@ -5,6 +5,7 @@ from loguru import logger
 from telethon import TelegramClient, events, types
 
 from telegram_auto_poster.bot.handlers import process_photo, process_video
+from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils import stats as stats_module
 
 # Create a global client variable that can be accessed from other modules
@@ -23,21 +24,22 @@ class TelegramMemeClient:
         selected_chats (list[str]): Channels to monitor for new media.
     """
 
-    def __init__(self, application, config: dict) -> None:
+    def __init__(self, application, config: Config) -> None:
         """Initialize the Telethon client and store configuration values.
 
         Args:
             application: PTB ``Application`` instance used for coordination.
-            config: Configuration dictionary with Telegram credentials and
-                channel information.
+            config: Typed configuration instance with credentials and channels.
         """
         self.client = TelegramClient(
-            config["username"], config["api_id"], config["api_hash"]
+            config.telegram.username,
+            config.telegram.api_id,
+            config.telegram.api_hash,
         )
         self.application = application
-        self.target_channel = config["target_channel"]
-        self.bot_chat_id = config["bot_chat_id"]
-        self.selected_chats = config["selected_chats"]
+        self.target_channel = config.telegram.target_channel
+        self.bot_chat_id = config.bot.bot_chat_id
+        self.selected_chats = config.chats.selected_chats
         self._task = None
 
         # Set the global client instance

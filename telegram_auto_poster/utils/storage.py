@@ -19,10 +19,10 @@ from telegram_auto_poster.config import (
 from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from centralized config
-MINIO_HOST = CONFIG["minio"]["host"]
-MINIO_PORT = CONFIG["minio"]["port"]
-MINIO_ACCESS_KEY = CONFIG["minio"]["access_key"]
-MINIO_SECRET_KEY = CONFIG["minio"]["secret_key"]
+MINIO_HOST = CONFIG.minio.host
+MINIO_PORT = CONFIG.minio.port
+MINIO_ACCESS_KEY = CONFIG.minio.access_key
+MINIO_SECRET_KEY = CONFIG.minio.secret_key
 
 
 class MinioStorage:

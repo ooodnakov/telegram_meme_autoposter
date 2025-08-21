@@ -41,6 +41,7 @@ from telegram_auto_poster.bot.commands import (
 
 # Import media handlers from handlers.py
 from telegram_auto_poster.bot.handlers import handle_media
+from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils.timezone import now_utc
 
 
@@ -49,19 +50,16 @@ class TelegramMemeBot:
 
     Attributes:
         bot_token (str): Authentication token for the bot account.
-        bot_chat_id (str): Chat ID where administrative commands are accepted.
+        bot_chat_id (int): Chat ID where administrative commands are accepted.
         application (Application | None): Underlying PTB application instance.
-        config (dict): Original configuration dictionary.
+        config (Config): Loaded configuration object.
     """
 
-    def __init__(self, config: dict) -> None:
-        """Store configuration and prepare for later setup.
+    def __init__(self, config: Config) -> None:
+        """Store configuration and prepare for later setup."""
 
-        Args:
-            config: Parsed configuration mapping from :mod:`configparser`.
-        """
-        self.bot_token = config["bot_token"]
-        self.bot_chat_id = config["bot_chat_id"]
+        self.bot_token = config.bot.bot_token
+        self.bot_chat_id = config.bot.bot_chat_id
         self.application = None
         self.config = config
         logger.info(f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}")
@@ -77,24 +75,19 @@ class TelegramMemeBot:
 
         # Store important information in bot_data
         self.application.bot_data["chat_id"] = self.bot_chat_id
-        self.application.bot_data["target_channel_id"] = self.config["target_channel"]
-        self.application.bot_data["quiet_hours_start"] = self.config.get(
-            "quiet_hours_start", 22
+        self.application.bot_data["target_channel_id"] = (
+            self.config.telegram.target_channel
         )
-        self.application.bot_data["quiet_hours_end"] = self.config.get(
-            "quiet_hours_end", 10
+        self.application.bot_data["quiet_hours_start"] = (
+            self.config.schedule.quiet_hours_start
+        )
+        self.application.bot_data["quiet_hours_end"] = (
+            self.config.schedule.quiet_hours_end
         )
 
         # Store admin IDs
-        if "admin_ids" in self.config:
-            self.application.bot_data["admin_ids"] = self.config["admin_ids"]
-            logger.info(f"Configured admin IDs: {self.config['admin_ids']}")
-        else:
-            # For backward compatibility, use the bot_chat_id as admin
-            self.application.bot_data["admin_ids"] = [int(self.bot_chat_id)]
-            logger.info(
-                f"No admin IDs configured, using chat_id as admin: {self.bot_chat_id}"
-            )
+        self.application.bot_data["admin_ids"] = self.config.bot.admin_ids
+        logger.info(f"Configured admin IDs: {self.config.bot.admin_ids}")
 
         # Test the bot connection
         me = await self.application.bot.get_me()
