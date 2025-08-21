@@ -58,7 +58,7 @@ class TelegramMemeBot:
     def __init__(self, config: Config) -> None:
         """Store configuration and prepare for later setup."""
 
-        self.bot_token = config.bot.bot_token
+        self.bot_token = config.bot.bot_token.get_secret_value()
         self.bot_chat_id = config.bot.bot_chat_id
         self.application = None
         self.config = config

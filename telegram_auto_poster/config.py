@@ -7,7 +7,7 @@ import os
 from typing import Any
 
 from loguru import logger
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, SecretStr, model_validator
 
 
 class TelegramConfig(BaseModel):
@@ -18,7 +18,7 @@ class TelegramConfig(BaseModel):
 
 
 class BotConfig(BaseModel):
-    bot_token: str
+    bot_token: SecretStr
     bot_username: str
     bot_chat_id: int
     admin_ids: list[int] | None = None
@@ -45,14 +45,14 @@ class ScheduleConfig(BaseModel):
 class MinioConfig(BaseModel):
     host: str = "localhost"
     port: int = 9000
-    access_key: str = "minioadmin"
-    secret_key: str = "minioadmin"
+    access_key: SecretStr = SecretStr("minioadmin")
+    secret_key: SecretStr = SecretStr("minioadmin")
 
 
 class ValkeyConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 6379
-    password: str = "redis"
+    password: SecretStr = SecretStr("redis")
     prefix: str = "telegram_auto_poster"
 
 
@@ -60,7 +60,7 @@ class MySQLConfig(BaseModel):
     host: str = "localhost"
     port: int = 3306
     user: str
-    password: str
+    password: SecretStr
     name: str
 
 
@@ -113,45 +113,43 @@ def _load_ini(path: str) -> dict[str, Any]:
     if parser.has_section("Telegram"):
         data["telegram"] = {
             k: parser.get("Telegram", k)
-            for k in ["api_id", "api_hash", "username", "target_channel"]
+            for k in TelegramConfig.model_fields
             if parser.has_option("Telegram", k)
         }
     if parser.has_section("Bot"):
-        bot_section = {
-            k: parser.get("Bot", k)
-            for k in ["bot_token", "bot_username", "bot_chat_id"]
-            if parser.has_option("Bot", k)
-        }
-        if parser.has_option("Bot", "admin_ids"):
-            admin_ids = [
-                int(x.strip())
-                for x in parser.get("Bot", "admin_ids").split(",")
-                if x.strip()
-            ]
-            bot_section["admin_ids"] = admin_ids
-        data["bot"] = bot_section
+        bot_section: dict[str, Any] = {}
+        for k in BotConfig.model_fields:
+            if parser.has_option("Bot", k):
+                if k == "admin_ids":
+                    bot_section[k] = [
+                        int(x.strip())
+                        for x in parser.get("Bot", k).split(",")
+                        if x.strip()
+                    ]
+                else:
+                    bot_section[k] = parser.get("Bot", k)
+        if bot_section:
+            data["bot"] = bot_section
     if parser.has_section("Chats"):
         chats_section: dict[str, Any] = {}
-        if parser.has_option("Chats", "selected_chats"):
-            chats_section["selected_chats"] = [
-                c.strip()
-                for c in parser.get("Chats", "selected_chats").split(",")
-                if c.strip()
-            ]
-        if parser.has_option("Chats", "luba_chat"):
-            chats_section["luba_chat"] = parser.get("Chats", "luba_chat")
+        for k in ChatsConfig.model_fields:
+            if parser.has_option("Chats", k):
+                if k == "selected_chats":
+                    chats_section[k] = [
+                        c.strip()
+                        for c in parser.get("Chats", k).split(",")
+                        if c.strip()
+                    ]
+                else:
+                    chats_section[k] = parser.get("Chats", k)
         if chats_section:
             data["chats"] = chats_section
     if parser.has_section("Schedule"):
-        sched_section: dict[str, Any] = {}
-        if parser.has_option("Schedule", "quiet_hours_start"):
-            sched_section["quiet_hours_start"] = parser.get(
-                "Schedule", "quiet_hours_start"
-            )
-        if parser.has_option("Schedule", "quiet_hours_end"):
-            sched_section["quiet_hours_end"] = parser.get("Schedule", "quiet_hours_end")
-        if sched_section:
-            data["schedule"] = sched_section
+        data["schedule"] = {
+            k: parser.get("Schedule", k)
+            for k in ScheduleConfig.model_fields
+            if parser.has_option("Schedule", k)
+        }
     return data
 
 
@@ -190,14 +188,7 @@ def load_config() -> Config:
     merged = _deep_update(data, env_overrides)
 
     config = Config.model_validate(merged)
-
-    safe = config.model_copy(deep=True)
-    safe.bot.bot_token = "***"
-    safe.minio.access_key = "***"
-    safe.minio.secret_key = "***"
-    safe.valkey.password = "***"
-    safe.mysql.password = "***"
-    logger.bind(event="config_loaded").info(safe.model_dump())
+    logger.bind(event="config_loaded").info(f"Config loaded: {config}")
 
     return config
 
