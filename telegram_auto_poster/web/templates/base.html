@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Telegram Autoposter Admin</title>
+    <style>
+        body { font-family: sans-serif; margin: 2rem; }
+        nav a { margin-right: 1rem; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+    </style>
+</head>
+<body>
+<nav>
+    <a href="/">Home</a>
+    <a href="/queue">Queue</a>
+    <a href="/stats">Stats</a>
+</nav>
+<hr />
+{% block content %}{% endblock %}
+</body>
+</html>

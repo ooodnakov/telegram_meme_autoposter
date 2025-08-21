@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Queued Media</h1>
+{% if posts %}
+<table>
+    <tr><th>File Path</th><th>Scheduled Time</th></tr>
+    {% for path, ts in posts %}
+    <tr><td>{{ path }}</td><td>{{ ts }}</td></tr>
+    {% endfor %}
+</table>
+{% else %}
+<p>No media scheduled.</p>
+{% endif %}
+{% endblock %}

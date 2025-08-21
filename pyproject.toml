@@ -37,6 +37,9 @@ dependencies = [
     "watchfiles",
     "pytest-mock>=3.14.1",
     "miniopy-async>=1.21.1",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "jinja2>=3.1.4",
 ]
 
 [dependency-groups]
@@ -97,6 +100,7 @@ exclude = [
     ".vscode",
     "__pypackages__",
     "_build",
+    "telegram_auto_poster/web/templates",
 ]
 
 include = ["pyproject.toml", "telegram_auto_poster/*"]

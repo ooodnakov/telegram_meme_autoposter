@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Analytics</h1>
+<h2>Last 24 Hours</h2>
+<ul>
+    <li>Media Received: {{ daily.media_received }}</li>
+    <li>Photos Processed: {{ daily.photos_processed }}</li>
+    <li>Videos Processed: {{ daily.videos_processed }}</li>
+    <li>Photos Approved: {{ daily.photos_approved }}</li>
+    <li>Videos Approved: {{ daily.videos_approved }}</li>
+    <li>Photos Rejected: {{ daily.photos_rejected }}</li>
+    <li>Videos Rejected: {{ daily.videos_rejected }}</li>
+    <li>Batches Sent: {{ daily.batch_sent }}</li>
+    <li>Approval Rate: {{ '%.1f'|format(approval_24h) }}%</li>
+    <li>Success Rate: {{ '%.1f'|format(success_24h) }}%</li>
+    <li>Errors: {{ daily.processing_errors + daily.storage_errors + daily.telegram_errors }}</li>
+    <li>Busiest Hour: {{ busiest_hour }} ({{ busiest_count }} events)</li>
+</ul>
+<h2>Performance</h2>
+<ul>
+    <li>Avg Photo Processing: {{ '%.2f'|format(perf.avg_photo_processing_time) }}s</li>
+    <li>Avg Video Processing: {{ '%.2f'|format(perf.avg_video_processing_time) }}s</li>
+    <li>Avg Upload: {{ '%.2f'|format(perf.avg_upload_time) }}s</li>
+    <li>Avg Download: {{ '%.2f'|format(perf.avg_download_time) }}s</li>
+</ul>
+<h2>All-Time Totals</h2>
+<ul>
+    <li>Photos Processed: {{ total.photos_processed }}</li>
+    <li>Videos Processed: {{ total.videos_processed }}</li>
+    <li>Photos Approved: {{ total.photos_approved }}</li>
+    <li>Videos Approved: {{ total.videos_approved }}</li>
+    <li>Photos Rejected: {{ total.photos_rejected }}</li>
+    <li>Videos Rejected: {{ total.videos_rejected }}</li>
+    <li>Batches Sent: {{ total.batch_sent }}</li>
+    <li>Approval Rate: {{ '%.1f'|format(approval_total) }}%</li>
+    <li>Total Errors: {{ total.processing_errors + total.storage_errors + total.telegram_errors }}</li>
+    <li>List Operations: {{ total.list_operations }}</li>
+</ul>
+{% endblock %}
