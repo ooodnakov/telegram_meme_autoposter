@@ -13,7 +13,7 @@
     <li>Batches Sent: {{ daily.batch_sent }}</li>
     <li>Approval Rate: {{ '%.1f'|format(approval_24h) }}%</li>
     <li>Success Rate: {{ '%.1f'|format(success_24h) }}%</li>
-    <li>Errors: {{ daily.processing_errors + daily.storage_errors + daily.telegram_errors }}</li>
+    <li>Errors: {{ daily_errors }}</li>
     <li>Busiest Hour: {{ busiest_hour }} ({{ busiest_count }} events)</li>
 </ul>
 <h2>Performance</h2>
@@ -33,7 +33,7 @@
     <li>Videos Rejected: {{ total.videos_rejected }}</li>
     <li>Batches Sent: {{ total.batch_sent }}</li>
     <li>Approval Rate: {{ '%.1f'|format(approval_total) }}%</li>
-    <li>Total Errors: {{ total.processing_errors + total.storage_errors + total.telegram_errors }}</li>
+    <li>Total Errors: {{ total_errors }}</li>
     <li>List Operations: {{ total.list_operations }}</li>
 </ul>
 {% endblock %}

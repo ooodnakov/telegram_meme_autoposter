@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -22,7 +24,7 @@ async def index(request: Request) -> HTMLResponse:
 
 @app.get("/queue", response_class=HTMLResponse)
 async def queue(request: Request) -> HTMLResponse:
-    raw_posts = get_scheduled_posts()
+    raw_posts = await run_in_threadpool(get_scheduled_posts)
     posts = [
         (path, datetime.datetime.fromtimestamp(ts).isoformat())
         for path, ts in raw_posts
@@ -33,13 +35,24 @@ async def queue(request: Request) -> HTMLResponse:
 
 @app.get("/stats", response_class=HTMLResponse)
 async def stats_view(request: Request) -> HTMLResponse:
-    daily = await stats.get_daily_stats(reset_if_new_day=False)
-    total = await stats.get_total_stats()
-    perf = await stats.get_performance_metrics()
-    approval_24h = await stats.get_approval_rate_24h(daily)
-    approval_total = await stats.get_approval_rate_total()
-    success_24h = await stats.get_success_rate_24h(daily)
-    busiest_hour, busiest_count = await stats.get_busiest_hour()
+    daily, total, perf, busiest = await asyncio.gather(
+        stats.get_daily_stats(reset_if_new_day=False),
+        stats.get_total_stats(),
+        stats.get_performance_metrics(),
+        stats.get_busiest_hour(),
+    )
+    busiest_hour, busiest_count = busiest
+    approval_24h, approval_total, success_24h = await asyncio.gather(
+        stats.get_approval_rate_24h(daily),
+        stats.get_approval_rate_total(),
+        stats.get_success_rate_24h(daily),
+    )
+    daily_errors = (
+        daily["processing_errors"] + daily["storage_errors"] + daily["telegram_errors"]
+    )
+    total_errors = (
+        total["processing_errors"] + total["storage_errors"] + total["telegram_errors"]
+    )
     context = {
         "request": request,
         "daily": daily,
@@ -50,5 +63,7 @@ async def stats_view(request: Request) -> HTMLResponse:
         "success_24h": success_24h,
         "busiest_hour": busiest_hour,
         "busiest_count": busiest_count,
+        "daily_errors": daily_errors,
+        "total_errors": total_errors,
     }
     return templates.TemplateResponse("stats.html", context)
