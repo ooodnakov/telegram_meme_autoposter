@@ -17,7 +17,7 @@ def test_run_bg_web_dashboard():
     path = Path("run_bg.sh")
     lines = path.read_text().splitlines()
     assert (
-        'uv run watchfiles --filter python "uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port ${WEB_PORT:-8000}" telegram_auto_poster/web &'
+        'uv run watchfiles --filter python "uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port ${WEB_PORT:-8000}" telegram_auto_poster &'
         in lines
     )
 

@@ -1,124 +1,196 @@
-"""Configuration helpers for the Telegram meme autoposter."""
+"""Typed configuration management using Pydantic."""
+
+from __future__ import annotations
 
 import configparser
 import os
+from typing import Any
 
-REQUIRED_FIELDS = {
-    "Telegram": ["api_id", "api_hash", "username", "target_channel"],
-    "Bot": ["bot_token", "bot_username", "bot_chat_id"],
-    "Chats": ["selected_chats", "luba_chat"],
+from loguru import logger
+from pydantic import BaseModel, SecretStr, model_validator
+
+
+class TelegramConfig(BaseModel):
+    api_id: int
+    api_hash: str
+    username: str
+    target_channel: str
+
+
+class BotConfig(BaseModel):
+    bot_token: SecretStr
+    bot_username: str
+    bot_chat_id: int
+    admin_ids: list[int] | None = None
+
+    @model_validator(mode="after")
+    def default_admins(self) -> "BotConfig":
+        """Populate ``admin_ids`` with ``bot_chat_id`` when not provided."""
+
+        if self.admin_ids is None:
+            self.admin_ids = [self.bot_chat_id]
+        return self
+
+
+class ChatsConfig(BaseModel):
+    selected_chats: list[str]
+    luba_chat: str
+
+
+class ScheduleConfig(BaseModel):
+    quiet_hours_start: int = 22
+    quiet_hours_end: int = 10
+
+
+class MinioConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 9000
+    access_key: SecretStr = SecretStr("minioadmin")
+    secret_key: SecretStr = SecretStr("minioadmin")
+
+
+class ValkeyConfig(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 6379
+    password: SecretStr = SecretStr("redis")
+    prefix: str = "telegram_auto_poster"
+
+
+class MySQLConfig(BaseModel):
+    host: str = "localhost"
+    port: int = 3306
+    user: str
+    password: SecretStr
+    name: str
+
+
+class Config(BaseModel):
+    telegram: TelegramConfig
+    bot: BotConfig
+    chats: ChatsConfig
+    schedule: ScheduleConfig = ScheduleConfig()
+    minio: MinioConfig = MinioConfig()
+    valkey: ValkeyConfig = ValkeyConfig()
+    mysql: MySQLConfig
+    timezone: str = "UTC"
+
+
+ENV_MAP: dict[str, tuple[str, str | None]] = {
+    "TELEGRAM_API_ID": ("telegram", "api_id"),
+    "TELEGRAM_API_HASH": ("telegram", "api_hash"),
+    "TELEGRAM_USERNAME": ("telegram", "username"),
+    "TELEGRAM_TARGET_CHANNEL": ("telegram", "target_channel"),
+    "BOT_BOT_TOKEN": ("bot", "bot_token"),
+    "BOT_BOT_USERNAME": ("bot", "bot_username"),
+    "BOT_BOT_CHAT_ID": ("bot", "bot_chat_id"),
+    "BOT_ADMIN_IDS": ("bot", "admin_ids"),
+    "CHATS_SELECTED_CHATS": ("chats", "selected_chats"),
+    "CHATS_LUBA_CHAT": ("chats", "luba_chat"),
+    "SCHEDULE_QUIET_HOURS_START": ("schedule", "quiet_hours_start"),
+    "SCHEDULE_QUIET_HOURS_END": ("schedule", "quiet_hours_end"),
+    "MINIO_HOST": ("minio", "host"),
+    "MINIO_PORT": ("minio", "port"),
+    "MINIO_ACCESS_KEY": ("minio", "access_key"),
+    "MINIO_SECRET_KEY": ("minio", "secret_key"),
+    "VALKEY_HOST": ("valkey", "host"),
+    "VALKEY_PORT": ("valkey", "port"),
+    "VALKEY_PASS": ("valkey", "password"),
+    "REDIS_PREFIX": ("valkey", "prefix"),
+    "DB_MYSQL_HOST": ("mysql", "host"),
+    "DB_MYSQL_PORT": ("mysql", "port"),
+    "DB_MYSQL_USER": ("mysql", "user"),
+    "DB_MYSQL_PASSWORD": ("mysql", "password"),
+    "DB_MYSQL_NAME": ("mysql", "name"),
+    "TZ": ("timezone", None),
 }
 
 
-def load_config() -> dict:
-    """Read ``config.ini`` and environment variables and return settings.
+def _load_ini(path: str) -> dict[str, Any]:
+    parser = configparser.ConfigParser()
+    parser.read(path)
 
-    The function validates that all required sections and fields are present and
-    converts certain values to the appropriate types.
+    data: dict[str, Any] = {}
+    if parser.has_section("Telegram"):
+        data["telegram"] = {
+            k: parser.get("Telegram", k)
+            for k in TelegramConfig.model_fields
+            if parser.has_option("Telegram", k)
+        }
+    if parser.has_section("Bot"):
+        bot_section: dict[str, Any] = {}
+        for k in BotConfig.model_fields:
+            if parser.has_option("Bot", k):
+                if k == "admin_ids":
+                    bot_section[k] = [
+                        int(x.strip())
+                        for x in parser.get("Bot", k).split(",")
+                        if x.strip()
+                    ]
+                else:
+                    bot_section[k] = parser.get("Bot", k)
+        if bot_section:
+            data["bot"] = bot_section
+    if parser.has_section("Chats"):
+        chats_section: dict[str, Any] = {}
+        for k in ChatsConfig.model_fields:
+            if parser.has_option("Chats", k):
+                if k == "selected_chats":
+                    chats_section[k] = [
+                        c.strip()
+                        for c in parser.get("Chats", k).split(",")
+                        if c.strip()
+                    ]
+                else:
+                    chats_section[k] = parser.get("Chats", k)
+        if chats_section:
+            data["chats"] = chats_section
+    if parser.has_section("Schedule"):
+        data["schedule"] = {
+            k: parser.get("Schedule", k)
+            for k in ScheduleConfig.model_fields
+            if parser.has_option("Schedule", k)
+        }
+    return data
 
-    Returns:
-        dict: Parsed configuration mapping.
 
-    Raises:
-        RuntimeError: If required sections or values are missing or invalid.
-    """
-    config = configparser.ConfigParser()
+def _load_env() -> dict[str, Any]:
+    env_data: dict[str, Any] = {}
+    for env_name, (section, field) in ENV_MAP.items():
+        if env_name not in os.environ:
+            continue
+        value: str = os.environ[env_name]
+        if field is None:
+            env_data[section] = value
+            continue
+        env_section = env_data.setdefault(section, {})
+        if field in {"selected_chats", "admin_ids"}:
+            env_section[field] = [x.strip() for x in value.split(",") if x.strip()]
+        else:
+            env_section[field] = value
+    return env_data
+
+
+def _deep_update(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    for key, value in overrides.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def load_config() -> Config:
+    """Read configuration and return a typed ``Config`` instance."""
+
     config_path = os.getenv("CONFIG_PATH", "config.ini")
-    config.read(config_path)
+    data = _load_ini(config_path)
+    env_overrides = _load_env()
+    merged = _deep_update(data, env_overrides)
 
-    for section, fields in REQUIRED_FIELDS.items():
-        if not config.has_section(section):
-            raise RuntimeError(f"Missing section [{section}] in config.ini")
-        for field in fields:
-            if not config.has_option(section, field) or not config.get(section, field):
-                raise RuntimeError(
-                    f"Missing required field '{field}' in section [{section}]"
-                )
+    config = Config.model_validate(merged)
+    logger.bind(event="config_loaded").info(f"Config loaded: {config}")
 
-    try:
-        api_id = int(config["Telegram"]["api_id"])
-    except ValueError as exc:
-        raise RuntimeError(
-            "Параметр api_id должен быть числом в секции [Telegram]"
-        ) from exc
-
-    conf_dict = {
-        "api_id": api_id,
-        "api_hash": config["Telegram"]["api_hash"],
-        "username": config["Telegram"]["username"],
-        "target_channel": config["Telegram"]["target_channel"],
-        "bot_token": config["Bot"]["bot_token"],
-        "bot_username": config["Bot"]["bot_username"],
-        "bot_chat_id": config["Bot"]["bot_chat_id"],
-        "selected_chats": [
-            chat.strip() for chat in config["Chats"]["selected_chats"].split(",")
-        ],
-        "luba_chat": config["Chats"]["luba_chat"],
-    }
-
-    try:
-        quiet_start = config.getint("Schedule", "quiet_hours_start", fallback=22)
-        quiet_end = config.getint("Schedule", "quiet_hours_end", fallback=10)
-    except ValueError as exc:
-        raise RuntimeError(
-            "quiet_hours_start and quiet_hours_end must be integers"
-        ) from exc
-    conf_dict["quiet_hours_start"] = quiet_start
-    conf_dict["quiet_hours_end"] = quiet_end
-
-    # Add admin IDs if they exist in config
-    if config.has_option("Bot", "admin_ids"):
-        # Admin IDs can be comma-separated list of user IDs
-        admin_ids_str = config["Bot"]["admin_ids"]
-        admin_ids = [int(id.strip()) for id in admin_ids_str.split(",") if id.strip()]
-        conf_dict["admin_ids"] = admin_ids
-    # Default to bot_chat_id if no admin IDs are specified
-    else:
-        conf_dict["admin_ids"] = [int(conf_dict["bot_chat_id"])]
-
-    # Centralized environment configuration
-    try:
-        minio_port = int(os.getenv("MINIO_PORT", "9000"))
-        valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
-        mysql_port = int(os.getenv("DB_MYSQL_PORT", "3306"))
-    except ValueError as exc:
-        raise RuntimeError("Port environment variables must be integers.") from exc
-
-    conf_dict["minio"] = {
-        "host": os.getenv("MINIO_HOST", "localhost"),
-        "port": minio_port,
-        "access_key": os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
-        "secret_key": os.getenv("MINIO_SECRET_KEY", "minioadmin"),
-    }
-
-    conf_dict["valkey"] = {
-        "host": os.getenv("VALKEY_HOST", "127.0.0.1"),
-        "port": valkey_port,
-        "password": os.getenv("VALKEY_PASS", "redis"),
-        "prefix": os.getenv("REDIS_PREFIX", "telegram_auto_poster"),
-    }
-
-    mysql_user = os.getenv("DB_MYSQL_USER")
-    mysql_password = os.getenv("DB_MYSQL_PASSWORD")
-    mysql_name = os.getenv("DB_MYSQL_NAME")
-
-    if not all((mysql_user, mysql_password, mysql_name)):
-        raise RuntimeError(
-            "Missing required MySQL environment variables: "
-            "DB_MYSQL_USER, DB_MYSQL_PASSWORD, DB_MYSQL_NAME"
-        )
-
-    conf_dict["mysql"] = {
-        "host": os.getenv("DB_MYSQL_HOST", "localhost"),
-        "port": mysql_port,
-        "user": mysql_user,
-        "password": mysql_password,
-        "name": mysql_name,
-    }
-
-    conf_dict["timezone"] = os.getenv("TZ", "UTC")
-
-    return conf_dict
+    return config
 
 
 # Define path names

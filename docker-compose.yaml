@@ -21,28 +21,11 @@ services:
       # - ./ooodnakov.session-journal:/workspace/ooodnakov.session-journal
       # - ./data:/app/data
     env_file: .env
-    depends_on:
-      - db
     deploy:
       resources:
         limits:
           cpus: '0.5'
           memory: 512M
-
-  db:
-    container_name: telegram_db
-    image: 'mariadb:latest'
-    restart: unless-stopped
-    environment:
-      - MARIADB_ROOT_PASSWORD=tma
-      - MARIADB_DATABASE=tma
-      - MARIADB_USER=tma
-      - MARIADB_PASSWORD=tma
-      - MARIADB_AUTO_UPGRADE=1
-    volumes:
-      - ./mysql:/var/lib/mysql
-    networks:
-      - teleg_net
 
 networks:
   proxy:

@@ -138,40 +138,39 @@ def mock_config(mocker):
     """
     Autouse fixture to mock config loading for all tests.
     """
+    from telegram_auto_poster.config import (
+        BotConfig,
+        ChatsConfig,
+        Config,
+        MySQLConfig,
+        TelegramConfig,
+    )
+
     mocker.patch(
         "telegram_auto_poster.config.load_config",
-        return_value={
-            "api_id": 1,
-            "api_hash": "test",
-            "username": "test",
-            "target_channel": "@test",
-            "bot_token": "token",
-            "bot_username": "bot",
-            "bot_chat_id": "1",
-            "selected_chats": ["@test1", "@test2"],
-            "luba_chat": "@luba",
-            "quiet_hours_start": 22,
-            "quiet_hours_end": 10,
-            "admin_ids": [1],
-            "minio": {
-                "host": "localhost",
-                "port": 9000,
-                "access_key": "minio",
-                "secret_key": "minio",
-            },
-            "valkey": {
-                "host": "localhost",
-                "port": 6379,
-                "password": "redis",
-                "prefix": "telegram_auto_poster",
-            },
-            "mysql": {
-                "host": "localhost",
-                "port": 3306,
-                "user": "user",
-                "password": "pass",
-                "name": "db",
-            },
-            "timezone": "UTC",
-        },
+        return_value=Config(
+            telegram=TelegramConfig(
+                api_id=1,
+                api_hash="test",
+                username="test",
+                target_channel="@test",
+            ),
+            bot=BotConfig(
+                bot_token="token",
+                bot_username="bot",
+                bot_chat_id=1,
+                admin_ids=[1],
+            ),
+            chats=ChatsConfig(
+                selected_chats=["@test1", "@test2"],
+                luba_chat="@luba",
+            ),
+            mysql=MySQLConfig(
+                host="localhost",
+                port=3306,
+                user="user",
+                password="pass",
+                name="db",
+            ),
+        ),
     )
