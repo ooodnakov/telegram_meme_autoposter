@@ -9,7 +9,6 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from telegram_auto_poster.config import BUCKET_MAIN, CONFIG
 from telegram_auto_poster.utils.db import get_scheduled_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
