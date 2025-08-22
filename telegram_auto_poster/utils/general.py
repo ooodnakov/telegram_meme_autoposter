@@ -54,10 +54,7 @@ def extract_filename(text: str) -> Optional[str]:
     photo_prefix = f"{PHOTOS_PATH}/"
     video_prefix = f"{VIDEOS_PATH}/"
     for line in reversed(lines):
-        if any(
-            path_prefix in line
-            for path_prefix in [photo_prefix, video_prefix, "downloaded_"]
-        ):
+        if any(path_prefix in line for path_prefix in [photo_prefix, video_prefix]):
             return line.strip()
 
     # Fall back to the last line if no path was found

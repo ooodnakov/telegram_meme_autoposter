@@ -70,7 +70,7 @@ async def handle_photo(
     file_id = update.message.photo[-1].file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
-    file_name = f"downloaded_image_{chat_id}_{file_id}_{message_id}.jpg"
+    file_name = f"photo_{chat_id}_{message_id}.jpg"
     logger.info(f"file_name {file_name}, message_id {message_id}")
     # Record received media
     await stats.record_received("photo")
@@ -145,7 +145,7 @@ async def handle_video(
     file_id = update.message.video.file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
-    file_name = f"downloaded_video_{chat_id}_{file_id}_{message_id}.mp4"
+    file_name = f"video_{chat_id}_{message_id}.mp4"
 
     # Record received media
     await stats.record_received("video")

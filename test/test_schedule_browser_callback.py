@@ -48,7 +48,7 @@ async def test_schedule_browser_unschedule_removes_and_shows_next(
 ):
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts",
-        return_value=[("p1", 0), ("p3", 0)],
+        side_effect=[[("p1", 0), ("p2", 0), ("p3", 0)], [("p1", 0), ("p3", 0)]],
     )
     remove = mocker.patch(
         "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
@@ -69,7 +69,7 @@ async def test_schedule_browser_unschedule_removes_and_shows_next(
         chat_id=1, delete=mocker.AsyncMock(), edit_text=mocker.AsyncMock()
     )
     query = SimpleNamespace(
-        data="/sch_unschedule:1:p2",
+        data="/sch_unschedule:1",
         message=message,
         answer=mocker.AsyncMock(),
         from_user=SimpleNamespace(id=1),
@@ -89,7 +89,7 @@ async def test_schedule_browser_unschedule_removes_and_shows_next(
 async def test_schedule_browser_push_sends_and_shows_next(mocker: MockerFixture):
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts",
-        return_value=[("p1.mp4", 0)],
+        side_effect=[[("p2.mp4", 0), ("p1.mp4", 0)], [("p1.mp4", 0)]],
     )
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
@@ -116,7 +116,7 @@ async def test_schedule_browser_push_sends_and_shows_next(mocker: MockerFixture)
         chat_id=1, delete=mocker.AsyncMock(), edit_text=mocker.AsyncMock()
     )
     query = SimpleNamespace(
-        data="/sch_push:0:p2.mp4",
+        data="/sch_push:0",
         message=message,
         answer=mocker.AsyncMock(),
         from_user=SimpleNamespace(id=1),
@@ -136,7 +136,8 @@ async def test_schedule_browser_push_sends_and_shows_next(mocker: MockerFixture)
 @pytest.mark.asyncio
 async def test_schedule_browser_unschedule_last_shows_none(mocker: MockerFixture):
     mocker.patch(
-        "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts", return_value=[]
+        "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts",
+        side_effect=[[("p1", 0)], []],
     )
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
@@ -157,7 +158,7 @@ async def test_schedule_browser_unschedule_last_shows_none(mocker: MockerFixture
         chat_id=1, delete=mocker.AsyncMock(), edit_text=mocker.AsyncMock()
     )
     query = SimpleNamespace(
-        data="/sch_unschedule:0:p1",
+        data="/sch_unschedule:0",
         message=message,
         answer=mocker.AsyncMock(),
         from_user=SimpleNamespace(id=1),
