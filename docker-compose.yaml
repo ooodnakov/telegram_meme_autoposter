@@ -20,8 +20,6 @@ services:
       - ./wm.png:/workspace/wm.png
       # - ./ooodnakov.session-journal:/workspace/ooodnakov.session-journal
       # - ./data:/app/data
-    ports:
-      - "8000:8000"
     env_file: .env
     depends_on:
       - db
