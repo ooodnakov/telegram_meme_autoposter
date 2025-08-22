@@ -517,7 +517,11 @@ async def unschedule_callback(
             await query.message.reply_text("Invalid request")
             return
 
-        idx = int(data.split(":", 1)[1])
+        try:
+            idx = int(data.split(":", 1)[1])
+        except (ValueError, IndexError):
+            await query.message.reply_text("Invalid request")
+            return
         scheduled_posts = db.get_scheduled_posts()
         if not scheduled_posts or idx >= len(scheduled_posts):
             await query.message.edit_text("No posts scheduled.")
@@ -619,7 +623,11 @@ async def schedule_browser_callback(
         action = action_part.split("_", 1)[1]
 
         if action in {"prev", "next"}:
-            idx = int(payload_parts[0])
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
             scheduled_posts = db.get_scheduled_posts()
             if not scheduled_posts:
                 await query.message.edit_text("No posts scheduled.")
@@ -638,7 +646,11 @@ async def schedule_browser_callback(
             return
 
         if action == "unschedule":
-            idx = int(payload_parts[0])
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
             scheduled_posts = db.get_scheduled_posts()
             if not scheduled_posts or idx >= len(scheduled_posts):
                 await query.message.edit_text("No posts scheduled.")
@@ -648,7 +660,11 @@ async def schedule_browser_callback(
             return
 
         if action == "push":
-            idx = int(payload_parts[0])
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
             scheduled_posts = db.get_scheduled_posts()
             if not scheduled_posts or idx >= len(scheduled_posts):
                 await query.message.edit_text("No posts scheduled.")

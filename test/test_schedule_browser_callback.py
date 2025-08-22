@@ -170,3 +170,28 @@ async def test_schedule_browser_unschedule_last_shows_none(mocker: MockerFixture
 
     message.edit_text.assert_awaited_once_with("No posts scheduled.")
     assert preview.await_count == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "data",
+    ["/sch_prev:abc", "/sch_unschedule:abc", "/sch_push:abc"],
+)
+async def test_schedule_browser_invalid_index(mocker: MockerFixture, data):
+    message = SimpleNamespace(
+        reply_text=mocker.AsyncMock(),
+        edit_text=mocker.AsyncMock(),
+        delete=mocker.AsyncMock(),
+    )
+    query = SimpleNamespace(
+        data=data,
+        message=message,
+        answer=mocker.AsyncMock(),
+        from_user=SimpleNamespace(id=1),
+    )
+    update = SimpleNamespace(callback_query=query)
+    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={})
+
+    await schedule_browser_callback(update, context)
+
+    message.reply_text.assert_awaited_once_with("Invalid request")
