@@ -5,6 +5,7 @@ import time
 from datetime import timedelta
 from inspect import iscoroutinefunction
 from unittest.mock import MagicMock
+from urllib.parse import urlparse
 
 import telegram_auto_poster.utils.stats as stats_module
 from loguru import logger
@@ -20,10 +21,23 @@ from telegram_auto_poster.config import (
 from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from centralized config
+MINIO_URL = CONFIG.minio.url
 MINIO_HOST = CONFIG.minio.host
 MINIO_PORT = CONFIG.minio.port
 MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
 MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
+
+if MINIO_URL:
+    parsed = urlparse(MINIO_URL)
+    MINIO_ENDPOINT = parsed.netloc or parsed.path
+    MINIO_SECURE = parsed.scheme == "https"
+    MINIO_INTERNAL_URL = (
+        f"{parsed.scheme}://{MINIO_ENDPOINT}" if parsed.scheme else MINIO_URL
+    )
+else:
+    MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
+    MINIO_SECURE = False
+    MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
 
 
 class MinioStorage:
@@ -57,10 +71,10 @@ class MinioStorage:
                 self.client = client
             else:
                 self.client = Minio(
-                    f"{MINIO_HOST}:{MINIO_PORT}",
+                    MINIO_ENDPOINT,
                     access_key=MINIO_ACCESS_KEY,
                     secret_key=MINIO_SECRET_KEY,
-                    secure=False,
+                    secure=MINIO_SECURE,
                     region="ru-west",
                 )
 
@@ -104,11 +118,9 @@ class MinioStorage:
                 response_headers={"response-content-disposition": "inline"},
             )
 
-            public_url = CONFIG["minio"].get("public_url")
+            public_url = CONFIG.minio.public_url
             if public_url:
-                # Replace the internal host and port with the public URL
-                internal_host = f"http://{MINIO_HOST}:{MINIO_PORT}"
-                return internal_url.replace(internal_host, public_url)
+                return internal_url.replace(MINIO_INTERNAL_URL, public_url)
 
             return internal_url
         except Exception as e:

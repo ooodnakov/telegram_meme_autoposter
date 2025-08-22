@@ -45,6 +45,8 @@ class ScheduleConfig(BaseModel):
 class MinioConfig(BaseModel):
     host: str = "localhost"
     port: int = 9000
+    url: str | None = None
+    public_url: str | None = None
     access_key: SecretStr = SecretStr("minioadmin")
     secret_key: SecretStr = SecretStr("minioadmin")
 
@@ -90,6 +92,8 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "SCHEDULE_QUIET_HOURS_END": ("schedule", "quiet_hours_end"),
     "MINIO_HOST": ("minio", "host"),
     "MINIO_PORT": ("minio", "port"),
+    "MINIO_URL": ("minio", "url"),
+    "MINIO_PUBLIC_URL": ("minio", "public_url"),
     "MINIO_ACCESS_KEY": ("minio", "access_key"),
     "MINIO_SECRET_KEY": ("minio", "secret_key"),
     "VALKEY_HOST": ("valkey", "host"),
@@ -149,6 +153,12 @@ def _load_ini(path: str) -> dict[str, Any]:
             k: parser.get("Schedule", k)
             for k in ScheduleConfig.model_fields
             if parser.has_option("Schedule", k)
+        }
+    if parser.has_section("Minio"):
+        data["minio"] = {
+            k: parser.get("Minio", k)
+            for k in MinioConfig.model_fields
+            if parser.has_option("Minio", k)
         }
     return data
 
