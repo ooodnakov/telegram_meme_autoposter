@@ -9,8 +9,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+from telegram_auto_poster.config import BUCKET_MAIN, CONFIG
 from telegram_auto_poster.utils.db import get_scheduled_posts
 from telegram_auto_poster.utils.stats import stats
+from telegram_auto_poster.utils.storage import storage
 
 app = FastAPI(title="Telegram Autoposter Admin")
 
@@ -25,10 +27,11 @@ async def index(request: Request) -> HTMLResponse:
 @app.get("/queue", response_class=HTMLResponse)
 async def queue(request: Request) -> HTMLResponse:
     raw_posts = await run_in_threadpool(get_scheduled_posts)
-    posts = [
-        (path, datetime.datetime.fromtimestamp(ts).isoformat())
-        for path, ts in raw_posts
-    ]
+    posts = []
+    for path, ts in raw_posts:
+        url = await storage.get_presigned_url(path)
+        if url:
+            posts.append((path, datetime.datetime.fromtimestamp(ts).isoformat(), url))
     context = {"request": request, "posts": posts}
     return templates.TemplateResponse("queue.html", context)
 
