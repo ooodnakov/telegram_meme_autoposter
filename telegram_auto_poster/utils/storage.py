@@ -104,11 +104,11 @@ class MinioStorage:
                 response_headers={"response-content-disposition": "inline"},
             )
 
-            public_url = CONFIG["minio"].get("public_url")
-            if public_url:
-                # Replace the internal host and port with the public URL
-                internal_host = f"http://{MINIO_HOST}:{MINIO_PORT}"
-                return internal_url.replace(internal_host, public_url)
+            # public_url = CONFIG.minio.get("public_url")
+            # if public_url:
+            #     # Replace the internal host and port with the public URL
+            #     internal_host = f"http://{MINIO_HOST}:{MINIO_PORT}"
+            #     return internal_url.replace(internal_host, public_url)
 
             return internal_url
         except Exception as e:
