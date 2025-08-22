@@ -2,6 +2,7 @@ import asyncio
 import os
 import tempfile
 import time
+from datetime import timedelta
 from inspect import iscoroutinefunction
 from unittest.mock import MagicMock
 
@@ -84,6 +85,35 @@ class MinioStorage:
                 )
             )
             raise
+
+    async def get_presigned_url(self, object_name: str) -> str | None:
+        """Generate a presigned URL for an object.
+
+        Args:
+            object_name (str): Name of the object in the bucket.
+
+        Returns:
+            str | None: Time-limited URL or ``None`` if unavailable.
+        """
+        try:
+            # Generate a presigned URL that expires in 7 days
+            internal_url = await self.client.presigned_get_object(
+                BUCKET_MAIN,
+                object_name,
+                expires=timedelta(days=7),
+                response_headers={"response-content-disposition": "inline"},
+            )
+
+            public_url = CONFIG["minio"].get("public_url")
+            if public_url:
+                # Replace the internal host and port with the public URL
+                internal_host = f"http://{MINIO_HOST}:{MINIO_PORT}"
+                return internal_url.replace(internal_host, public_url)
+
+            return internal_url
+        except Exception as e:
+            logger.error(f"Failed to get presigned URL for '{object_name}': {e}")
+            return None
 
     async def _ensure_bucket_exists(self, bucket_name: str) -> None:
         """Create the given bucket in MinIO if it has not been created yet.

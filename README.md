@@ -14,6 +14,7 @@ A system that monitors various Telegram channels for media content (photos/video
 - Stores statistics in a Valkey server for fast access
 - **NEW: Provides feedback to media submitters when their content is approved or rejected**
 - **NEW: Enhanced admin permission system to control access to admin commands**
+- **NEW: Simple web dashboard for reviewing queued media and viewing analytics**
 - Stores media in MinIO object storage for efficient processing
 
 ## User Features
@@ -84,6 +85,17 @@ These instructions will get you a copy of the project up and running on your loc
     uv run python -m telegram_auto_poster.main
     ```
 
+    Or start both the bot and dashboard together:
+
+    ```bash
+    ./run_bg.sh
+    ```
+
+5.  **Launch the web dashboard** (if not using `run_bg.sh` or Docker Compose)
+    ```bash
+    uv run watchfiles --filter python "uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000" telegram_auto_poster/web
+    ```
+
 ## Running with Docker
 
 You can also run the application using Docker and Docker Compose.
@@ -101,7 +113,7 @@ You can also run the application using Docker and Docker Compose.
     docker-compose up --build
     ```
 
-The application will be running in a container, and you can view the logs using `docker-compose logs -f`.
+The application will be running in a container, and you can view the logs using `docker-compose logs -f`. The web dashboard will be available at `http://localhost:8000`.
 
 ## Contributing
 

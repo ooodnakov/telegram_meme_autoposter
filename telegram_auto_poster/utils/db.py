@@ -28,6 +28,8 @@ def get_redis_client() -> "Valkey":
         valkey_host = CONFIG["valkey"]["host"]
         valkey_port = CONFIG["valkey"]["port"]
         valkey_pass = CONFIG["valkey"]["password"]
+        if hasattr(valkey_pass, "get_secret_value"):
+            valkey_pass = valkey_pass.get_secret_value()
         _redis_client = Valkey(
             host=valkey_host,
             port=valkey_port,
@@ -55,6 +57,8 @@ def get_async_redis_client() -> "AsyncValkey":
         valkey_host = CONFIG["valkey"]["host"]
         valkey_port = CONFIG["valkey"]["port"]
         valkey_pass = CONFIG["valkey"]["password"]
+        if hasattr(valkey_pass, "get_secret_value"):
+            valkey_pass = valkey_pass.get_secret_value()
         _async_redis_client = AsyncValkey(
             host=valkey_host,
             port=valkey_port,

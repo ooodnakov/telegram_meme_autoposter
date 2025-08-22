@@ -20,7 +20,7 @@ services:
       - ./wm.png:/workspace/wm.png
       # - ./ooodnakov.session-journal:/workspace/ooodnakov.session-journal
       # - ./data:/app/data
-    env_file: .env   
+    env_file: .env
     depends_on:
       - db
     deploy:
