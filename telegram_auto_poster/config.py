@@ -114,12 +114,25 @@ def _load_ini(path: str) -> dict[str, Any]:
     parser.read(path)
 
     data: dict[str, Any] = {}
-    if parser.has_section("Telegram"):
-        data["telegram"] = {
-            k: parser.get("Telegram", k)
-            for k in TelegramConfig.model_fields
-            if parser.has_option("Telegram", k)
-        }
+
+    section_map: dict[str, tuple[str, type[BaseModel]]] = {
+        "Telegram": ("telegram", TelegramConfig),
+        "Schedule": ("schedule", ScheduleConfig),
+        "Minio": ("minio", MinioConfig),
+        "Valkey": ("valkey", ValkeyConfig),
+        "MySQL": ("mysql", MySQLConfig),
+    }
+
+    for section_name, (key, model) in section_map.items():
+        if parser.has_section(section_name):
+            section_data = {
+                field: parser.get(section_name, field)
+                for field in model.model_fields
+                if parser.has_option(section_name, field)
+            }
+            if section_data:
+                data[key] = section_data
+
     if parser.has_section("Bot"):
         bot_section: dict[str, Any] = {}
         for k in BotConfig.model_fields:
@@ -134,6 +147,7 @@ def _load_ini(path: str) -> dict[str, Any]:
                     bot_section[k] = parser.get("Bot", k)
         if bot_section:
             data["bot"] = bot_section
+
     if parser.has_section("Chats"):
         chats_section: dict[str, Any] = {}
         for k in ChatsConfig.model_fields:
@@ -148,18 +162,7 @@ def _load_ini(path: str) -> dict[str, Any]:
                     chats_section[k] = parser.get("Chats", k)
         if chats_section:
             data["chats"] = chats_section
-    if parser.has_section("Schedule"):
-        data["schedule"] = {
-            k: parser.get("Schedule", k)
-            for k in ScheduleConfig.model_fields
-            if parser.has_option("Schedule", k)
-        }
-    if parser.has_section("Minio"):
-        data["minio"] = {
-            k: parser.get("Minio", k)
-            for k in MinioConfig.model_fields
-            if parser.has_option("Minio", k)
-        }
+
     return data
 
 

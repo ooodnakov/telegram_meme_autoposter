@@ -29,11 +29,12 @@ MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
 
 if MINIO_URL:
     parsed = urlparse(MINIO_URL)
-    MINIO_ENDPOINT = parsed.netloc or parsed.path
+    if not parsed.netloc:
+        # Ensure a scheme is present so ``urlparse`` extracts the host correctly
+        parsed = urlparse(f"http://{MINIO_URL}")
+    MINIO_ENDPOINT = parsed.netloc
     MINIO_SECURE = parsed.scheme == "https"
-    MINIO_INTERNAL_URL = (
-        f"{parsed.scheme}://{MINIO_ENDPOINT}" if parsed.scheme else MINIO_URL
-    )
+    MINIO_INTERNAL_URL = f"{parsed.scheme}://{MINIO_ENDPOINT}"
 else:
     MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
     MINIO_SECURE = False
