@@ -102,6 +102,7 @@ exclude = [
     "__pypackages__",
     "_build",
     "telegram_auto_poster/web/templates",
+    "telegram_auto_poster/web/static",
 ]
 
 include = ["pyproject.toml", "telegram_auto_poster/*"]

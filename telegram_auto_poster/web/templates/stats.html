@@ -64,46 +64,24 @@
 </div>
 <div class="row mt-4">
     <div class="col-md-6">
-        <canvas id="daily-activity"></canvas>
+        <canvas
+            id="daily-activity"
+            data-photos-approved="{{ daily.photos_approved }}"
+            data-videos-approved="{{ daily.videos_approved }}"
+            data-photos-rejected="{{ daily.photos_rejected }}"
+            data-videos-rejected="{{ daily.videos_rejected }}"
+        ></canvas>
     </div>
     <div class="col-md-6">
-        <canvas id="error-breakdown"></canvas>
+        <canvas
+            id="error-breakdown"
+            data-processing-errors="{{ daily.processing_errors }}"
+            data-storage-errors="{{ daily.storage_errors }}"
+            data-telegram-errors="{{ daily.telegram_errors }}"
+        ></canvas>
     </div>
 </div>
-<script>
-const dailyCtx = document.getElementById('daily-activity').getContext('2d');
-new Chart(dailyCtx, {
-    type: 'bar',
-    data: {
-        labels: ['Photos Approved', 'Videos Approved', 'Photos Rejected', 'Videos Rejected'],
-        datasets: [{
-            label: 'Last 24h',
-            data: [
-                {{ daily.photos_approved }},
-                {{ daily.videos_approved }},
-                {{ daily.photos_rejected }},
-                {{ daily.videos_rejected }}
-            ],
-            backgroundColor: ['#198754', '#198754', '#dc3545', '#dc3545']
-        }]
-    },
-    options: {responsive: true}
-});
-const errorCtx = document.getElementById('error-breakdown').getContext('2d');
-new Chart(errorCtx, {
-    type: 'pie',
-    data: {
-        labels: ['Processing', 'Storage', 'Telegram'],
-        datasets: [{
-            data: [
-                {{ daily.processing_errors }},
-                {{ daily.storage_errors }},
-                {{ daily.telegram_errors }}
-            ],
-            backgroundColor: ['#ffc107', '#0dcaf0', '#6610f2']
-        }]
-    },
-    options: {responsive: true}
-});
-</script>
+
+{% block scripts %}
+<script src="/static/js/charts.js"></script>
 {% endblock %}

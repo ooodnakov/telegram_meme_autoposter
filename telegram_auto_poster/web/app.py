@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import secrets
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from telegram_auto_poster.config import CONFIG
@@ -16,7 +18,9 @@ from telegram_auto_poster.utils.storage import storage
 
 app = FastAPI(title="Telegram Autoposter Admin")
 
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+base_path = Path(__file__).parent
+templates = Jinja2Templates(directory=str(base_path / "templates"))
+app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
 
 
 def require_access_key(request: Request) -> None:
@@ -24,7 +28,8 @@ def require_access_key(request: Request) -> None:
     if access_key is None:
         return
     provided = request.query_params.get("key")
-    if provided != access_key.get_secret_value():
+    expected = access_key.get_secret_value()
+    if not (provided and secrets.compare_digest(provided, expected)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key"
         )
