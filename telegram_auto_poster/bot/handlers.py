@@ -39,6 +39,8 @@ ERROR_MINIO_DOWNLOAD_FAILED = "Failed to download file from MinIO"
 ERROR_TELEGRAM_SEND_FAILED = "Failed to send media to Telegram"
 ERROR_TEMP_FILE_CREATION = "Failed to create temporary file"
 ERROR_FILE_NOT_SUPPORTED = "File type not supported"
+MAX_RETRIES = 5
+RETRY_DELAY = 1
 
 
 # Helper function to handle common errors and return appropriate user messages
@@ -273,23 +275,21 @@ async def process_photo(
         await stats.record_processed("photo", processing_time)
 
         # Check if processed file exists in MinIO, with retries for eventual consistency
-        max_retries = 5
-        retry_delay = 1  # seconds
         file_found = False
-        for i in range(max_retries):
+        for i in range(MAX_RETRIES):
             if await storage.file_exists(
                 PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN
             ):
                 file_found = True
                 break
             logger.warning(
-                f"Attempt {i + 1}/{max_retries}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+                f"Attempt {i + 1}/{MAX_RETRIES}: Processed photo not yet found in MinIO: {processed_name}. Retrying in {RETRY_DELAY}s..."
             )
-            await asyncio.sleep(retry_delay)
+            await asyncio.sleep(RETRY_DELAY)
 
         if not file_found:
             logger.error(
-                f"Processed photo not found in MinIO after {max_retries} retries: {processed_name}"
+                f"Processed photo not found in MinIO after {MAX_RETRIES} retries: {processed_name}"
             )
             await stats.record_error(
                 "processing", f"Processed photo not found: {processed_name}"
@@ -385,23 +385,21 @@ async def process_video(
         await stats.record_processed("video", processing_time)
 
         # Check if processed file exists in MinIO, with retries for eventual consistency
-        max_retries = 5
-        retry_delay = 1  # seconds
         file_found = False
-        for i in range(max_retries):
+        for i in range(MAX_RETRIES):
             if await storage.file_exists(
                 VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN
             ):
                 file_found = True
                 break
             logger.warning(
-                f"Attempt {i + 1}/{max_retries}: Processed video not yet found in MinIO: {processed_name}. Retrying in {retry_delay}s..."
+                f"Attempt {i + 1}/{MAX_RETRIES}: Processed video not yet found in MinIO: {processed_name}. Retrying in {RETRY_DELAY}s..."
             )
-            await asyncio.sleep(retry_delay)
+            await asyncio.sleep(RETRY_DELAY)
 
         if not file_found:
             logger.error(
-                f"Processed video not found in MinIO after {max_retries} retries: {processed_name}"
+                f"Processed video not found in MinIO after {MAX_RETRIES} retries: {processed_name}"
             )
             await stats.record_error(
                 "processing", f"Processed video not found: {processed_name}"
