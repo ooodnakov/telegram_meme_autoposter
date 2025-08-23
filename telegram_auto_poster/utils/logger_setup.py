@@ -1,9 +1,8 @@
 """Helpers for configuring logging with :mod:`loguru`."""
 
 import logging
-import sys
 import os
-
+import sys
 
 from loguru import logger
 

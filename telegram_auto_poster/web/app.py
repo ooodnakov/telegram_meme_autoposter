@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import mimetypes
 import secrets
 from pathlib import Path
 
-import mimetypes
-
-from fastapi import Depends, FastAPI, HTTPException, Request, status, Form
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -73,18 +72,6 @@ async def queue(request: Request) -> HTMLResponse:
 
     context = {"request": request, "posts": posts}
     return templates.TemplateResponse("queue.html", context)
-
-
-@app.post("/queue/unschedule")
-async def unschedule(path: str = Form(...)) -> RedirectResponse:
-    await run_in_threadpool(remove_scheduled_post, path)
-    try:
-        if await storage.file_exists(path, BUCKET_MAIN):
-            await storage.delete_file(path, BUCKET_MAIN)
-    except Exception:
-        # Best-effort delete; still redirect to keep UX smooth
-        pass
-    return RedirectResponse(url="/queue", status_code=303)
 
 
 @app.post("/queue/unschedule")
