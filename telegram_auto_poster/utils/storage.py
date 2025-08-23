@@ -5,6 +5,7 @@ import time
 from datetime import timedelta
 from inspect import iscoroutinefunction
 from unittest.mock import MagicMock
+from urllib.parse import urlparse
 
 import telegram_auto_poster.utils.stats as stats_module
 from loguru import logger
@@ -20,10 +21,24 @@ from telegram_auto_poster.config import (
 from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from centralized config
+MINIO_URL = CONFIG.minio.url
 MINIO_HOST = CONFIG.minio.host
 MINIO_PORT = CONFIG.minio.port
 MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
 MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
+
+if MINIO_URL:
+    parsed = urlparse(MINIO_URL)
+    if not parsed.netloc:
+        # Ensure a scheme is present so ``urlparse`` extracts the host correctly
+        parsed = urlparse(f"http://{MINIO_URL}")
+    MINIO_ENDPOINT = parsed.netloc
+    MINIO_SECURE = parsed.scheme == "https"
+    MINIO_INTERNAL_URL = f"{parsed.scheme}://{MINIO_ENDPOINT}"
+else:
+    MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
+    MINIO_SECURE = False
+    MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
 
 
 class MinioStorage:
@@ -56,12 +71,14 @@ class MinioStorage:
             if client:
                 self.client = client
             else:
+                logger.info(
+                    f"Initializing MinIO client for {MINIO_ENDPOINT} (secure={MINIO_SECURE})"
+                )
                 self.client = Minio(
-                    f"{MINIO_HOST}:{MINIO_PORT}",
+                    MINIO_ENDPOINT,
                     access_key=MINIO_ACCESS_KEY,
                     secret_key=MINIO_SECRET_KEY,
-                    secure=False,
-                    region="ru-west",
+                    secure=MINIO_SECURE,
                 )
 
             # Store metadata about submissions
@@ -104,11 +121,9 @@ class MinioStorage:
                 response_headers={"response-content-disposition": "inline"},
             )
 
-            # public_url = CONFIG.minio.get("public_url")
-            # if public_url:
-            #     # Replace the internal host and port with the public URL
-            #     internal_host = f"http://{MINIO_HOST}:{MINIO_PORT}"
-            #     return internal_url.replace(internal_host, public_url)
+            public_url = CONFIG.minio.public_url
+            if public_url:
+                return internal_url.replace(MINIO_INTERNAL_URL, public_url)
 
             return internal_url
         except Exception as e:
@@ -188,14 +203,24 @@ class MinioStorage:
                     bucket_name=BUCKET_MAIN, object_name=prepath + "/" + object_name
                 )
                 md = stat.metadata or {}
+
+                # Support both underscore and hyphenated metadata keys
+                def _mget(key: str, *alts: str):
+                    for k in (key, *alts):
+                        if md.get(k) is not None:
+                            return md.get(k)
+                    return None
+
+                user_id_val = _mget("user_id", "user-id")
+                chat_id_val = _mget("chat_id", "chat-id")
+                media_type_val = _mget("media_type", "media-type")
+                message_id_val = _mget("message_id", "message-id")
                 return {
-                    "user_id": int(md.get("user_id")) if md.get("user_id") else None,
-                    "chat_id": int(md.get("chat_id")) if md.get("chat_id") else None,
-                    "media_type": md.get("media_type"),
-                    "message_id": int(md.get("message_id"))
-                    if md.get("message_id")
-                    else None,
-                    "hash": md.get("hash"),
+                    "user_id": int(user_id_val) if user_id_val else None,
+                    "chat_id": int(chat_id_val) if chat_id_val else None,
+                    "media_type": media_type_val,
+                    "message_id": int(message_id_val) if message_id_val else None,
+                    "hash": _mget("hash"),
                     # notified state is managed in-memory
                     "notified": False,
                 }
@@ -279,14 +304,15 @@ class MinioStorage:
                 object_name = object_prefix + "/" + object_name
 
             # Build MinIO object metadata
+            # Use hyphenated keys to avoid proxy/header issues with underscores
             minio_metadata = {}
             if user_id is not None:
-                minio_metadata["user_id"] = str(user_id)
+                minio_metadata["user-id"] = str(user_id)
             if chat_id is not None:
-                minio_metadata["chat_id"] = str(chat_id)
-            minio_metadata["media_type"] = media_type
+                minio_metadata["chat-id"] = str(chat_id)
+            minio_metadata["media-type"] = media_type
             if message_id is not None:
-                minio_metadata["message_id"] = str(message_id)
+                minio_metadata["message-id"] = str(message_id)
             if media_hash is not None:
                 minio_metadata["hash"] = str(media_hash)
             # Upload file with metadata

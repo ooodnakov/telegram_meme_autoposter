@@ -7,7 +7,7 @@ echo "Starting Telegram Meme Autoposter..."
 
 # Wait for MinIO to be ready
 echo "Waiting for MinIO to be ready..."
-until $(curl --output /dev/null --silent --head --fail -H "Host: localhost" http://${MINIO_HOST:-minio}:${MINIO_PORT:-9000}/minio/health/live); do
+until $(curl --output /dev/null --silent --head --fail -H "Host: localhost" http://${MINIO_HOST:-minio}:${MINIO_PORT:-8999}/minio/health/live); do
   echo "Waiting for MinIO..."
   sleep 5
 done
