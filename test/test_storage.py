@@ -113,7 +113,7 @@ async def test_upload_file(mock_minio_client, tmp_path):
     kwargs = mock_minio_client.fput_object.await_args.kwargs
     assert kwargs["bucket_name"] == BUCKET_MAIN
     assert kwargs["object_name"].startswith(PHOTOS_PATH)
-    assert kwargs["metadata"]["user_id"] == "123"
+    assert kwargs["metadata"]["user-id"] == "123"
 
 
 @pytest.mark.asyncio
