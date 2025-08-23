@@ -45,6 +45,8 @@ class ScheduleConfig(BaseModel):
 class MinioConfig(BaseModel):
     host: str = "localhost"
     port: int = 9000
+    url: str | None = None
+    public_url: str | None = None
     access_key: SecretStr = SecretStr("minioadmin")
     secret_key: SecretStr = SecretStr("minioadmin")
 
@@ -64,6 +66,10 @@ class MySQLConfig(BaseModel):
     name: str
 
 
+class WebConfig(BaseModel):
+    access_key: SecretStr | None = None
+
+
 class Config(BaseModel):
     telegram: TelegramConfig
     bot: BotConfig
@@ -72,6 +78,7 @@ class Config(BaseModel):
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
     mysql: MySQLConfig
+    web: WebConfig = WebConfig()
     timezone: str = "UTC"
 
 
@@ -90,6 +97,8 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "SCHEDULE_QUIET_HOURS_END": ("schedule", "quiet_hours_end"),
     "MINIO_HOST": ("minio", "host"),
     "MINIO_PORT": ("minio", "port"),
+    "MINIO_URL": ("minio", "url"),
+    "MINIO_PUBLIC_URL": ("minio", "public_url"),
     "MINIO_ACCESS_KEY": ("minio", "access_key"),
     "MINIO_SECRET_KEY": ("minio", "secret_key"),
     "VALKEY_HOST": ("valkey", "host"),
@@ -101,6 +110,7 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "DB_MYSQL_USER": ("mysql", "user"),
     "DB_MYSQL_PASSWORD": ("mysql", "password"),
     "DB_MYSQL_NAME": ("mysql", "name"),
+    "WEB_ACCESS_KEY": ("web", "access_key"),
     "TZ": ("timezone", None),
 }
 
@@ -110,12 +120,25 @@ def _load_ini(path: str) -> dict[str, Any]:
     parser.read(path)
 
     data: dict[str, Any] = {}
-    if parser.has_section("Telegram"):
-        data["telegram"] = {
-            k: parser.get("Telegram", k)
-            for k in TelegramConfig.model_fields
-            if parser.has_option("Telegram", k)
-        }
+
+    section_map: dict[str, tuple[str, type[BaseModel]]] = {
+        "Telegram": ("telegram", TelegramConfig),
+        "Schedule": ("schedule", ScheduleConfig),
+        "Minio": ("minio", MinioConfig),
+        "Valkey": ("valkey", ValkeyConfig),
+        "MySQL": ("mysql", MySQLConfig),
+    }
+
+    for section_name, (key, model) in section_map.items():
+        if parser.has_section(section_name):
+            section_data = {
+                field: parser.get(section_name, field)
+                for field in model.model_fields
+                if parser.has_option(section_name, field)
+            }
+            if section_data:
+                data[key] = section_data
+
     if parser.has_section("Bot"):
         bot_section: dict[str, Any] = {}
         for k in BotConfig.model_fields:
@@ -130,6 +153,7 @@ def _load_ini(path: str) -> dict[str, Any]:
                     bot_section[k] = parser.get("Bot", k)
         if bot_section:
             data["bot"] = bot_section
+
     if parser.has_section("Chats"):
         chats_section: dict[str, Any] = {}
         for k in ChatsConfig.model_fields:
@@ -149,6 +173,12 @@ def _load_ini(path: str) -> dict[str, Any]:
             k: parser.get("Schedule", k)
             for k in ScheduleConfig.model_fields
             if parser.has_option("Schedule", k)
+        }
+    if parser.has_section("Web"):
+        data["web"] = {
+            k: parser.get("Web", k)
+            for k in WebConfig.model_fields
+            if parser.has_option("Web", k)
         }
     return data
 

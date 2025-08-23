@@ -8,20 +8,40 @@
             <tr>
                 <th scope="col">File Path</th>
                 <th scope="col">Scheduled Time</th>
-                <th scope="col">Image</th>
+                <th scope="col">Preview</th>
             </tr>
         </thead>
         <tbody>
-            {% for path, ts, url in posts %}
+            {% for p in posts %}
             <tr>
-                <td>{{ path }}</td>
-                <td>{{ ts }}</td>
+                <td>{{ p.path }}</td>
+                <td>{{ p.ts }}</td>
                 <td>
-                    {% if path.startswith('videos/') %}
-                        <a href="{{ url }}" target="_blank">View Video</a>
-                    {% else %}
-                        <img src="{{ url }}" class="img-fluid" style="max-width: 200px;">
-                    {% endif %}
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <button class="btn btn-sm btn-primary" type="button"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#preview-{{ loop.index0 }}"
+                                aria-expanded="false"
+                                aria-controls="preview-{{ loop.index0 }}">
+                            Toggle Preview
+                        </button>
+                        <form method="post" action="/queue/unschedule" onsubmit="return confirm('Unschedule this item?');">
+                            <input type="hidden" name="path" value="{{ p.path }}" />
+                            <button class="btn btn-sm btn-danger" type="submit">Unschedule</button>
+                        </form>
+                    </div>
+                    <div class="collapse mt-2" id="preview-{{ loop.index0 }}">
+                        {% if p.is_video %}
+                            <video class="queue-video" controls preload="none" playsinline style="max-width: 220px; max-height: 180px;">
+                                <source src="{{ p.url }}" {% if p.mime %}type="{{ p.mime }}"{% endif %} />
+                                Your browser does not support the video tag.
+                            </video>
+                        {% elif p.is_image %}
+                            <img src="{{ p.url }}" loading="lazy" class="img-fluid" style="max-width: 220px; max-height: 180px; object-fit: contain;" alt="preview">
+                        {% else %}
+                            <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer">Open</a>
+                        {% endif %}
+                    </div>
                 </td>
             </tr>
             {% endfor %}

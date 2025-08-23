@@ -41,6 +41,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
     "jinja2>=3.1.4",
+    "python-multipart>=0.0.20",
 ]
 
 [dependency-groups]
@@ -102,6 +103,7 @@ exclude = [
     "__pypackages__",
     "_build",
     "telegram_auto_poster/web/templates",
+    "telegram_auto_poster/web/static",
 ]
 
 include = ["pyproject.toml", "telegram_auto_poster/*"]

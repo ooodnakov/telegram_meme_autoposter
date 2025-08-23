@@ -230,9 +230,9 @@ class MediaStats:
             return f"{icon} <b>{title}:</b> {value} {extra}".strip()
 
         report_sections = {
-            "header": "📊 <b>Statistics Report</b> 📊",
+            "header": "📊 <b>Statistics Report</b> 📊\n",
             "daily": [
-                "<b>Last 24 Hours:</b>",
+                "<b>Last 24 Hours:</b>\n",
                 fmt("📥", "Media Received", daily.get("media_received", 0)),
                 fmt("🖼️", "Photos Processed", daily.get("photos_processed", 0)),
                 fmt("📹", "Videos Processed", daily.get("videos_processed", 0)),
@@ -253,7 +253,7 @@ class MediaStats:
                 fmt("🕔", "Busiest Hour", busiest_display, f"({count} events)"),
             ],
             "performance": [
-                "<b>Performance Metrics:</b>",
+                "\n<b>Performance Metrics:</b>\n",
                 fmt(
                     "🖼️",
                     "Avg Photo Processing",
@@ -268,7 +268,7 @@ class MediaStats:
                 fmt("⬇️", "Avg Download", f"{perf['avg_download_time']:.2f}s"),
             ],
             "total": [
-                "<b>All-Time Totals:</b>",
+                "\n<b>All-Time Totals:</b>\n",
                 fmt("🖼️", "Photos Processed", total.get("photos_processed", 0)),
                 fmt("📹", "Videos Processed", total.get("videos_processed", 0)),
                 fmt(
@@ -286,7 +286,7 @@ class MediaStats:
                 fmt("🛑", "Errors", errors_total),
                 fmt("🗃️", "List Operations", total.get("list_operations", 0)),
             ],
-            "footer": [f"<i>Last reset: {daily.get('last_reset')}</i>"],
+            "footer": [f"\n<i>Last reset: {daily.get('last_reset')}</i>"],
         }
 
         return "\n".join(
