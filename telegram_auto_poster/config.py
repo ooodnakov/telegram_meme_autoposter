@@ -66,6 +66,10 @@ class MySQLConfig(BaseModel):
     name: str
 
 
+class WebConfig(BaseModel):
+    access_key: SecretStr | None = None
+
+
 class Config(BaseModel):
     telegram: TelegramConfig
     bot: BotConfig
@@ -74,6 +78,7 @@ class Config(BaseModel):
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
     mysql: MySQLConfig
+    web: WebConfig = WebConfig()
     timezone: str = "UTC"
 
 
@@ -105,6 +110,7 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "DB_MYSQL_USER": ("mysql", "user"),
     "DB_MYSQL_PASSWORD": ("mysql", "password"),
     "DB_MYSQL_NAME": ("mysql", "name"),
+    "WEB_ACCESS_KEY": ("web", "access_key"),
     "TZ": ("timezone", None),
 }
 
@@ -162,7 +168,18 @@ def _load_ini(path: str) -> dict[str, Any]:
                     chats_section[k] = parser.get("Chats", k)
         if chats_section:
             data["chats"] = chats_section
-
+    if parser.has_section("Schedule"):
+        data["schedule"] = {
+            k: parser.get("Schedule", k)
+            for k in ScheduleConfig.model_fields
+            if parser.has_option("Schedule", k)
+        }
+    if parser.has_section("Web"):
+        data["web"] = {
+            k: parser.get("Web", k)
+            for k in WebConfig.model_fields
+            if parser.has_option("Web", k)
+        }
     return data
 
 
