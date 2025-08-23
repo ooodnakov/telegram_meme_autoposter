@@ -517,7 +517,17 @@ async def unschedule_callback(
             await query.message.reply_text("Invalid request")
             return
 
-        file_path = data.split(":", 1)[1]
+        try:
+            idx = int(data.split(":", 1)[1])
+        except (ValueError, IndexError):
+            await query.message.reply_text("Invalid request")
+            return
+        scheduled_posts = db.get_scheduled_posts()
+        if not scheduled_posts or idx >= len(scheduled_posts):
+            await query.message.edit_text("No posts scheduled.")
+            return
+
+        file_path = scheduled_posts[idx][0]
         # Remove from DB first
         db.remove_scheduled_post(file_path)
         # Attempt to remove object; ignore if already missing
@@ -531,11 +541,11 @@ async def unschedule_callback(
             return
 
         buttons = []
-        for path, ts in scheduled_posts:
+        for i, (path, ts) in enumerate(scheduled_posts):
             dt = datetime.datetime.fromtimestamp(int(ts), tz=UTC).astimezone(DISPLAY_TZ)
             label = f"{dt.strftime('%m-%d %H:%M')} • {path.split('/')[-1]}"
             buttons.append(
-                [InlineKeyboardButton(text=label, callback_data=f"/unschedule:{path}")]
+                [InlineKeyboardButton(text=label, callback_data=f"/unschedule:{i}")]
             )
         markup = InlineKeyboardMarkup(buttons)
         await query.message.edit_text(
@@ -553,11 +563,9 @@ async def send_schedule_preview(bot, chat_id: int, file_path: str, index: int):
             InlineKeyboardButton("Prev", callback_data=f"/sch_prev:{index}"),
             InlineKeyboardButton(
                 "Unschedule",
-                callback_data=f"/sch_unschedule:{index}:{file_path}",
+                callback_data=f"/sch_unschedule:{index}",
             ),
-            InlineKeyboardButton(
-                "Push", callback_data=f"/sch_push:{index}:{file_path}"
-            ),
+            InlineKeyboardButton("Push", callback_data=f"/sch_push:{index}"),
             InlineKeyboardButton("Next", callback_data=f"/sch_next:{index}"),
         ]
     ]
@@ -615,7 +623,11 @@ async def schedule_browser_callback(
         action = action_part.split("_", 1)[1]
 
         if action in {"prev", "next"}:
-            idx = int(payload_parts[0])
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
             scheduled_posts = db.get_scheduled_posts()
             if not scheduled_posts:
                 await query.message.edit_text("No posts scheduled.")
@@ -634,12 +646,30 @@ async def schedule_browser_callback(
             return
 
         if action == "unschedule":
-            idx, file_path = int(payload_parts[0]), payload_parts[1]
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
+            scheduled_posts = db.get_scheduled_posts()
+            if not scheduled_posts or idx >= len(scheduled_posts):
+                await query.message.edit_text("No posts scheduled.")
+                return
+            file_path = scheduled_posts[idx][0]
             await _remove_post_and_show_next(query, context, idx, file_path)
             return
 
         if action == "push":
-            idx, file_path = int(payload_parts[0]), payload_parts[1]
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
+            scheduled_posts = db.get_scheduled_posts()
+            if not scheduled_posts or idx >= len(scheduled_posts):
+                await query.message.edit_text("No posts scheduled.")
+                return
+            file_path = scheduled_posts[idx][0]
             temp_path = None
             try:
                 temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)

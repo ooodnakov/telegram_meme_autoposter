@@ -331,6 +331,6 @@ async def test_send_schedule_preview_builds_markup(
     texts = [b.text for b in markup.inline_keyboard[0]]
     assert texts == ["Prev", "Unschedule", "Push", "Next"]
     row = markup.inline_keyboard[0]
-    assert row[1].callback_data == "/sch_unschedule:2:photos/a.jpg"
-    assert row[2].callback_data == "/sch_push:2:photos/a.jpg"
+    assert row[1].callback_data == "/sch_unschedule:2"
+    assert row[2].callback_data == "/sch_push:2"
     assert row[3].callback_data == "/sch_next:2"
