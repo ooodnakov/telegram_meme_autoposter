@@ -13,3 +13,5 @@ valkeydata/
 uv.lock
 .coverage
 .env
+.gemini/
+gha-creds-*.json

@@ -62,4 +62,42 @@
         </div>
     </div>
 </div>
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Daily Approvals vs Rejections (24h)</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="daily-activity"
+                    data-photos-approved="{{ daily.photos_approved }}"
+                    data-videos-approved="{{ daily.videos_approved }}"
+                    data-photos-rejected="{{ daily.photos_rejected }}"
+                    data-videos-rejected="{{ daily.videos_rejected }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Error Breakdown (24h)</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="error-breakdown"
+                    data-processing-errors="{{ daily.processing_errors }}"
+                    data-storage-errors="{{ daily.storage_errors }}"
+                    data-telegram-errors="{{ daily.telegram_errors }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/charts.js?v4"></script>
 {% endblock %}

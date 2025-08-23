@@ -2,28 +2,49 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import secrets
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from telegram_auto_poster.config import BUCKET_MAIN, CONFIG
 from telegram_auto_poster.utils.db import get_scheduled_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 
 app = FastAPI(title="Telegram Autoposter Admin")
 
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+base_path = Path(__file__).parent
+templates = Jinja2Templates(directory=str(base_path / "templates"))
+app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
 
 
-@app.get("/", response_class=HTMLResponse)
+def require_access_key(request: Request) -> None:
+    access_key = CONFIG.web.access_key
+    if access_key is None:
+        return
+    provided = request.query_params.get("key")
+    expected = access_key.get_secret_value()
+    if not (provided and secrets.compare_digest(provided, expected)):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key"
+        )
+
+
+@app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.get("/queue", response_class=HTMLResponse)
+@app.get(
+    "/queue",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_access_key)],
+)
 async def queue(request: Request) -> HTMLResponse:
     raw_posts = await run_in_threadpool(get_scheduled_posts)
     posts = []
@@ -35,7 +56,11 @@ async def queue(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("queue.html", context)
 
 
-@app.get("/stats", response_class=HTMLResponse)
+@app.get(
+    "/stats",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_access_key)],
+)
 async def stats_view(request: Request) -> HTMLResponse:
     daily, total, perf, busiest = await asyncio.gather(
         stats.get_daily_stats(reset_if_new_day=False),
