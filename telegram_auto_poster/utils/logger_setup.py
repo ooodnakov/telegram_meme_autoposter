@@ -2,6 +2,8 @@
 
 import logging
 import sys
+import os
+
 
 from loguru import logger
 
@@ -18,6 +20,26 @@ class PropagateHandler(logging.Handler):
         logging.getLogger(record.name).handle(record)
 
 
+def custom_format(record) -> str:
+    """Return formatted log message for loguru.
+
+    Args:
+        record (dict): Loguru record dictionary.
+
+    Returns:
+        str: Formatted log line with relative path and metadata.
+    """
+    # Make path relative
+    path = str(record["file"].path.replace(os.getcwd(), ""))[1:]
+    return (
+        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>"
+        f"{path}"
+        "</cyan>:<cyan>{line}</cyan> <cyan>{function}</cyan> - <level>{message}</level>\n"
+    )
+
+
 def setup_logger() -> logger.__class__:
     """Configure a :mod:`loguru` logger that also propagates to ``logging``.
 
@@ -29,14 +51,8 @@ def setup_logger() -> logger.__class__:
         loguru.Logger: Configured logger instance.
     """
 
-    logging_format = (
-        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
-        "<level>{level: <8}</level> | "
-        "<cyan>{file.path}</cyan>:<cyan>{line}</cyan> <cyan>{function}</cyan> - <level>{message}</level>"
-    )
-
     logger.remove()
-    logger.add(sys.stderr, format=logging_format)
+    logger.add(sys.stderr, format=custom_format, colorize=True)
     logger.add(PropagateHandler(), format="{message}")
 
     return logger
