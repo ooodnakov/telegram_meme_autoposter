@@ -70,6 +70,11 @@ class WebConfig(BaseModel):
     access_key: SecretStr | None = None
 
 
+class RateLimitConfig(BaseModel):
+    rate: float = 1.0
+    capacity: int = 5
+
+
 class Config(BaseModel):
     telegram: TelegramConfig
     bot: BotConfig
@@ -79,6 +84,7 @@ class Config(BaseModel):
     valkey: ValkeyConfig = ValkeyConfig()
     mysql: MySQLConfig
     web: WebConfig = WebConfig()
+    rate_limit: RateLimitConfig = RateLimitConfig()
     timezone: str = "UTC"
 
 
@@ -111,6 +117,8 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "DB_MYSQL_PASSWORD": ("mysql", "password"),
     "DB_MYSQL_NAME": ("mysql", "name"),
     "WEB_ACCESS_KEY": ("web", "access_key"),
+    "RATE_LIMIT_RATE": ("rate_limit", "rate"),
+    "RATE_LIMIT_CAPACITY": ("rate_limit", "capacity"),
     "TZ": ("timezone", None),
 }
 
@@ -127,6 +135,7 @@ def _load_ini(path: str) -> dict[str, Any]:
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),
         "MySQL": ("mysql", MySQLConfig),
+        "RateLimit": ("rate_limit", RateLimitConfig),
     }
 
     for section_name, (key, model) in section_map.items():
@@ -179,6 +188,12 @@ def _load_ini(path: str) -> dict[str, Any]:
             k: parser.get("Web", k)
             for k in WebConfig.model_fields
             if parser.has_option("Web", k)
+        }
+    if parser.has_section("RateLimit"):
+        data["rate_limit"] = {
+            k: parser.get("RateLimit", k)
+            for k in RateLimitConfig.model_fields
+            if parser.has_option("RateLimit", k)
         }
     return data
 

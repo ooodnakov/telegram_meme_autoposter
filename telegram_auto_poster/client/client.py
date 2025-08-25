@@ -40,6 +40,7 @@ class TelegramMemeClient:
         self.selected_chats = config.chats.selected_chats
         self._running = False
         self.rate_limiters: dict[int, RateLimiter] = {}
+        self.rate_limit_config = config.rate_limit
 
         if self.application and hasattr(self.application, "bot_data"):
             self.application.bot_data["telethon_client"] = self.client
@@ -59,7 +60,11 @@ class TelegramMemeClient:
         async def handle_new_message(event):  # pragma: no cover - telemetry
             log = logger.bind(chat_id=event.chat_id, message_id=event.id)
             limiter = self.rate_limiters.setdefault(
-                event.chat_id, RateLimiter(rate=1, capacity=5)
+                event.chat_id,
+                RateLimiter(
+                    rate=self.rate_limit_config.rate,
+                    capacity=self.rate_limit_config.capacity,
+                ),
             )
             if not await limiter.acquire(drop=True):
                 log.warning("Rate limit exceeded")
@@ -98,8 +103,8 @@ class TelegramMemeClient:
                             self.bot_chat_id,
                             self.application,
                         )
-            except Exception as e:
-                log.exception(f"Failed to handle message: {e}")
+            except Exception:
+                log.exception("Failed to handle message")
             finally:
                 if file_path and os.path.exists(file_path):
                     os.remove(file_path)

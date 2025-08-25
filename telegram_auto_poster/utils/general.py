@@ -111,7 +111,7 @@ class RateLimiter:
         self.rate = rate
         self.capacity = capacity
         self.tokens = capacity
-        self.updated = asyncio.get_event_loop().time()
+        self.updated = asyncio.get_running_loop().time()
         self.lock = asyncio.Lock()
 
     async def acquire(self, *, drop: bool = False) -> bool:
@@ -125,19 +125,19 @@ class RateLimiter:
             ``True`` if a token was consumed, otherwise ``False``.
         """
 
-        async with self.lock:
-            now = asyncio.get_event_loop().time()
-            elapsed = now - self.updated
-            self.updated = now
-            self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
-            if self.tokens >= 1:
-                self.tokens -= 1
-                return True
-            if drop:
-                return False
-            wait_time = (1 - self.tokens) / self.rate
-        await asyncio.sleep(wait_time)
-        return await self.acquire(drop=drop)
+        while True:
+            async with self.lock:
+                now = asyncio.get_running_loop().time()
+                elapsed = now - self.updated
+                self.updated = now
+                self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+                if self.tokens >= 1:
+                    self.tokens -= 1
+                    return True
+                if drop:
+                    return False
+                wait_time = (1 - self.tokens) / self.rate
+            await asyncio.sleep(wait_time)
 
 
 async def download_from_minio(
