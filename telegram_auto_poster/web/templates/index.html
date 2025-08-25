@@ -1,9 +1,61 @@
 {% extends "base.html" %}
 {% block content %}
+{% set key = request.query_params.get('key') %}
+{% set key_query = '?key=' ~ key if key else '' %}
 <div class="p-5 mb-4 bg-light rounded-3">
     <div class="container-fluid py-5">
         <h1 class="display-5 fw-bold">Admin Panel</h1>
-        <p class="col-md-8 fs-4">Use the navigation links above to review queued media and view analytics.</p>
+        <p class="col-md-8 fs-4">Welcome to the Telegram Autoposter admin panel. Here's a quick overview of the current status.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Pending Suggestions</h5>
+                <p class="card-text fs-1">{{ suggestions_count }}</p>
+                <a href="/suggestions{{ key_query }}" class="btn btn-primary">Review Suggestions</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Items in Batch</h5>
+                <p class="card-text fs-1">{{ batch_count }}</p>
+                <a href="/batch{{ key_query }}" class="btn btn-primary">View Batch</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Scheduled Posts</h5>
+                <p class="card-text fs-1">{{ scheduled_count }}</p>
+                <a href="/queue{{ key_query }}" class="btn btn-primary">View Queue</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-12">
+        <h2>Activity in the Last 24 Hours</h2>
+        <ul class="list-group">
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Media Received
+                <span class="badge bg-primary rounded-pill">{{ daily.media_received }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Media Approved
+                <span class="badge bg-success rounded-pill">{{ daily.photos_approved + daily.videos_approved }}</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                Media Rejected
+                <span class="badge bg-danger rounded-pill">{{ daily.photos_rejected + daily.videos_rejected }}</span>
+            </li>
+        </ul>
     </div>
 </div>
 {% endblock %}
