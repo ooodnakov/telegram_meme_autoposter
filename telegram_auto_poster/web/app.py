@@ -12,6 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 from miniopy_async.commonconfig import CopySource
 from telegram import Bot
 
@@ -163,6 +164,23 @@ async def batch_view(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         "batch.html", {"request": request, "posts": posts}
     )
+
+
+@app.post("/batch/send", dependencies=[Depends(require_access_key)])
+async def send_batch(request: Request, key: str | None = Form(None)) -> Response:
+    posts = await _gather_batch()
+    sent = 0
+    for p in posts:
+        try:
+            await _push_post(p["path"])
+            sent += 1
+        except Exception as e:  # pragma: no cover - logging only
+            logger.error(f"Failed to send batch item {p['path']}: {e}")
+    if sent:
+        await decrement_batch_count(sent)
+        await stats.record_batch_sent(1)
+    suffix = f"?key={key}" if key else ""
+    return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
 
 @app.post("/action")
