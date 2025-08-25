@@ -86,4 +86,68 @@
             },
         });
     }
+
+    const perfCanvas = document.getElementById('performance-metrics');
+    if (perfCanvas) {
+        const perfCtx = perfCanvas.getContext('2d');
+        const {
+            avgPhotoProcessingTime,
+            avgVideoProcessingTime,
+            avgUploadTime,
+            avgDownloadTime,
+        } = perfCanvas.dataset;
+        new Chart(perfCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Photo Processing', 'Video Processing', 'Upload', 'Download'],
+                datasets: [{
+                    label: 'Avg Seconds',
+                    data: [
+                        Number(avgPhotoProcessingTime),
+                        Number(avgVideoProcessingTime),
+                        Number(avgUploadTime),
+                        Number(avgDownloadTime),
+                    ],
+                    backgroundColor: ['#0d6efd', '#0d6efd', '#0dcaf0', '#0dcaf0'],
+                }],
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                    }
+                }
+            },
+        });
+    }
+
+    const totalCanvas = document.getElementById('total-activity');
+    if (totalCanvas) {
+        const totalCtx = totalCanvas.getContext('2d');
+        const {
+            photosApproved,
+            videosApproved,
+            photosRejected,
+            videosRejected,
+        } = totalCanvas.dataset;
+        const totalApproved = Number(photosApproved) + Number(videosApproved);
+        const totalRejected = Number(photosRejected) + Number(videosRejected);
+        new Chart(totalCtx, {
+            type: 'pie',
+            data: {
+                labels: ['Approved', 'Rejected'],
+                datasets: [{
+                    data: [totalApproved, totalRejected],
+                    backgroundColor: ['#198754', '#dc3545'],
+                }],
+            },
+            options: {
+                responsive: true,
+            },
+        });
+    }
 })();

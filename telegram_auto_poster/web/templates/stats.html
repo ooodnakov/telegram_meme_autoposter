@@ -95,7 +95,40 @@
         </div>
     </div>
 </div>
-
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Performance Metrics (Avg Seconds)</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="performance-metrics"
+                    data-avg-photo-processing-time="{{ '%.2f'|format(perf.avg_photo_processing_time) }}"
+                    data-avg-video-processing-time="{{ '%.2f'|format(perf.avg_video_processing_time) }}"
+                    data-avg-upload-time="{{ '%.2f'|format(perf.avg_upload_time) }}"
+                    data-avg-download-time="{{ '%.2f'|format(perf.avg_download_time) }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>All-Time Activity</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="total-activity"
+                    data-photos-approved="{{ total.photos_approved }}"
+                    data-videos-approved="{{ total.videos_approved }}"
+                    data-photos-rejected="{{ total.photos_rejected }}"
+                    data-videos-rejected="{{ total.videos_rejected }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

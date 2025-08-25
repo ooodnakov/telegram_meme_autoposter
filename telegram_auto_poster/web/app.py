@@ -127,7 +127,20 @@ async def _gather_batch() -> list[dict]:
 
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("index.html", {"request": request})
+    suggestions, batch, scheduled_posts_raw, daily = await asyncio.gather(
+        _gather_posts(True),
+        _gather_batch(),
+        run_in_threadpool(get_scheduled_posts),
+        stats.get_daily_stats(reset_if_new_day=False),
+    )
+    context = {
+        "request": request,
+        "suggestions_count": len(suggestions),
+        "batch_count": len(batch),
+        "scheduled_count": len(scheduled_posts_raw),
+        "daily": daily,
+    }
+    return templates.TemplateResponse("index.html", context)
 
 
 @app.get(
