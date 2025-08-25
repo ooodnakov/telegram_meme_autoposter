@@ -22,8 +22,7 @@ def mock_bot_and_context(mocker: MockerFixture, commands):
         effective_message=SimpleNamespace(message_id=1),
     )
     bot = SimpleNamespace(
-        send_photo=mocker.AsyncMock(),
-        send_video=mocker.AsyncMock(),
+        send_media_group=mocker.AsyncMock(),
         send_message=mocker.AsyncMock(),
     )
     context = SimpleNamespace(
@@ -43,33 +42,42 @@ async def test_send_batch_photo_closes_file_and_cleans(
     tmp_path, mocker: MockerFixture, mock_bot_and_context, commands
 ):
     temp_file = tmp_path / "photo.jpg"
-    temp_file.write_bytes(b"data")
-
+    mocker.patch.object(
+        commands,
+        "list_batch_files",
+        new=mocker.AsyncMock(return_value=["photo.jpg"]),
+    )
     mocker.patch(
         "telegram_auto_poster.bot.commands.download_from_minio",
         return_value=(str(temp_file), "ext"),
     )
+    mock_file = mocker.mock_open(read_data=b"data")
+    mocker.patch("builtins.open", mock_file)
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
     mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
-    mocker.patch(
-        "telegram_auto_poster.utils.stats.stats.record_approved",
+    mock_storage.delete_file = mocker.AsyncMock()
+    mock_storage.mark_notified = mocker.AsyncMock()
+    mock_stats = mocker.patch("telegram_auto_poster.utils.stats.stats")
+    mock_stats.record_approved = mocker.AsyncMock()
+    mock_stats.record_batch_sent = mocker.AsyncMock()
+    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
+    _ = mocker.patch(
+        "telegram_auto_poster.bot.commands.notify_user",
         new=mocker.AsyncMock(),
     )
     mocker.patch.object(commands.db, "decrement_batch_count", new=mocker.AsyncMock())
-    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
-    context.bot_data["video_batch"] = []
 
     await commands.send_batch_command(update, context)
 
-    context.bot.send_photo.assert_awaited_once()
-    sent_args = context.bot.send_photo.call_args.kwargs
+    context.bot.send_media_group.assert_awaited_once()
+    sent_args = context.bot.send_media_group.call_args.kwargs
     assert sent_args["chat_id"] == 123
-    file_obj = sent_args["photo"]
-    assert file_obj.closed
+    media = sent_args["media"]
+    assert len(media) == 1
+    mock_file().close.assert_called_once()
     mock_cleanup.assert_called_once_with(str(temp_file))
-    assert context.bot_data["photo_batch"] == []
 
 
 @pytest.mark.asyncio
@@ -133,33 +141,42 @@ async def test_send_batch_video_closes_file_and_cleans(
     tmp_path, mocker: MockerFixture, mock_bot_and_context, commands
 ):
     temp_file = tmp_path / "video.mp4"
-    temp_file.write_bytes(b"data")
-
+    mocker.patch.object(
+        commands,
+        "list_batch_files",
+        new=mocker.AsyncMock(return_value=["video.mp4"]),
+    )
     mocker.patch(
         "telegram_auto_poster.bot.commands.download_from_minio",
         return_value=(str(temp_file), "ext"),
     )
+    mock_file = mocker.mock_open(read_data=b"data")
+    mocker.patch("builtins.open", mock_file)
     mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
     mock_storage.get_submission_metadata = mocker.AsyncMock(return_value=None)
-    mocker.patch(
-        "telegram_auto_poster.utils.stats.stats.record_approved",
+    mock_storage.delete_file = mocker.AsyncMock()
+    mock_storage.mark_notified = mocker.AsyncMock()
+    mock_stats = mocker.patch("telegram_auto_poster.utils.stats.stats")
+    mock_stats.record_approved = mocker.AsyncMock()
+    mock_stats.record_batch_sent = mocker.AsyncMock()
+    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
+    _ = mocker.patch(
+        "telegram_auto_poster.bot.commands.notify_user",
         new=mocker.AsyncMock(),
     )
     mocker.patch.object(commands.db, "decrement_batch_count", new=mocker.AsyncMock())
-    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
-    context.bot_data["photo_batch"] = []
 
     await commands.send_batch_command(update, context)
 
-    context.bot.send_video.assert_awaited_once()
-    sent_args = context.bot.send_video.call_args.kwargs
+    context.bot.send_media_group.assert_awaited_once()
+    sent_args = context.bot.send_media_group.call_args.kwargs
     assert sent_args["chat_id"] == 123
-    file_obj = sent_args["video"]
-    assert file_obj.closed
+    media = sent_args["media"]
+    assert len(media) == 1
+    mock_file().close.assert_called_once()
     mock_cleanup.assert_called_once_with(str(temp_file))
-    assert context.bot_data["video_batch"] == []
 
 
 @pytest.mark.asyncio
