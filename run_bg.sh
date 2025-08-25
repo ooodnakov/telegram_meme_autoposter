@@ -20,8 +20,8 @@ mkdir -p /workspace/videos
 
 # Start the web dashboard
 echo "Starting web dashboard..."
-uv run watchfiles --filter python "uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port ${WEB_PORT:-8000}" telegram_auto_poster &
+uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port ${WEB_PORT:-8000} &
 
 # Start the bot application
 echo "Starting application..."
-uv run watchfiles --filter python "uv run python -m telegram_auto_poster.main" telegram_auto_poster
+uv run python -m telegram_auto_poster.main
