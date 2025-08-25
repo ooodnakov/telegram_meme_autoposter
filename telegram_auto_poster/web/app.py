@@ -12,9 +12,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from loguru import logger
 from miniopy_async.commonconfig import CopySource
-from telegram import Bot
+from telegram import Bot, InputMediaPhoto, InputMediaVideo
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
@@ -173,25 +172,10 @@ async def send_batch(key: str | None = Form(None)) -> Response:
         suffix = f"?key={key}" if key else ""
         return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
-    semaphore = asyncio.Semaphore(5)
-
-    async def push_with_semaphore(post_path: str) -> bool:
-        """Wrapper to push a post and handle exceptions, returns success status."""
-        async with semaphore:
-            try:
-                await _push_post(post_path)
-                return True
-            except Exception as e:  # pragma: no cover - logging only
-                logger.error(f"Failed to send batch item {post_path}: {e}")
-                return False
-
-    tasks = [push_with_semaphore(p["path"]) for p in posts]
-    results = await asyncio.gather(*tasks)
-    sent = sum(results)
-
-    if sent:
-        await decrement_batch_count(sent)
-        await stats.record_batch_sent(1)
+    paths = [p["path"] for p in posts]
+    await _push_post_group(paths)
+    await decrement_batch_count(len(paths))
+    await stats.record_batch_sent(1)
     suffix = f"?key={key}" if key else ""
     return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
@@ -263,6 +247,77 @@ async def _push_post(path: str) -> None:
             caption=f"Post approved with media {file_name}!",
             reply_markup=None,
         )
+
+
+async def _push_post_group(paths: list[str]) -> None:
+    items: list[dict[str, object]] = []
+
+    for path in paths:
+        file_name = os.path.basename(path)
+        media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+        caption = ""
+        meta = await storage.get_submission_metadata(file_name)
+        if meta and meta.get("user_id"):
+            caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
+
+        temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+        file_obj = open(temp_path, "rb")
+        if media_type == "video":
+            input_media = InputMediaVideo(
+                file_obj, caption=caption or None, supports_streaming=True
+            )
+        else:
+            input_media = InputMediaPhoto(file_obj, caption=caption or None)
+        items.append(
+            {
+                "input_media": input_media,
+                "file_name": file_name,
+                "media_type": media_type,
+                "temp_path": temp_path,
+                "file_obj": file_obj,
+                "meta": meta,
+                "path": path,
+            }
+        )
+
+    for i in range(0, len(items), 10):
+        chunk = items[i : i + 10]
+        media_group = [item["input_media"] for item in chunk]
+        await bot.send_media_group(TARGET_CHANNEL, media_group)
+
+        for item in chunk:
+            file_name = item["file_name"]
+            media_type = item["media_type"]
+            temp_path = item["temp_path"]
+            file_obj = item["file_obj"]
+            meta = item["meta"]
+            path = item["path"]
+
+            file_obj.close()
+            await storage.delete_file(path, BUCKET_MAIN)
+            if meta and meta.get("hash"):
+                add_approved_hash(meta.get("hash"))
+            else:
+                media_hash = (
+                    calculate_image_hash(temp_path)
+                    if media_type == "photo"
+                    else calculate_video_hash(temp_path)
+                )
+                if media_hash:
+                    add_approved_hash(media_hash)
+            await stats.record_approved(
+                media_type, filename=file_name, source="web_push"
+            )
+            cleanup_temp_file(temp_path)
+            review = await storage.get_review_message(file_name)
+            if review:
+                chat_id, message_id = review
+                await bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    caption=f"Post approved with media {file_name}!",
+                    reply_markup=None,
+                )
 
 
 async def _schedule_post(path: str) -> None:
