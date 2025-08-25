@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Channel Posts</h1>
+{% include "_post_grid.html" with posts=posts, origin="posts", alt_text="post", empty_message="No posts pending." %}
+{% endblock %}

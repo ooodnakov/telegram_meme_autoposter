@@ -127,14 +127,12 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle approval: send suggestions or add to batch"""
+    """Handle approval: add post to batch"""
     logger.info(f"Received /ok callback from user {update.callback_query.from_user.id}")
     logger.debug(f"Callback data: {update.callback_query.data}")
 
     query = update.callback_query
     await query.answer()
-
-    target_channel = context.bot_data.get("target_channel_id")
 
     message_text = query.message.caption or query.message.text
     file_path = extract_filename(message_text)
@@ -157,159 +155,76 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 f"File not found: {file_prefix + file_name} in {BUCKET_MAIN}"
             )
 
-        # If suggestion, approve and publish immediately
-        if "suggestion" in message_text:
-            caption_to_send = "Пост из предложки @ooodnakov_memes_suggest_bot"
+        # Add to batch in MinIO for later sending
+        new_object_name = f"batch_{file_name}"
+        temp_path, _ = await download_from_minio(file_prefix + file_name, BUCKET_MAIN)
+        try:
+            # Upload to appropriate prefix as batch_*, preserving metadata and hash
+            target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
+            src_meta = await storage.get_submission_metadata(file_name)
+            media_hash = None
+            if src_meta and src_meta.get("hash"):
+                media_hash = src_meta.get("hash")
+            else:
+                media_hash = (
+                    calculate_image_hash(temp_path)
+                    if media_type == "photo"
+                    else calculate_video_hash(temp_path)
+                )
+            await storage.upload_file(
+                temp_path,
+                BUCKET_MAIN,
+                f"{target_prefix}/{new_object_name}",
+                user_id=src_meta.get("user_id") if src_meta else None,
+                chat_id=src_meta.get("chat_id") if src_meta else None,
+                message_id=src_meta.get("message_id") if src_meta else None,
+                media_hash=media_hash,
+            )
+
+            # Add to approved dedup corpus
+            try:
+                if media_hash:
+                    add_approved_hash(media_hash)
+            except Exception as _e:
+                logger.warning(
+                    f"Failed to add approved hash for {file_name} in ok_callback(batch): {_e}"
+                )
+
+            # Get user metadata
+            user_metadata = await storage.get_submission_metadata(new_object_name)
+
+            # Delete from MinIO
+            await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+
+            batch_count = await db.increment_batch_count()
+
             await query.message.edit_caption(
-                f"Post approved with media {file_prefix + file_name}!",
+                f"Post added to batch! There are {batch_count} posts in the batch.",
                 reply_markup=None,
             )
-
-            temp_path, _ = await download_from_minio(
-                file_prefix + file_name, BUCKET_MAIN
+            await stats.record_added_to_batch(media_type)
+            logger.info(
+                f"Added {file_prefix + file_name} to batch ({batch_count} total)"
             )
-            try:
-                if media_type == "photo":
-                    await context.bot.send_photo(
-                        chat_id=target_channel,
-                        photo=open(temp_path, "rb"),
-                        caption=caption_to_send,
-                    )
-                else:
-                    await context.bot.send_video(
-                        chat_id=target_channel,
-                        video=open(temp_path, "rb"),
-                        supports_streaming=True,
-                        caption=caption_to_send,
-                    )
-                await stats.record_approved(
-                    media_type, filename=file_name, source="ok_callback"
+            # Notify original submitter
+            if (
+                user_metadata
+                and not user_metadata.get("notified")
+                and user_metadata.get("user_id")
+            ):
+                translated_media_type = "фото" if media_type == "photo" else "видео"
+                await notify_user(
+                    context,
+                    user_metadata.get("user_id"),
+                    f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
+                    reply_to_message_id=user_metadata.get("message_id"),
                 )
-                # Add to approved dedup corpus
-                try:
-                    user_metadata = await storage.get_submission_metadata(file_name)
-                    media_hash = user_metadata.get("hash") if user_metadata else None
-                    if not media_hash:
-                        media_hash = (
-                            calculate_image_hash(temp_path)
-                            if media_type == "photo"
-                            else calculate_video_hash(temp_path)
-                        )
-                    if media_hash:
-                        add_approved_hash(media_hash)
-                except Exception as _e:
-                    logger.warning(
-                        f"Failed to add approved hash for {file_name} in ok_callback: {_e}"
-                    )
-                # Get user metadata
-                user_metadata = await storage.get_submission_metadata(file_name)
-
-                # Delete from MinIO
-                await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
-
-                # Notify original submitter
-                if (
-                    user_metadata
-                    and not user_metadata.get("notified")
-                    and user_metadata.get("user_id")
-                ):
-                    translated_media_type = "фото" if media_type == "photo" else "видео"
-                    await notify_user(
-                        context,
-                        user_metadata.get("user_id"),
-                        f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
-                        reply_to_message_id=user_metadata.get("message_id"),
-                    )
-                    await storage.mark_notified(file_name)
-                    logger.info(
-                        f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
-                    )
-            finally:
-                cleanup_temp_file(temp_path)
-        else:
-            # Add to batch in MinIO for later sending
-            new_object_name = f"batch_{file_name}"
-            temp_path, _ = await download_from_minio(
-                file_prefix + file_name, BUCKET_MAIN
-            )
-            try:
-                # Upload to appropriate prefix as batch_*, preserving metadata and hash
-                target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
-                src_meta = await storage.get_submission_metadata(file_name)
-                media_hash = None
-                if src_meta and src_meta.get("hash"):
-                    media_hash = src_meta.get("hash")
-                else:
-                    media_hash = (
-                        calculate_image_hash(temp_path)
-                        if media_type == "photo"
-                        else calculate_video_hash(temp_path)
-                    )
-                await storage.upload_file(
-                    temp_path,
-                    BUCKET_MAIN,
-                    f"{target_prefix}/{new_object_name}",
-                    user_id=src_meta.get("user_id") if src_meta else None,
-                    chat_id=src_meta.get("chat_id") if src_meta else None,
-                    message_id=src_meta.get("message_id") if src_meta else None,
-                    media_hash=media_hash,
-                )
-
-                # Add to approved dedup corpus
-                try:
-                    if media_hash:
-                        add_approved_hash(media_hash)
-                except Exception as _e:
-                    logger.warning(
-                        f"Failed to add approved hash for {file_name} in ok_callback(batch): {_e}"
-                    )
-
-                # Get user metadata
-                user_metadata = await storage.get_submission_metadata(new_object_name)
-
-                # Delete from MinIO
-                await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
-
-                # Count batch items across both photos and videos
-                batch_count = 0
-                batch_count += len(
-                    await storage.list_files(
-                        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_"
-                    )
-                )
-                batch_count += len(
-                    await storage.list_files(
-                        BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_"
-                    )
-                )
-
-                await query.message.edit_caption(
-                    f"Post added to batch! There are {batch_count} posts in the batch.",
-                    reply_markup=None,
-                )
-                await stats.record_added_to_batch(media_type)
+                await storage.mark_notified(new_object_name)
                 logger.info(
-                    f"Added {file_prefix + file_name} to batch ({batch_count} total)"
+                    f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
                 )
-                # Notify original submitter
-                if (
-                    user_metadata
-                    and not user_metadata.get("notified")
-                    and user_metadata.get("user_id")
-                ):
-                    translated_media_type = "фото" if media_type == "photo" else "видео"
-                    await notify_user(
-                        context,
-                        user_metadata.get("user_id"),
-                        f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
-                        reply_to_message_id=user_metadata.get("message_id"),
-                    )
-                    await storage.mark_notified(file_name)
-                    logger.info(
-                        f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
-                    )
-            finally:
-                cleanup_temp_file(temp_path)
+        finally:
+            cleanup_temp_file(temp_path)
     except MinioError as e:
         logger.error(f"MinIO error in ok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))

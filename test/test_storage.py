@@ -2,8 +2,9 @@ import pytest
 from pytest_mock import MockerFixture
 from miniopy_async.error import MinioException
 
-from telegram_auto_poster.utils.storage import MinioStorage
 from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
+from telegram_auto_poster.utils.db import _redis_key
+from telegram_auto_poster.utils.storage import MinioStorage
 
 
 @pytest.fixture
@@ -19,6 +20,35 @@ def mock_minio_client(mocker: MockerFixture):
     client.list_objects = mocker.AsyncMock(return_value=[])
     client.get_object = mocker.AsyncMock()
     return client
+
+
+class FakeRedis:
+    def __init__(self):
+        self.store: dict[str, dict[str, str]] = {}
+
+    async def hset(self, key, field=None, value=None, mapping=None):
+        if mapping is not None:
+            self.store.setdefault(key, {}).update(mapping)
+        elif field is not None and value is not None:
+            self.store.setdefault(key, {})[field] = value
+        else:
+            raise ValueError("hset requires field and value or mapping")
+
+    async def hgetall(self, key):
+        return self.store.get(key, {}).copy()
+
+
+@pytest.fixture
+def mock_redis_client() -> FakeRedis:
+    return FakeRedis()
+
+
+@pytest.fixture(autouse=True)
+def patch_redis_client(mocker: MockerFixture, mock_redis_client: FakeRedis):
+    mocker.patch(
+        "telegram_auto_poster.utils.storage.get_async_redis_client",
+        return_value=mock_redis_client,
+    )
 
 
 def test_init_storage(mock_minio_client):
@@ -58,6 +88,24 @@ async def test_store_and_get_submission_metadata(mock_minio_client):
 
 
 @pytest.mark.asyncio
+async def test_get_submission_metadata_from_redis(mock_minio_client, mock_redis_client):
+    """Metadata is retrieved from Redis when not in memory."""
+    storage = MinioStorage(client=mock_minio_client)
+    storage._instance = None
+    storage._initialized = False
+    storage = MinioStorage(client=mock_minio_client)
+    await storage.store_submission_metadata(
+        "obj_redis", 111, 222, "photo", message_id=333, media_hash="hash2"
+    )
+    # Clear in-memory cache to force Redis lookup
+    storage.submission_metadata = {}
+    meta = await storage.get_submission_metadata("obj_redis")
+    assert meta["user_id"] == 111
+    assert meta["chat_id"] == 222
+    mock_minio_client.stat_object.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_get_submission_metadata_from_minio(
     mock_minio_client, mocker: MockerFixture
 ):
@@ -85,7 +133,7 @@ async def test_get_submission_metadata_from_minio(
 
 
 @pytest.mark.asyncio
-async def test_mark_notified(mock_minio_client):
+async def test_mark_notified(mock_minio_client, mock_redis_client):
     """Test marking a submission as notified."""
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
@@ -97,6 +145,8 @@ async def test_mark_notified(mock_minio_client):
     await storage.mark_notified("obj1")
     meta = await storage.get_submission_metadata("obj1")
     assert meta["notified"] is True
+    data = await mock_redis_client.hgetall(_redis_key("submissions", "obj1"))
+    assert data["notified"] == "1"
 
 
 @pytest.mark.asyncio

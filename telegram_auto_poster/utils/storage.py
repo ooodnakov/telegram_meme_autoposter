@@ -18,6 +18,7 @@ from telegram_auto_poster.config import (
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
+from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
 from telegram_auto_poster.utils.timezone import now_utc
 
 # Get MinIO configuration from centralized config
@@ -39,6 +40,12 @@ else:
     MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
     MINIO_SECURE = False
     MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
+
+
+def _to_int(value: str | None) -> int | None:
+    """Convert a string to ``int`` if not ``None``."""
+
+    return int(value) if value is not None else None
 
 
 class MinioStorage:
@@ -170,7 +177,7 @@ class MinioStorage:
                 submission.
             media_hash: Optional hash used for deduplication.
         """
-        self.submission_metadata[object_name] = {
+        meta = {
             "user_id": user_id,
             "chat_id": chat_id,
             "media_type": media_type,
@@ -179,6 +186,15 @@ class MinioStorage:
             "message_id": message_id,
             "hash": media_hash,
         }
+        self.submission_metadata[object_name] = meta
+        try:
+            r = get_async_redis_client()
+            await r.hset(
+                _redis_key("submissions", object_name),
+                mapping={k: str(v) for k, v in meta.items() if v is not None},
+            )
+        except Exception as e:
+            logger.error(f"Failed to store submission metadata in Redis: {e}")
         logger.debug(
             f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}, message_id={message_id}"
         )
@@ -196,6 +212,26 @@ class MinioStorage:
         meta = self.submission_metadata.get(object_name)
         if meta:
             return meta
+        # Try Redis (Valkey) next
+        try:
+            r = get_async_redis_client()
+            data = await r.hgetall(_redis_key("submissions", object_name))
+            if data:
+                meta = {
+                    "user_id": _to_int(data.get("user_id")),
+                    "chat_id": _to_int(data.get("chat_id")),
+                    "media_type": data.get("media_type"),
+                    "timestamp": data.get("timestamp"),
+                    "notified": data.get("notified") in {"True", "1"},
+                    "message_id": _to_int(data.get("message_id")),
+                    "hash": data.get("hash"),
+                    "review_chat_id": _to_int(data.get("review_chat_id")),
+                    "review_message_id": _to_int(data.get("review_message_id")),
+                }
+                self.submission_metadata[object_name] = meta
+                return meta
+        except Exception as e:
+            logger.error(f"Failed to get submission metadata from Redis: {e}")
         # Try to fetch metadata from MinIO across known buckets
         for prepath in [PHOTOS_PATH, VIDEOS_PATH, DOWNLOADS_PATH]:
             try:
@@ -216,10 +252,10 @@ class MinioStorage:
                 media_type_val = _mget("media_type", "media-type")
                 message_id_val = _mget("message_id", "message-id")
                 return {
-                    "user_id": int(user_id_val) if user_id_val else None,
-                    "chat_id": int(chat_id_val) if chat_id_val else None,
+                    "user_id": _to_int(user_id_val),
+                    "chat_id": _to_int(chat_id_val),
                     "media_type": media_type_val,
-                    "message_id": int(message_id_val) if message_id_val else None,
+                    "message_id": _to_int(message_id_val),
                     "hash": _mget("hash"),
                     # notified state is managed in-memory
                     "notified": False,
@@ -238,10 +274,46 @@ class MinioStorage:
             bool: ``True`` if metadata exists and was updated, ``False``
             otherwise.
         """
-        if object_name in self.submission_metadata:
-            self.submission_metadata[object_name]["notified"] = True
-            return True
-        return False
+        meta = await self.get_submission_metadata(object_name)
+        if not meta:
+            return False
+        meta["notified"] = True
+        self.submission_metadata[object_name] = meta
+        try:
+            r = get_async_redis_client()
+            await r.hset(_redis_key("submissions", object_name), "notified", "1")
+        except Exception as e:
+            logger.error(f"Failed to mark notified in Redis: {e}")
+        return True
+
+    async def store_review_message(self, object_name, chat_id, message_id):
+        """Store Telegram review message identifiers for later editing."""
+        meta = self.submission_metadata.setdefault(object_name, {})
+        meta["review_chat_id"] = chat_id
+        meta["review_message_id"] = message_id
+        try:
+            r = get_async_redis_client()
+            await r.hset(
+                _redis_key("submissions", object_name),
+                mapping={
+                    "review_chat_id": str(chat_id),
+                    "review_message_id": str(message_id),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to store review message in Redis: {e}")
+        logger.debug(f"Stored review message for {object_name}: {chat_id}/{message_id}")
+
+    async def get_review_message(self, object_name):
+        """Return stored review message identifiers if available."""
+        meta = await self.get_submission_metadata(object_name)
+        if not meta:
+            return None
+        chat_id = meta.get("review_chat_id")
+        message_id = meta.get("review_message_id")
+        if chat_id is not None and message_id is not None:
+            return int(chat_id), int(message_id)
+        return None
 
     async def upload_file(
         self,

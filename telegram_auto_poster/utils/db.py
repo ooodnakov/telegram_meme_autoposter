@@ -136,3 +136,46 @@ def remove_scheduled_post(file_path: str) -> None:
     client = get_redis_client()
     key = _redis_key("scheduled_posts", "schedule")
     client.zrem(key, file_path)
+
+
+async def increment_batch_count(amount: int = 1) -> int:
+    """Increment the batch size counter.
+
+    Args:
+        amount: How much to increment the counter by.
+
+    Returns:
+        int: The new counter value.
+    """
+
+    r = get_async_redis_client()
+    key = _redis_key("batch", "size")
+    return await r.incrby(key, amount)
+
+
+async def decrement_batch_count(amount: int) -> int:
+    """Decrement the batch size counter.
+
+    Args:
+        amount: How much to decrement the counter by.
+
+    Returns:
+        int: The updated counter value, clamped at zero.
+    """
+
+    r = get_async_redis_client()
+    key = _redis_key("batch", "size")
+    new_val = await r.decrby(key, amount)
+    if new_val < 0:
+        await r.set(key, "0")
+        new_val = 0
+    return new_val
+
+
+async def get_batch_count() -> int:
+    """Return the current batch size."""
+
+    r = get_async_redis_client()
+    key = _redis_key("batch", "size")
+    value = await r.get(key)
+    return int(value) if value is not None else 0

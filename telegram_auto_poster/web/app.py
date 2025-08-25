@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import mimetypes
+import os
 import secrets
 from pathlib import Path
 
@@ -11,17 +12,47 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from miniopy_async.commonconfig import CopySource
+from telegram import Bot
 
-from telegram_auto_poster.config import BUCKET_MAIN, CONFIG
-from telegram_auto_poster.utils.db import get_scheduled_posts, remove_scheduled_post
+from telegram_auto_poster.config import (
+    BUCKET_MAIN,
+    CONFIG,
+    PHOTOS_PATH,
+    SCHEDULED_PATH,
+    VIDEOS_PATH,
+)
+from telegram_auto_poster.utils.db import (
+    add_scheduled_post,
+    get_scheduled_posts,
+    increment_batch_count,
+    remove_scheduled_post,
+)
+from telegram_auto_poster.utils.deduplication import (
+    add_approved_hash,
+    calculate_image_hash,
+    calculate_video_hash,
+)
+from telegram_auto_poster.utils.general import (
+    cleanup_temp_file,
+    download_from_minio,
+    send_media_to_telegram,
+)
+from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.timezone import format_display, now_utc
 
 app = FastAPI(title="Telegram Autoposter Admin")
 
 base_path = Path(__file__).parent
 templates = Jinja2Templates(directory=str(base_path / "templates"))
 app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
+
+bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())
+TARGET_CHANNEL = CONFIG.telegram.target_channel
+QUIET_START = CONFIG.schedule.quiet_hours_start
+QUIET_END = CONFIG.schedule.quiet_hours_end
 
 
 def require_access_key(request: Request) -> None:
@@ -36,9 +67,200 @@ def require_access_key(request: Request) -> None:
         )
 
 
+async def _gather_posts(only_suggestions: bool) -> list[dict]:
+    objects: list[str] = []
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+    posts: list[dict] = []
+    for obj in objects:
+        file_name = os.path.basename(obj)
+        meta = await storage.get_submission_metadata(file_name)
+        is_suggestion = bool(meta and meta.get("user_id"))
+        if only_suggestions and not is_suggestion:
+            continue
+        if not only_suggestions and is_suggestion:
+            continue
+        url = await storage.get_presigned_url(obj)
+        if not url:
+            continue
+        mime, _ = mimetypes.guess_type(obj)
+        is_video = obj.startswith(f"{VIDEOS_PATH}/") or (mime or "").startswith(
+            "video/"
+        )
+        is_image = obj.startswith(f"{PHOTOS_PATH}/") or (mime or "").startswith(
+            "image/"
+        )
+        posts.append(
+            {
+                "path": obj,
+                "url": url,
+                "is_video": is_video,
+                "is_image": is_image,
+            }
+        )
+    return posts
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.get(
+    "/suggestions",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_access_key)],
+)
+async def suggestions_view(request: Request) -> HTMLResponse:
+    posts = await _gather_posts(True)
+    return templates.TemplateResponse(
+        "suggestions.html", {"request": request, "posts": posts}
+    )
+
+
+@app.get(
+    "/posts",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_access_key)],
+)
+async def posts_view(request: Request) -> HTMLResponse:
+    posts = await _gather_posts(False)
+    return templates.TemplateResponse(
+        "posts.html", {"request": request, "posts": posts}
+    )
+
+
+@app.post("/action")
+async def handle_action(
+    path: str = Form(...),
+    action: str = Form(...),
+    origin: str = Form("suggestions"),
+) -> RedirectResponse:
+    if action == "push":
+        await _push_post(path)
+    elif action == "schedule":
+        await _schedule_post(path)
+    elif action == "ok":
+        await _ok_post(path)
+    elif action == "notok":
+        await _notok_post(path)
+    return RedirectResponse(url=f"/{origin}", status_code=303)
+
+
+async def _push_post(path: str) -> None:
+    file_name = os.path.basename(path)
+    media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+    caption = ""
+    meta = await storage.get_submission_metadata(file_name)
+    if meta and meta.get("user_id"):
+        caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
+
+    temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+    try:
+        await send_media_to_telegram(
+            bot,
+            TARGET_CHANNEL,
+            temp_path,
+            caption=caption or None,
+            supports_streaming=media_type == "video",
+        )
+        await storage.delete_file(path, BUCKET_MAIN)
+        if meta and meta.get("hash"):
+            add_approved_hash(meta.get("hash"))
+        else:
+            media_hash = (
+                calculate_image_hash(temp_path)
+                if media_type == "photo"
+                else calculate_video_hash(temp_path)
+            )
+            if media_hash:
+                add_approved_hash(media_hash)
+        await stats.record_approved(media_type, filename=file_name, source="web_push")
+    finally:
+        cleanup_temp_file(temp_path)
+
+    review = await storage.get_review_message(file_name)
+    if review:
+        chat_id, message_id = review
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=f"Post approved with media {file_name}!",
+            reply_markup=None,
+        )
+
+
+async def _schedule_post(path: str) -> None:
+    file_name = os.path.basename(path)
+    scheduled_posts = await run_in_threadpool(get_scheduled_posts)
+    next_slot = find_next_available_slot(
+        now_utc(), scheduled_posts, QUIET_START, QUIET_END
+    )
+    source = CopySource(BUCKET_MAIN, path)
+    new_object_name = f"{SCHEDULED_PATH}/{file_name}"
+    await storage.client.copy_object(BUCKET_MAIN, new_object_name, source)
+    await storage.delete_file(path, BUCKET_MAIN)
+    await run_in_threadpool(
+        add_scheduled_post, int(next_slot.timestamp()), new_object_name
+    )
+    review = await storage.get_review_message(file_name)
+    if review:
+        chat_id, message_id = review
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=f"Post scheduled for {format_display(next_slot)}!",
+            reply_markup=None,
+        )
+
+
+async def _ok_post(path: str) -> None:
+    file_name = os.path.basename(path)
+    meta = await storage.get_submission_metadata(file_name)
+    media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+    temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+    try:
+        batch_name = f"batch_{file_name}"
+        prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
+        await storage.upload_file(
+            temp_path,
+            BUCKET_MAIN,
+            f"{prefix}/{batch_name}",
+            user_id=meta.get("user_id") if meta else None,
+            chat_id=meta.get("chat_id") if meta else None,
+            message_id=meta.get("message_id") if meta else None,
+        )
+        await storage.delete_file(path, BUCKET_MAIN)
+        count = await increment_batch_count()
+        await stats.record_added_to_batch(media_type)
+    finally:
+        cleanup_temp_file(temp_path)
+
+    review = await storage.get_review_message(file_name)
+    if review:
+        chat_id, message_id = review
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=f"Post added to batch! There are {count} posts in the batch.",
+            reply_markup=None,
+        )
+
+
+async def _notok_post(path: str) -> None:
+    file_name = os.path.basename(path)
+    media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+    await storage.delete_file(path, BUCKET_MAIN)
+    await stats.record_rejected(media_type, file_name, "web_notok")
+    review = await storage.get_review_message(file_name)
+    if review:
+        chat_id, message_id = review
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=f"Post rejected: {file_name}",
+            reply_markup=None,
+        )
 
 
 @app.get(

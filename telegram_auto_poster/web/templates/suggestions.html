@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>User Suggestions</h1>
+{% include "_post_grid.html" with posts=posts, origin="suggestions", alt_text="suggestion", empty_message="No suggestions pending." %}
+{% endblock %}

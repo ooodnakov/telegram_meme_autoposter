@@ -300,6 +300,7 @@ async def delete_batch_command(
                 )
                 # Continue with other files
 
+        await db.decrement_batch_count(deleted_count)
         await update.message.reply_text(
             f"Batch deleted! ({deleted_count} files removed)"
         )
@@ -471,12 +472,14 @@ async def send_batch_command(update, context):
 
         batch_sent = False
         notified_users = set()  # Track which users we've notified
+        total_count = 0
 
         # Process photo batch
         if "photo_batch" in context.bot_data and context.bot_data["photo_batch"]:
             batch_sent = True
             photo_count = len(context.bot_data["photo_batch"])
             logger.info(f"Sending photo batch with {photo_count} photos")
+            total_count += photo_count
 
             # Process each photo in the batch
             for file_name in context.bot_data["photo_batch"]:
@@ -527,6 +530,7 @@ async def send_batch_command(update, context):
             batch_sent = True
             video_count = len(context.bot_data["video_batch"])
             logger.info(f"Sending video batch with {video_count} videos")
+            total_count += video_count
 
             # Process each video in the batch
             for file_name in context.bot_data["video_batch"]:
@@ -577,6 +581,7 @@ async def send_batch_command(update, context):
             context.bot_data["video_batch"] = []
 
         if batch_sent:
+            await db.decrement_batch_count(total_count)
             await stats.record_batch_sent(1)
             await update.message.reply_text("Batch sent to channel!")
         else:
