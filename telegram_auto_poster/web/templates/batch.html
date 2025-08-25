@@ -9,7 +9,7 @@
 {% if posts %}
 <form
     method="post"
-    action="/batch/send"
+    action="/batch/send{{ key_query }}"
     onsubmit="return confirm('Send whole batch?');"
 >
     <input type="hidden" name="key" value="{{ key }}" />
