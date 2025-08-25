@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 import tempfile
 from typing import Any, Optional, Tuple
 
@@ -72,6 +73,71 @@ def cleanup_temp_file(file_path: str | None) -> None:
             os.unlink(file_path)
         except Exception as e:
             logger.error(f"Error deleting temp file {file_path}: {e}")
+
+
+def backoff_delay(
+    retry: int, base: float = 1.0, cap: float = 300.0, jitter: float = 0.1
+) -> float:
+    """Calculate an exponential backoff delay with optional jitter.
+
+    Args:
+        retry: Current retry count starting at 1.
+        base: Base delay in seconds.
+        cap: Maximum delay in seconds.
+        jitter: Fractional jitter to apply to the calculated delay.
+
+    Returns:
+        float: Delay in seconds bounded by ``cap``.
+    """
+
+    delay = min(cap, base * 2 ** (retry - 1))
+    if jitter:
+        jitter_range = delay * jitter
+        delay += random.uniform(-jitter_range, jitter_range)
+    return delay
+
+
+class RateLimiter:
+    """Simple token bucket rate limiter."""
+
+    def __init__(self, rate: float, capacity: int) -> None:
+        """Initialise the limiter.
+
+        Args:
+            rate: Tokens added per second.
+            capacity: Maximum number of tokens.
+        """
+
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = capacity
+        self.updated = asyncio.get_running_loop().time()
+        self.lock = asyncio.Lock()
+
+    async def acquire(self, *, drop: bool = False) -> bool:
+        """Try to consume a token.
+
+        Args:
+            drop: If ``True`` and no tokens are available, immediately return
+                ``False`` instead of waiting.
+
+        Returns:
+            ``True`` if a token was consumed, otherwise ``False``.
+        """
+
+        while True:
+            async with self.lock:
+                now = asyncio.get_running_loop().time()
+                elapsed = now - self.updated
+                self.updated = now
+                self.tokens = min(self.capacity, self.tokens + elapsed * self.rate)
+                if self.tokens >= 1:
+                    self.tokens -= 1
+                    return True
+                if drop:
+                    return False
+                wait_time = (1 - self.tokens) / self.rate
+            await asyncio.sleep(wait_time)
 
 
 async def download_from_minio(

@@ -41,6 +41,8 @@ class MediaStats:
                 "storage_errors",
                 "telegram_errors",
                 "list_operations",
+                "client_reconnects",
+                "rate_limit_drops",
             ]
             try:  # Initialise counters immediately
                 loop = asyncio.get_running_loop()
@@ -113,6 +115,14 @@ class MediaStats:
     async def record_batch_sent(self, count: int) -> None:
         await self._increment("batch_sent", count=count)
         await self._increment("batch_sent", scope="total", count=count)
+
+    async def record_client_reconnect(self) -> None:
+        await self._increment("client_reconnects")
+        await self._increment("client_reconnects", scope="total")
+
+    async def record_rate_limit_drop(self) -> None:
+        await self._increment("rate_limit_drops")
+        await self._increment("rate_limit_drops", scope="total")
 
     async def record_error(self, error_type: str, error_message: str) -> None:
         if error_type == "processing":
