@@ -221,6 +221,13 @@ async def _push_post(path: str) -> None:
         caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
 
     temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+    item = {
+        "file_name": file_name,
+        "media_type": media_type,
+        "temp_path": temp_path,
+        "meta": meta,
+        "path": path,
+    }
     try:
         await send_media_to_telegram(
             bot,
@@ -229,30 +236,9 @@ async def _push_post(path: str) -> None:
             caption=caption or None,
             supports_streaming=media_type == "video",
         )
-        await storage.delete_file(path, BUCKET_MAIN)
-        if meta and meta.get("hash"):
-            add_approved_hash(meta.get("hash"))
-        else:
-            media_hash = (
-                calculate_image_hash(temp_path)
-                if media_type == "photo"
-                else calculate_video_hash(temp_path)
-            )
-            if media_hash:
-                add_approved_hash(media_hash)
-        await stats.record_approved(media_type, filename=file_name, source="web_push")
+        await _finalize_post(item)
     finally:
         cleanup_temp_file(temp_path)
-
-    review = await storage.get_review_message(file_name)
-    if review:
-        chat_id, message_id = review
-        await bot.edit_message_caption(
-            chat_id=chat_id,
-            message_id=message_id,
-            caption=f"Post approved with media {file_name}!",
-            reply_markup=None,
-        )
 
 
 async def _push_post_group(paths: list[str]) -> None:
@@ -269,11 +255,9 @@ async def _push_post_group(paths: list[str]) -> None:
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
         file_obj = open(temp_path, "rb")
         if media_type == "video":
-            input_media = InputMediaVideo(
-                file_obj, caption=caption or None, supports_streaming=True
-            )
+            input_media = InputMediaVideo(file_obj, supports_streaming=True)
         else:
-            input_media = InputMediaPhoto(file_obj, caption=caption or None)
+            input_media = InputMediaPhoto(file_obj)
         items.append(
             {
                 "input_media": input_media,
@@ -283,44 +267,19 @@ async def _push_post_group(paths: list[str]) -> None:
                 "file_obj": file_obj,
                 "meta": meta,
                 "path": path,
+                "caption": caption,
             }
         )
     try:
         for i in range(0, len(items), 10):
             chunk = items[i : i + 10]
+            # Only the caption of the first media is used in a group
+            chunk[0]["input_media"].caption = chunk[0]["caption"] or None
             media_group = [item["input_media"] for item in chunk]
             try:
                 await bot.send_media_group(TARGET_CHANNEL, media_group)
                 for item in chunk:
-                    file_name = item["file_name"]
-                    media_type = item["media_type"]
-                    temp_path = item["temp_path"]
-                    meta = item["meta"]
-                    path = item["path"]
-
-                    await storage.delete_file(path, BUCKET_MAIN)
-                    if meta and meta.get("hash"):
-                        add_approved_hash(meta.get("hash"))
-                    else:
-                        media_hash = (
-                            calculate_image_hash(temp_path)
-                            if media_type == "photo"
-                            else calculate_video_hash(temp_path)
-                        )
-                        if media_hash:
-                            add_approved_hash(media_hash)
-                    await stats.record_approved(
-                        media_type, filename=file_name, source="web_push"
-                    )
-                    review = await storage.get_review_message(file_name)
-                    if review:
-                        chat_id, message_id = review
-                        await bot.edit_message_caption(
-                            chat_id=chat_id,
-                            message_id=message_id,
-                            caption=f"Post approved with media {file_name}!",
-                            reply_markup=None,
-                        )
+                    await _finalize_post(item)
             except Exception:
                 logger.exception("Failed to send media group")
                 raise
@@ -330,6 +289,37 @@ async def _push_post_group(paths: list[str]) -> None:
             temp_path = item["temp_path"]
             file_obj.close()
             cleanup_temp_file(temp_path)
+
+
+async def _finalize_post(item: dict[str, object]) -> None:
+    file_name = item["file_name"]
+    media_type = item["media_type"]
+    temp_path = item["temp_path"]
+    meta = item.get("meta")
+    path = item["path"]
+
+    await storage.delete_file(path, BUCKET_MAIN)
+    if meta and meta.get("hash"):
+        add_approved_hash(meta.get("hash"))
+    else:
+        media_hash = (
+            calculate_image_hash(temp_path)
+            if media_type == "photo"
+            else calculate_video_hash(temp_path)
+        )
+        if media_hash:
+            add_approved_hash(media_hash)
+    await stats.record_approved(media_type, filename=file_name, source="web_push")
+
+    review = await storage.get_review_message(file_name)
+    if review:
+        chat_id, message_id = review
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=message_id,
+            caption=f"Post approved with media {file_name}!",
+            reply_markup=None,
+        )
 
 
 async def _schedule_post(path: str) -> None:
