@@ -305,6 +305,25 @@ async def test_sch_command_uses_preview(mocker: MockerFixture, commands):
 
 
 @pytest.mark.asyncio
+async def test_batch_command_uses_preview(mocker: MockerFixture, commands):
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=1),
+        effective_chat=SimpleNamespace(id=99),
+        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
+    )
+    context = SimpleNamespace(bot=SimpleNamespace())
+    mocker.patch.object(commands, "check_admin_rights", return_value=True)
+    mocker.patch.object(commands, "list_batch_files", new=mocker.AsyncMock(return_value=["p1.jpg"]))
+    preview = mocker.patch.object(
+        commands, "send_batch_preview", new=mocker.AsyncMock()
+    )
+
+    await commands.batch_command(update, context)
+
+    preview.assert_awaited_once_with(context.bot, 99, "p1.jpg", 0)
+
+
+@pytest.mark.asyncio
 async def test_send_schedule_preview_builds_markup(
     tmp_path, mocker: MockerFixture
 ):

@@ -1,0 +1,38 @@
+{% if posts %}
+<div class="row g-3">
+    {% for p in posts %}
+    <div class="col-md-4">
+        {% if p.is_video %}
+        <video class="img-fluid" controls src="{{ p.url }}"></video>
+        {% elif p.is_image %}
+        <img class="img-fluid" src="{{ p.url }}" alt="{{ alt_text }}" />
+        {% endif %}
+        <div class="mt-2 d-flex flex-wrap gap-1">
+            <form method="post" action="/action" data-bg="true">
+                <input type="hidden" name="path" value="{{ p.path }}" />
+                <input type="hidden" name="action" value="push" />
+                <input type="hidden" name="origin" value="{{ origin }}" />
+                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
+                <button class="btn btn-sm btn-primary" type="submit">Push!</button>
+            </form>
+            <form method="post" action="/action" data-bg="true">
+                <input type="hidden" name="path" value="{{ p.path }}" />
+                <input type="hidden" name="action" value="schedule" />
+                <input type="hidden" name="origin" value="{{ origin }}" />
+                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
+                <button class="btn btn-sm btn-secondary" type="submit">Schedule</button>
+            </form>
+            <form method="post" action="/action" data-bg="true" onsubmit="return confirm('Remove from batch?');">
+                <input type="hidden" name="path" value="{{ p.path }}" />
+                <input type="hidden" name="action" value="remove_batch" />
+                <input type="hidden" name="origin" value="{{ origin }}" />
+                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
+                <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">{{ empty_message }}</div>
+{% endif %}

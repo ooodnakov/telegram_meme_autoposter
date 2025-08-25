@@ -9,7 +9,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from miniopy_async.commonconfig import CopySource
@@ -24,6 +24,7 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.utils.db import (
     add_scheduled_post,
+    decrement_batch_count,
     get_scheduled_posts,
     increment_batch_count,
     remove_scheduled_post,
@@ -101,6 +102,28 @@ async def _gather_posts(only_suggestions: bool) -> list[dict]:
     return posts
 
 
+async def _gather_batch() -> list[dict]:
+    objects: list[str] = []
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+    posts: list[dict] = []
+    for obj in objects:
+        url = await storage.get_presigned_url(obj)
+        if not url:
+            continue
+        mime, _ = mimetypes.guess_type(obj)
+        is_video = obj.startswith(f"{VIDEOS_PATH}/") or (mime or "").startswith(
+            "video/"
+        )
+        is_image = obj.startswith(f"{PHOTOS_PATH}/") or (mime or "").startswith(
+            "image/"
+        )
+        posts.append(
+            {"path": obj, "url": url, "is_video": is_video, "is_image": is_image}
+        )
+    return posts
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("index.html", {"request": request})
@@ -130,6 +153,18 @@ async def posts_view(request: Request) -> HTMLResponse:
     )
 
 
+@app.get(
+    "/batch",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_access_key)],
+)
+async def batch_view(request: Request) -> HTMLResponse:
+    posts = await _gather_batch()
+    return templates.TemplateResponse(
+        "batch.html", {"request": request, "posts": posts}
+    )
+
+
 @app.post("/action")
 async def handle_action(
     request: Request,
@@ -146,6 +181,8 @@ async def handle_action(
         await _ok_post(path)
     elif action == "notok":
         await _notok_post(path)
+    elif action == "remove_batch":
+        await _remove_batch(path)
     # If this is a background (AJAX) request, return JSON instead of redirect
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
@@ -268,6 +305,11 @@ async def _notok_post(path: str) -> None:
             caption=f"Post rejected: {file_name}",
             reply_markup=None,
         )
+
+
+async def _remove_batch(path: str) -> None:
+    await storage.delete_file(path, BUCKET_MAIN)
+    await decrement_batch_count(1)
 
 
 @app.get(

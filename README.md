@@ -93,7 +93,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 5.  **Launch the web dashboard** (if not using `run_bg.sh` or Docker Compose)
     ```bash
-    uv run watchfiles --filter python "uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000" telegram_auto_poster/web
+    uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
     ```
 
 ## Running with Docker

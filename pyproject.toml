@@ -35,7 +35,6 @@ dependencies = [
     "urllib3==2.2.3",
     "valkey==6.1.0",
     "imagehash==4.3.1",
-    "watchfiles",
     "pytest-mock>=3.14.1",
     "miniopy-async>=1.21.1",
     "fastapi>=0.115.0",
