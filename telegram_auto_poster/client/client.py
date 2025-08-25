@@ -120,9 +120,11 @@ class TelegramMemeClient:
                 for ch in self.selected_chats:
                     try:
                         channel = await self.client.get_entity(ch)
-                        title = getattr(channel, "title", None) or getattr(
-                            channel, "username", None
-                        ) or str(ch)
+                        title = (
+                            getattr(channel, "title", None)
+                            or getattr(channel, "username", None)
+                            or str(ch)
+                        )
                         logger.info(f"Listening for messages in {title}")
                     except Exception as e:  # pragma: no cover - network resolution
                         logger.warning(f"Failed to resolve channel {ch}: {e}")

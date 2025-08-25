@@ -482,133 +482,86 @@ async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def send_batch_command(update, context):
-    """Command handler to send all items in the batch to the target channel"""
+    """Send all batch_ files from MinIO to the target channel."""
     if not await check_admin_rights(update, context):
         return
 
     try:
-        # Get the target channel from config
         target_channel = context.bot_data.get("target_channel_id")
         if not target_channel:
             await update.message.reply_text("Target channel ID not set!")
             return
 
-        batch_sent = False
-        notified_users = set()  # Track which users we've notified
-        total_count = 0
-
-        # Process photo batch
-        if "photo_batch" in context.bot_data and context.bot_data["photo_batch"]:
-            batch_sent = True
-            photo_count = len(context.bot_data["photo_batch"])
-            logger.info(f"Sending photo batch with {photo_count} photos")
-            total_count += photo_count
-
-            # Process each photo in the batch
-            for file_name in context.bot_data["photo_batch"]:
-                temp_path = None
-                try:
-                    # Download photo from MinIO
-                    temp_path, _ = await download_from_minio(
-                        PHOTOS_PATH + "/" + file_name, BUCKET_MAIN, ".jpg"
-                    )
-
-                    # Send to target channel
-                    with open(temp_path, "rb") as f:
-                        await context.bot.send_photo(chat_id=target_channel, photo=f)
-                    await stats.record_approved(
-                        "photo", filename=file_name, source="send_batch_command"
-                    )
-
-                    # Notify the user if this is their media
-                    user_metadata = await storage.get_submission_metadata(file_name)
-                    if user_metadata and not user_metadata.get("notified"):
-                        user_id = user_metadata["user_id"]
-
-                        # Only notify each user once per batch to avoid spam
-                        if user_id not in notified_users:
-                            await notify_user(
-                                context,
-                                user_id,
-                                "Отличные новости! Ваша фотография была одобрена и размещена в канале как часть пакета. Спасибо за ваш вклад!",
-                            )
-                            notified_users.add(user_id)
-
-                        # Mark as notified regardless
-                        await storage.mark_notified(file_name)
-
-                except Exception as e:
-                    logger.error(f"Error sending photo {file_name}: {e}")
-                    await stats.record_error(
-                        "telegram", f"Failed to send photo in batch: {str(e)}"
-                    )
-                finally:
-                    cleanup_temp_file(temp_path)
-
-            # Clear the photo batch
-            context.bot_data["photo_batch"] = []
-
-        # Process video batch
-        if "video_batch" in context.bot_data and context.bot_data["video_batch"]:
-            batch_sent = True
-            video_count = len(context.bot_data["video_batch"])
-            logger.info(f"Sending video batch with {video_count} videos")
-            total_count += video_count
-
-            # Process each video in the batch
-            for file_name in context.bot_data["video_batch"]:
-                temp_path = None
-                try:
-                    # Download video from MinIO
-                    temp_path, _ = await download_from_minio(
-                        VIDEOS_PATH + "/" + file_name, BUCKET_MAIN, ".mp4"
-                    )
-
-                    # Send to target channel
-                    with open(temp_path, "rb") as f:
-                        await context.bot.send_video(
-                            chat_id=target_channel,
-                            video=f,
-                            supports_streaming=True,
-                        )
-                    await stats.record_approved(
-                        "video", filename=file_name, source="send_batch_command"
-                    )
-
-                    # Notify the user if this is their media
-                    user_metadata = await storage.get_submission_metadata(file_name)
-                    if user_metadata and not user_metadata.get("notified"):
-                        user_id = user_metadata["user_id"]
-
-                        # Only notify each user once per batch to avoid spam
-                        if user_id not in notified_users:
-                            await notify_user(
-                                context,
-                                user_id,
-                                "Отличные новости! Ваше видео было одобрено и размещено в канале как часть пакета. Спасибо за ваш вклад!",
-                            )
-                            notified_users.add(user_id)
-
-                        # Mark as notified regardless
-                        await storage.mark_notified(file_name)
-
-                except Exception as e:
-                    logger.error(f"Error sending video {file_name}: {e}")
-                    await stats.record_error(
-                        "telegram", f"Failed to send video in batch: {str(e)}"
-                    )
-                finally:
-                    cleanup_temp_file(temp_path)
-
-            # Clear the video batch
-            context.bot_data["video_batch"] = []
-
-        if batch_sent:
-            await db.decrement_batch_count(total_count)
-            await stats.record_batch_sent(1)
-            await update.message.reply_text("Batch sent to channel!")
-        else:
+        # Collect current batch files directly from MinIO
+        batch_files = await list_batch_files()
+        if not batch_files:
             await update.message.reply_text("No items in batch!")
+            return
+
+        notified_users: set[int] = set()
+        sent_count = 0
+
+        for file_path in batch_files:
+            temp_path = None
+            try:
+                # Download and send according to media type
+                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+
+                await send_media_to_telegram(
+                    context.bot,
+                    target_channel,
+                    temp_path,
+                    caption=None,
+                    supports_streaming=(
+                        os.path.splitext(temp_path)[1].lower()
+                        in [".mp4", ".avi", ".mov"]
+                    ),
+                )
+
+                # Record per-item stats
+                ext = os.path.splitext(file_path)[1].lower()
+                media_type = "video" if ext in [".mp4", ".avi", ".mov"] else "photo"
+                await stats.record_approved(
+                    media_type,
+                    filename=os.path.basename(file_path),
+                    source="send_batch_command",
+                )
+
+                # Notify original submitter (based on stored metadata)
+                base_name = os.path.basename(file_path)
+                user_metadata = await storage.get_submission_metadata(base_name)
+                if user_metadata and not user_metadata.get("notified"):
+                    user_id = user_metadata.get("user_id")
+                    if user_id and user_id not in notified_users:
+                        text = (
+                            "Отличные новости! Ваша фотография была одобрена и размещена в канале как часть пакета. Спасибо за ваш вклад!"
+                            if media_type == "photo"
+                            else "Отличные новости! Ваше видео было одобрено и размещено в канале как часть пакета. Спасибо за ваш вклад!"
+                        )
+                        await notify_user(context, user_id, text)
+                        notified_users.add(user_id)
+                    await storage.mark_notified(base_name)
+
+            except Exception as e:
+                logger.error(f"Error sending batch item {file_path}: {e}")
+                await stats.record_error(
+                    "telegram", f"Failed to send batch item: {str(e)}"
+                )
+            finally:
+                cleanup_temp_file(temp_path)
+
+            # Remove the item from batch regardless of send success to avoid loops
+            try:
+                await storage.delete_file(file_path, BUCKET_MAIN)
+            except Exception as de:
+                logger.error(f"Failed to delete batch item {file_path}: {de}")
+
+            sent_count += 1
+
+        # Update counters once after processing all items
+        await db.decrement_batch_count(sent_count)
+        await stats.record_batch_sent(1)
+        await update.message.reply_text(f"Batch sent to channel! ({sent_count} items)")
     except Exception as e:
         logger.error(f"Error sending batch: {e}")
         await stats.record_error("processing", f"Error sending batch: {str(e)}")
