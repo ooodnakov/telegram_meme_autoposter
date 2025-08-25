@@ -111,19 +111,21 @@ class TelegramMemeClient:
                 else:
                     log.info("New non photo/video in channel")
 
-        try:
-            for ch in self.selected_chats:
-                channel = await self.client.get_entity(ch)
-                logger.info(f"Listening for messages in {channel.title}")
-        except (TypeError, ValueError) as e:
-            logger.error(f"Error getting channel entity: {e}")
-            return
-
         retry = 0
         while self._running:
             try:
                 await self.client.start()
                 logger.info("TelegramClient started successfully")
+                # Resolve and log monitored channels after connecting
+                for ch in self.selected_chats:
+                    try:
+                        channel = await self.client.get_entity(ch)
+                        title = getattr(channel, "title", None) or getattr(
+                            channel, "username", None
+                        ) or str(ch)
+                        logger.info(f"Listening for messages in {title}")
+                    except Exception as e:  # pragma: no cover - network resolution
+                        logger.warning(f"Failed to resolve channel {ch}: {e}")
                 retry = 0
                 await self.client.run_until_disconnected()
             except asyncio.CancelledError:  # pragma: no cover - task cancellation
