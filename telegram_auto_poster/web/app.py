@@ -12,6 +12,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 from miniopy_async.commonconfig import CopySource
 from telegram import Bot, InputMediaPhoto, InputMediaVideo
 
@@ -173,9 +174,14 @@ async def send_batch(key: str | None = Form(None)) -> Response:
         return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
     paths = [p["path"] for p in posts]
-    await _push_post_group(paths)
-    await decrement_batch_count(len(paths))
-    await stats.record_batch_sent(1)
+    try:
+        await _push_post_group(paths)
+        await decrement_batch_count(len(paths))
+        await stats.record_batch_sent(1)
+    except Exception:
+        # Error should be logged in _push_post_group. Here we prevent incorrect state changes.
+        # A user-facing error message would be a good addition here.
+        pass
     suffix = f"?key={key}" if key else ""
     return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
@@ -279,45 +285,51 @@ async def _push_post_group(paths: list[str]) -> None:
                 "path": path,
             }
         )
+    try:
+        for i in range(0, len(items), 10):
+            chunk = items[i : i + 10]
+            media_group = [item["input_media"] for item in chunk]
+            try:
+                await bot.send_media_group(TARGET_CHANNEL, media_group)
+                for item in chunk:
+                    file_name = item["file_name"]
+                    media_type = item["media_type"]
+                    temp_path = item["temp_path"]
+                    meta = item["meta"]
+                    path = item["path"]
 
-    for i in range(0, len(items), 10):
-        chunk = items[i : i + 10]
-        media_group = [item["input_media"] for item in chunk]
-        await bot.send_media_group(TARGET_CHANNEL, media_group)
-
-        for item in chunk:
-            file_name = item["file_name"]
-            media_type = item["media_type"]
-            temp_path = item["temp_path"]
+                    await storage.delete_file(path, BUCKET_MAIN)
+                    if meta and meta.get("hash"):
+                        add_approved_hash(meta.get("hash"))
+                    else:
+                        media_hash = (
+                            calculate_image_hash(temp_path)
+                            if media_type == "photo"
+                            else calculate_video_hash(temp_path)
+                        )
+                        if media_hash:
+                            add_approved_hash(media_hash)
+                    await stats.record_approved(
+                        media_type, filename=file_name, source="web_push"
+                    )
+                    review = await storage.get_review_message(file_name)
+                    if review:
+                        chat_id, message_id = review
+                        await bot.edit_message_caption(
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            caption=f"Post approved with media {file_name}!",
+                            reply_markup=None,
+                        )
+            except Exception:
+                logger.exception("Failed to send media group")
+                raise
+    finally:
+        for item in items:
             file_obj = item["file_obj"]
-            meta = item["meta"]
-            path = item["path"]
-
+            temp_path = item["temp_path"]
             file_obj.close()
-            await storage.delete_file(path, BUCKET_MAIN)
-            if meta and meta.get("hash"):
-                add_approved_hash(meta.get("hash"))
-            else:
-                media_hash = (
-                    calculate_image_hash(temp_path)
-                    if media_type == "photo"
-                    else calculate_video_hash(temp_path)
-                )
-                if media_hash:
-                    add_approved_hash(media_hash)
-            await stats.record_approved(
-                media_type, filename=file_name, source="web_push"
-            )
             cleanup_temp_file(temp_path)
-            review = await storage.get_review_message(file_name)
-            if review:
-                chat_id, message_id = review
-                await bot.edit_message_caption(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    caption=f"Post approved with media {file_name}!",
-                    reply_markup=None,
-                )
 
 
 async def _schedule_post(path: str) -> None:

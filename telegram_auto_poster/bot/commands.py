@@ -511,19 +511,13 @@ async def send_batch_command(update, context):
                 "file_path": file_path,
                 "temp_path": temp_path,
                 "file_obj": file_obj,
-                "media_type": "video"
-                if ext in [".mp4", ".avi", ".mov"]
-                else "photo",
+                "media_type": "video" if ext in [".mp4", ".avi", ".mov"] else "photo",
                 "base_name": os.path.basename(file_path),
             }
             if ext in [".mp4", ".avi", ".mov"]:
-                info["input_media"] = InputMediaVideo(
-                    file_obj, supports_streaming=True
-                )
+                info["input_media"] = InputMediaVideo(file_obj, supports_streaming=True)
             elif ext in [".jpg", ".jpeg", ".png"]:
                 info["input_media"] = InputMediaPhoto(file_obj)
-            elif ext in [".gif"]:
-                info["input_media"] = InputMediaDocument(file_obj)
             else:
                 info["input_media"] = InputMediaDocument(file_obj)
             media_info.append(info)
