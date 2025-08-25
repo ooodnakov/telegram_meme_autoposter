@@ -1,5 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Channel Posts</h1>
-{% include "_post_grid.html" with posts=posts, origin="posts", alt_text="post", empty_message="No posts pending." %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0">Channel Posts</h1>
+    {% set key = request.query_params.get('key') %}
+    {% set key_query = '?key=' ~ key if key else '' %}
+    <a class="btn btn-sm btn-outline-secondary" href="/posts{{ key_query }}">Refresh</a>
+</div>
+{% set origin = "posts" %}
+{% set alt_text = "post" %}
+{% set empty_message = "No posts pending." %}
+{% include "_post_grid.html" %}
 {% endblock %}

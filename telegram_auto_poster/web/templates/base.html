@@ -49,6 +49,39 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
 <!-- Use UMD build so global Chart is available -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// Handle forms marked with data-bg in the background
+document.addEventListener('submit', function(e) {
+  const form = e.target;
+  if (form && form.dataset && form.dataset.bg === 'true') {
+    e.preventDefault();
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.originalText = btn.textContent;
+      btn.textContent = 'Working...';
+    }
+    // Important: form.action can be shadowed by inputs named "action"
+    // Always read the attribute value to get the URL string
+    const actionUrl = form.getAttribute('action') || '/';
+    fetch(actionUrl, {
+      method: 'POST',
+      headers: { 'X-Background-Request': 'true' },
+      body: new FormData(form)
+    }).then(() => {
+      if (btn) {
+        btn.textContent = 'Done';
+        btn.classList.add('btn-success');
+      }
+    }).catch(() => {
+      if (btn) {
+        btn.textContent = 'Error';
+        btn.disabled = false;
+      }
+    });
+  }
+});
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

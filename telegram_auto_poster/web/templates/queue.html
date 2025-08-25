@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Queued Media</h1>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0">Queued Media</h1>
+    {% set key = request.query_params.get('key') %}
+    {% set key_query = '?key=' ~ key if key else '' %}
+    <a class="btn btn-sm btn-outline-secondary" href="/queue{{ key_query }}">Refresh</a>
+    
+</div>
 {% if posts %}
 <div class="table-responsive">
     <table class="table table-striped table-hover">
@@ -25,8 +31,9 @@
                                 aria-controls="preview-{{ loop.index0 }}">
                             Toggle Preview
                         </button>
-                        <form method="post" action="/queue/unschedule" onsubmit="return confirm('Unschedule this item?');">
+                        <form method="post" action="/queue/unschedule" data-bg="true" onsubmit="return confirm('Unschedule this item?');">
                             <input type="hidden" name="path" value="{{ p.path }}" />
+                            <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                             <button class="btn btn-sm btn-danger" type="submit">Unschedule</button>
                         </form>
                     </div>

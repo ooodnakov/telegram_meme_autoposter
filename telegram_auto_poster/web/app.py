@@ -7,9 +7,9 @@ import os
 import secrets
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from miniopy_async.commonconfig import CopySource
@@ -132,10 +132,12 @@ async def posts_view(request: Request) -> HTMLResponse:
 
 @app.post("/action")
 async def handle_action(
+    request: Request,
     path: str = Form(...),
     action: str = Form(...),
     origin: str = Form("suggestions"),
-) -> RedirectResponse:
+    key: str | None = Form(None),
+) -> Response:
     if action == "push":
         await _push_post(path)
     elif action == "schedule":
@@ -144,7 +146,12 @@ async def handle_action(
         await _ok_post(path)
     elif action == "notok":
         await _notok_post(path)
-    return RedirectResponse(url=f"/{origin}", status_code=303)
+    # If this is a background (AJAX) request, return JSON instead of redirect
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+
+    suffix = f"?key={key}" if key else ""
+    return RedirectResponse(url=f"/{origin}{suffix}", status_code=303)
 
 
 async def _push_post(path: str) -> None:
@@ -297,7 +304,9 @@ async def queue(request: Request) -> HTMLResponse:
 
 
 @app.post("/queue/unschedule")
-async def unschedule(path: str = Form(...)) -> RedirectResponse:
+async def unschedule(
+    request: Request, path: str = Form(...), key: str | None = Form(None)
+) -> Response:
     await run_in_threadpool(remove_scheduled_post, path)
     try:
         if await storage.file_exists(path, BUCKET_MAIN):
@@ -305,7 +314,12 @@ async def unschedule(path: str = Form(...)) -> RedirectResponse:
     except Exception:
         # Best-effort delete; still redirect to keep UX smooth
         pass
-    return RedirectResponse(url="/queue", status_code=303)
+    # Background (AJAX) flow returns JSON instead of redirect
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+
+    suffix = f"?key={key}" if key else ""
+    return RedirectResponse(url=f"/queue{suffix}", status_code=303)
 
 
 @app.get(
