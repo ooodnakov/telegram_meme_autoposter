@@ -35,18 +35,15 @@ async def main():
         loop.add_signal_handler(sig, signal_handler)
 
     try:
-        # Initialize bot
         bot = TelegramMemeBot(config)
         await bot.setup()
-
-        # Initialize client with bot's application
         client = TelegramMemeClient(bot.application, config)
 
-        loop.create_task(bot.start_polling())
-        loop.create_task(client.start())
-
-        logger.info("Bot started, press CTRL+C to stop")
-        await stop_event.wait()
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(bot.start_polling())
+            tg.create_task(client.start())
+            logger.info("Bot started, press CTRL+C to stop")
+            await stop_event.wait()
 
     except Exception as e:
         import sys
@@ -64,7 +61,6 @@ async def main():
         print(f"Traceback: {exc_traceback}")
         logger.error(f"An error occurred: {e}")
     finally:
-        # Cleanup - make sure we have proper objects before trying to stop them
         logger.info("Shutting down...")
         if client:
             await client.stop()

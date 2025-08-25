@@ -7,9 +7,7 @@ from telethon import TelegramClient, events, types
 from telegram_auto_poster.bot.handlers import process_photo, process_video
 from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils import stats as stats_module
-
-# Create a global client variable that can be accessed from other modules
-client_instance = None
+from telegram_auto_poster.utils.general import RateLimiter, backoff_delay
 
 
 class TelegramMemeClient:
@@ -40,13 +38,9 @@ class TelegramMemeClient:
         self.target_channel = config.telegram.target_channel
         self.bot_chat_id = config.bot.bot_chat_id
         self.selected_chats = config.chats.selected_chats
-        self._task = None
+        self._running = False
+        self.rate_limiters: dict[int, RateLimiter] = {}
 
-        # Set the global client instance
-        global client_instance
-        client_instance = self.client
-
-        # Also store the client in the application's bot_data
         if self.application and hasattr(self.application, "bot_data"):
             self.application.bot_data["telethon_client"] = self.client
             logger.info("TelegramClient instance stored in application.bot_data")
@@ -55,23 +49,28 @@ class TelegramMemeClient:
                 "Could not store client in application.bot_data - application not ready"
             )
 
-        logger.info("TelegramClient instance created and globally available")
-
-    async def _run(self):
-        await self.client.run_until_disconnected()
+        logger.info("TelegramClient instance created")
 
     async def start(self) -> None:
-        """Start the client and register event handlers."""
-        await self.client.start()
-        logger.info("TelegramClient started successfully")
+        """Start the client and maintain the connection with retries."""
+        self._running = True
 
-        # Import process_photo and process_video here to avoid circular imports
-        # Register event handler for new messages
         @self.client.on(events.NewMessage(chats=self.selected_chats))
-        async def handle_new_message(event):
+        async def handle_new_message(event):  # pragma: no cover - telemetry
+            log = logger.bind(chat_id=event.chat_id, message_id=event.id)
+            limiter = self.rate_limiters.setdefault(
+                event.chat_id, RateLimiter(rate=1, capacity=5)
+            )
+            if not await limiter.acquire(drop=True):
+                log.warning("Rate limit exceeded")
+                if stats_module.stats:
+                    await stats_module.stats.record_rate_limit_drop()
+                return
+
             file_path = None
             try:
                 if isinstance(event.media, types.MessageMediaPhoto):
+                    log = log.bind(media_type="photo")
                     photo = event.media.photo
                     file_path = f"photo_{event.id}.jpg"
                     if stats_module.stats:
@@ -86,17 +85,12 @@ class TelegramMemeClient:
                     )
                 elif isinstance(event.media, types.MessageMediaDocument):
                     if event.media.document:
-                        logger.info(
-                            f"Video with eventid {event.id} has started downloading!"
-                        )
+                        log = log.bind(media_type="video")
                         if stats_module.stats:
                             await stats_module.stats.record_received("video")
                         video = event.media.document
                         file_path = f"video_{event.id}.mp4"
                         await self.client.download_media(video, file=file_path)
-                        logger.info(
-                            f"Video with eventid {event.id} has been downloaded!"
-                        )
                         await process_video(
                             "New post found with video",
                             file_path,
@@ -104,13 +98,14 @@ class TelegramMemeClient:
                             self.bot_chat_id,
                             self.application,
                         )
+            except Exception as e:
+                log.exception(f"Failed to handle message: {e}")
             finally:
                 if file_path and os.path.exists(file_path):
                     os.remove(file_path)
                 else:
-                    logger.info("New non photo/video in channel")
+                    log.info("New non photo/video in channel")
 
-        # Try to get channel entities
         try:
             for ch in self.selected_chats:
                 channel = await self.client.get_entity(ch)
@@ -118,10 +113,29 @@ class TelegramMemeClient:
         except (TypeError, ValueError) as e:
             logger.error(f"Error getting channel entity: {e}")
             return
-        self._task = asyncio.create_task(self._run())
+
+        retry = 0
+        while self._running:
+            try:
+                await self.client.start()
+                logger.info("TelegramClient started successfully")
+                retry = 0
+                await self.client.run_until_disconnected()
+            except asyncio.CancelledError:  # pragma: no cover - task cancellation
+                break
+            except Exception as e:
+                retry += 1
+                delay = backoff_delay(retry, cap=300)
+                logger.bind(retry_count=retry).warning(
+                    f"Client disconnected, retrying in {delay:.1f}s: {e}"
+                )
+                if stats_module.stats:
+                    await stats_module.stats.record_client_reconnect()
+                await asyncio.sleep(delay)
 
     async def stop(self) -> None:
         """Disconnect the Telethon client."""
+        self._running = False
         if self.client.is_connected():
             await self.client.disconnect()
         logger.info("TelegramClient disconnected")
