@@ -316,16 +316,19 @@ async def process_photo(
 
         try:
             # Send photo using bot and keep review message info
-            msg = await application.bot.send_photo(
-                bot_chat_id,
-                open(temp_path, "rb"),
-                custom_text + "\nNew post found\n" + f"{PHOTOS_PATH}/{processed_name}",
-                reply_markup=keyboard,
-                read_timeout=60,
-                write_timeout=60,
-                connect_timeout=60,
-                pool_timeout=60,
-            )
+            with open(temp_path, "rb") as media_file:
+                msg = await application.bot.send_photo(
+                    bot_chat_id,
+                    media_file,
+                    custom_text
+                    + "\nNew post found\n"
+                    + f"{PHOTOS_PATH}/{processed_name}",
+                    reply_markup=keyboard,
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60,
+                    pool_timeout=60,
+                )
             await storage.store_review_message(
                 processed_name, msg.chat_id, msg.message_id
             )

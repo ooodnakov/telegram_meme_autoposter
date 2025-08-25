@@ -25,6 +25,7 @@ from telegram_auto_poster.config import (
 from telegram_auto_poster.utils.db import (
     add_scheduled_post,
     get_scheduled_posts,
+    increment_batch_count,
     remove_scheduled_post,
 )
 from telegram_auto_poster.utils.deduplication import (
@@ -216,9 +217,6 @@ async def _schedule_post(path: str) -> None:
 async def _ok_post(path: str) -> None:
     file_name = os.path.basename(path)
     meta = await storage.get_submission_metadata(file_name)
-    if meta and meta.get("user_id"):
-        await _push_post(path)
-        return
     media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
     temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
     try:
@@ -233,13 +231,7 @@ async def _ok_post(path: str) -> None:
             message_id=meta.get("message_id") if meta else None,
         )
         await storage.delete_file(path, BUCKET_MAIN)
-        count = 0
-        count += len(
-            await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
-        )
-        count += len(
-            await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
-        )
+        count = await increment_batch_count()
         await stats.record_added_to_batch(media_type)
     finally:
         cleanup_temp_file(temp_path)

@@ -55,6 +55,7 @@ async def test_send_batch_photo_closes_file_and_cleans(
         "telegram_auto_poster.utils.stats.stats.record_approved",
         new=mocker.AsyncMock(),
     )
+    mocker.patch.object(commands.db, "decrement_batch_count", new=mocker.AsyncMock())
     mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context
@@ -144,6 +145,7 @@ async def test_send_batch_video_closes_file_and_cleans(
         "telegram_auto_poster.utils.stats.stats.record_approved",
         new=mocker.AsyncMock(),
     )
+    mocker.patch.object(commands.db, "decrement_batch_count", new=mocker.AsyncMock())
     mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
 
     update, context = mock_bot_and_context

@@ -42,6 +42,12 @@ else:
     MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
 
 
+def _to_int(value: str | None) -> int | None:
+    """Convert a string to ``int`` if not ``None``."""
+
+    return int(value) if value is not None else None
+
+
 class MinioStorage:
     """Wrapper around :class:`minio.Minio` providing convenience helpers.
 
@@ -212,25 +218,15 @@ class MinioStorage:
             data = await r.hgetall(_redis_key("submissions", object_name))
             if data:
                 meta = {
-                    "user_id": int(data.get("user_id"))
-                    if data.get("user_id")
-                    else None,
-                    "chat_id": int(data.get("chat_id"))
-                    if data.get("chat_id")
-                    else None,
+                    "user_id": _to_int(data.get("user_id")),
+                    "chat_id": _to_int(data.get("chat_id")),
                     "media_type": data.get("media_type"),
                     "timestamp": data.get("timestamp"),
                     "notified": data.get("notified") in {"True", "1"},
-                    "message_id": int(data.get("message_id"))
-                    if data.get("message_id")
-                    else None,
+                    "message_id": _to_int(data.get("message_id")),
                     "hash": data.get("hash"),
-                    "review_chat_id": int(data.get("review_chat_id"))
-                    if data.get("review_chat_id")
-                    else None,
-                    "review_message_id": int(data.get("review_message_id"))
-                    if data.get("review_message_id")
-                    else None,
+                    "review_chat_id": _to_int(data.get("review_chat_id")),
+                    "review_message_id": _to_int(data.get("review_message_id")),
                 }
                 self.submission_metadata[object_name] = meta
                 return meta
@@ -256,10 +252,10 @@ class MinioStorage:
                 media_type_val = _mget("media_type", "media-type")
                 message_id_val = _mget("message_id", "message-id")
                 return {
-                    "user_id": int(user_id_val) if user_id_val else None,
-                    "chat_id": int(chat_id_val) if chat_id_val else None,
+                    "user_id": _to_int(user_id_val),
+                    "chat_id": _to_int(chat_id_val),
                     "media_type": media_type_val,
-                    "message_id": int(message_id_val) if message_id_val else None,
+                    "message_id": _to_int(message_id_val),
                     "hash": _mget("hash"),
                     # notified state is managed in-memory
                     "notified": False,
