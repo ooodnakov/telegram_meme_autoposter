@@ -125,18 +125,42 @@ async def _gather_batch() -> list[dict]:
     return posts
 
 
+async def _get_batch_count() -> int:
+    photos = await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
+    videos = await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+    return len(photos) + len(videos)
+
+
+async def _get_suggestions_count() -> int:
+    objects: list[str] = []
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+
+    tasks = [
+        storage.get_submission_metadata(os.path.basename(obj)) for obj in objects
+    ]
+    results = await asyncio.gather(*tasks)
+
+    count = 0
+    for meta in results:
+        if meta and meta.get("user_id"):
+            count += 1
+
+    return count
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
-    suggestions, batch, scheduled_posts_raw, daily = await asyncio.gather(
-        _gather_posts(True),
-        _gather_batch(),
+    suggestions_count, batch_count, scheduled_posts_raw, daily = await asyncio.gather(
+        _get_suggestions_count(),
+        _get_batch_count(),
         run_in_threadpool(get_scheduled_posts),
         stats.get_daily_stats(reset_if_new_day=False),
     )
     context = {
         "request": request,
-        "suggestions_count": len(suggestions),
-        "batch_count": len(batch),
+        "suggestions_count": suggestions_count,
+        "batch_count": batch_count,
         "scheduled_count": len(scheduled_posts_raw),
         "daily": daily,
     }

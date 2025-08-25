@@ -6,16 +6,23 @@
         return;
     }
 
-    const dailyCanvas = document.getElementById('daily-activity');
-    if (dailyCanvas) {
-        const dailyCtx = dailyCanvas.getContext('2d');
+    const createChartFromCanvas = (canvasId, chartConfigBuilder) => {
+        const canvas = document.getElementById(canvasId);
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const chartConfig = chartConfigBuilder(canvas.dataset);
+            new Chart(ctx, chartConfig);
+        }
+    };
+
+    createChartFromCanvas('daily-activity', (dataset) => {
         const {
             photosApproved,
             videosApproved,
             photosRejected,
             videosRejected,
-        } = dailyCanvas.dataset;
-        new Chart(dailyCtx, {
+        } = dataset;
+        return {
             type: 'bar',
             data: {
                 labels: ['Photos Approved', 'Videos Approved', 'Photos Rejected', 'Videos Rejected'],
@@ -45,18 +52,16 @@
                     }
                 }
             },
-        });
-    }
+        };
+    });
 
-    const errorCanvas = document.getElementById('error-breakdown');
-    if (errorCanvas) {
-        const errorCtx = errorCanvas.getContext('2d');
+    createChartFromCanvas('error-breakdown', (dataset) => {
         const {
             processingErrors,
             storageErrors,
             telegramErrors,
-        } = errorCanvas.dataset;
-        new Chart(errorCtx, {
+        } = dataset;
+        return {
             type: 'bar',
             data: {
                 labels: ['Processing', 'Storage', 'Telegram'],
@@ -84,19 +89,17 @@
                     }
                 }
             },
-        });
-    }
+        };
+    });
 
-    const perfCanvas = document.getElementById('performance-metrics');
-    if (perfCanvas) {
-        const perfCtx = perfCanvas.getContext('2d');
+    createChartFromCanvas('performance-metrics', (dataset) => {
         const {
             avgPhotoProcessingTime,
             avgVideoProcessingTime,
             avgUploadTime,
             avgDownloadTime,
-        } = perfCanvas.dataset;
-        new Chart(perfCtx, {
+        } = dataset;
+        return {
             type: 'bar',
             data: {
                 labels: ['Photo Processing', 'Video Processing', 'Upload', 'Download'],
@@ -122,21 +125,19 @@
                     }
                 }
             },
-        });
-    }
+        };
+    });
 
-    const totalCanvas = document.getElementById('total-activity');
-    if (totalCanvas) {
-        const totalCtx = totalCanvas.getContext('2d');
+    createChartFromCanvas('total-activity', (dataset) => {
         const {
             photosApproved,
             videosApproved,
             photosRejected,
             videosRejected,
-        } = totalCanvas.dataset;
+        } = dataset;
         const totalApproved = Number(photosApproved) + Number(videosApproved);
         const totalRejected = Number(photosRejected) + Number(videosRejected);
-        new Chart(totalCtx, {
+        return {
             type: 'pie',
             data: {
                 labels: ['Approved', 'Rejected'],
@@ -148,6 +149,6 @@
             options: {
                 responsive: true,
             },
-        });
-    }
+        };
+    });
 })();
