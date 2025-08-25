@@ -3,7 +3,7 @@ import datetime
 import os
 
 from loguru import logger
-from telegram import Update
+from telegram import InputMediaDocument, InputMediaPhoto, InputMediaVideo, Update
 from telegram.ext import ContextTypes
 
 import telegram_auto_poster.utils.db as db
@@ -501,34 +501,55 @@ async def send_batch_command(update, context):
         notified_users: set[int] = set()
         sent_count = 0
 
+        media_info: list[dict[str, object]] = []
+
         for file_path in batch_files:
-            temp_path = None
+            temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+            ext = os.path.splitext(temp_path)[1].lower()
+            file_obj = open(temp_path, "rb")
+            info = {
+                "file_path": file_path,
+                "temp_path": temp_path,
+                "file_obj": file_obj,
+                "media_type": "video" if ext in [".mp4", ".avi", ".mov"] else "photo",
+                "base_name": os.path.basename(file_path),
+            }
+            if ext in [".mp4", ".avi", ".mov"]:
+                info["input_media"] = InputMediaVideo(file_obj, supports_streaming=True)
+            elif ext in [".jpg", ".jpeg", ".png"]:
+                info["input_media"] = InputMediaPhoto(file_obj)
+            else:
+                info["input_media"] = InputMediaDocument(file_obj)
+            media_info.append(info)
+
+        for i in range(0, len(media_info), 10):
+            chunk = media_info[i : i + 10]
+            media_group = [item["input_media"] for item in chunk]
             try:
-                # Download and send according to media type
-                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
-
-                await send_media_to_telegram(
-                    context.bot,
-                    target_channel,
-                    temp_path,
-                    caption=None,
-                    supports_streaming=(
-                        os.path.splitext(temp_path)[1].lower()
-                        in [".mp4", ".avi", ".mov"]
-                    ),
+                await context.bot.send_media_group(
+                    chat_id=target_channel, media=media_group
                 )
+            except Exception as e:
+                logger.error(f"Error sending media group: {e}")
+                await stats.record_error(
+                    "telegram", f"Failed to send media group: {str(e)}"
+                )
+                continue
 
-                # Record per-item stats
-                ext = os.path.splitext(file_path)[1].lower()
-                media_type = "video" if ext in [".mp4", ".avi", ".mov"] else "photo"
+            for item in chunk:
+                file_path = item["file_path"]
+                temp_path = item["temp_path"]
+                file_obj = item["file_obj"]
+                media_type = item["media_type"]
+                base_name = item["base_name"]
+                file_obj.close()
+
                 await stats.record_approved(
                     media_type,
-                    filename=os.path.basename(file_path),
+                    filename=base_name,
                     source="send_batch_command",
                 )
 
-                # Notify original submitter (based on stored metadata)
-                base_name = os.path.basename(file_path)
                 user_metadata = await storage.get_submission_metadata(base_name)
                 if user_metadata and not user_metadata.get("notified"):
                     user_id = user_metadata.get("user_id")
@@ -542,26 +563,23 @@ async def send_batch_command(update, context):
                         notified_users.add(user_id)
                     await storage.mark_notified(base_name)
 
-            except Exception as e:
-                logger.error(f"Error sending batch item {file_path}: {e}")
-                await stats.record_error(
-                    "telegram", f"Failed to send batch item: {str(e)}"
-                )
-            finally:
                 cleanup_temp_file(temp_path)
 
-            # Remove the item from batch regardless of send success to avoid loops
-            try:
-                await storage.delete_file(file_path, BUCKET_MAIN)
-            except Exception as de:
-                logger.error(f"Failed to delete batch item {file_path}: {de}")
+                try:
+                    await storage.delete_file(file_path, BUCKET_MAIN)
+                except Exception as de:
+                    logger.error(f"Failed to delete batch item {file_path}: {de}")
 
-            sent_count += 1
+                sent_count += 1
 
-        # Update counters once after processing all items
-        await db.decrement_batch_count(sent_count)
-        await stats.record_batch_sent(1)
-        await update.message.reply_text(f"Batch sent to channel! ({sent_count} items)")
+        if sent_count:
+            await db.decrement_batch_count(sent_count)
+            await stats.record_batch_sent(1)
+            await update.message.reply_text(
+                f"Batch sent to channel! ({sent_count} items)"
+            )
+        else:
+            await update.message.reply_text("No items were sent.")
     except Exception as e:
         logger.error(f"Error sending batch: {e}")
         await stats.record_error("processing", f"Error sending batch: {str(e)}")
