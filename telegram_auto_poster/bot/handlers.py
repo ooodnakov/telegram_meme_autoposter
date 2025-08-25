@@ -315,8 +315,8 @@ async def process_photo(
         )
 
         try:
-            # Send photo using bot
-            await application.bot.send_photo(
+            # Send photo using bot and keep review message info
+            msg = await application.bot.send_photo(
                 bot_chat_id,
                 open(temp_path, "rb"),
                 custom_text + "\nNew post found\n" + f"{PHOTOS_PATH}/{processed_name}",
@@ -325,6 +325,9 @@ async def process_photo(
                 write_timeout=60,
                 connect_timeout=60,
                 pool_timeout=60,
+            )
+            await storage.store_review_message(
+                processed_name, msg.chat_id, msg.message_id
             )
             logger.info(f"New photo {processed_name} in channel!")
         except Exception as e:
@@ -425,9 +428,9 @@ async def process_video(
         )
 
         try:
-            # Send video using bot
+            # Send video using bot and keep review message info
             with open(temp_path, "rb") as media_file:
-                await application.bot.send_video(
+                msg = await application.bot.send_video(
                     chat_id=bot_chat_id,
                     video=media_file,
                     caption=custom_text
@@ -440,6 +443,9 @@ async def process_video(
                     connect_timeout=60,
                     pool_timeout=60,
                 )
+            await storage.store_review_message(
+                processed_name, msg.chat_id, msg.message_id
+            )
             logger.info(f"New video {processed_name} in channel!")
         except Exception as e:
             logger.error(f"Failed to send video to review channel: {e}")
