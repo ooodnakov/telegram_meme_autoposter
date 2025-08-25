@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
-from telegram import Bot, InputMediaPhoto, InputMediaVideo
+from telegram import Bot
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
@@ -167,91 +167,30 @@ async def batch_view(request: Request) -> HTMLResponse:
 
 
 @app.post("/batch/send", dependencies=[Depends(require_access_key)])
-async def send_batch(request: Request, key: str | None = Form(None)) -> Response:
+async def send_batch(key: str | None = Form(None)) -> Response:
     posts = await _gather_batch()
     if not posts:
         suffix = f"?key={key}" if key else ""
         return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
-    items: list[dict] = []
-    caption = ""
-    for p in posts:
-        temp_path, _ = await download_from_minio(p["path"], BUCKET_MAIN)
-        meta = await storage.get_submission_metadata(os.path.basename(p["path"]))
-        if not caption and meta and meta.get("user_id"):
-            caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
-        items.append({**p, "temp_path": temp_path, "meta": meta})
+    semaphore = asyncio.Semaphore(5)
 
-    total_sent = 0
-    chunks = [items[i : i + 10] for i in range(0, len(items), 10)]
-    for chunk_index, chunk in enumerate(chunks):
-        media_group = []
-        handles = []
-        for idx, item in enumerate(chunk):
-            fh = open(item["temp_path"], "rb")
-            handles.append(fh)
-            media_group.append(
-                InputMediaVideo(
-                    media=fh,
-                    caption=caption if chunk_index == 0 and idx == 0 else None,
-                )
-                if item["is_video"]
-                else InputMediaPhoto(
-                    media=fh,
-                    caption=caption if chunk_index == 0 and idx == 0 else None,
-                )
-            )
-        sent_chunk = True
-        try:
-            await bot.send_media_group(chat_id=TARGET_CHANNEL, media=media_group)
-        except Exception as e:  # pragma: no cover - logging only
-            logger.error(f"Failed to send batch: {e}")
-            sent_chunk = False
-        finally:
-            for fh in handles:
-                try:
-                    fh.close()
-                except Exception:
-                    pass
-        if not sent_chunk:
-            for item in chunk:
-                cleanup_temp_file(item["temp_path"])
-            break
-        for item in chunk:
-            file_name = os.path.basename(item["path"])
-            await storage.delete_file(item["path"], BUCKET_MAIN)
-            if item["meta"] and item["meta"].get("hash"):
-                add_approved_hash(item["meta"].get("hash"))
-            else:
-                media_hash = (
-                    calculate_image_hash(item["temp_path"])
-                    if item["is_image"]
-                    else calculate_video_hash(item["temp_path"])
-                )
-                if media_hash:
-                    add_approved_hash(media_hash)
-            media_type = "photo" if item["is_image"] else "video"
-            await stats.record_approved(
-                media_type, filename=file_name, source="web_batch"
-            )
-            review = await storage.get_review_message(file_name)
-            if review:
-                chat_id, message_id = review
-                await bot.edit_message_caption(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    caption=f"Post approved with media {file_name}!",
-                    reply_markup=None,
-                )
-            cleanup_temp_file(item["temp_path"])
-            total_sent += 1
+    async def push_with_semaphore(post_path: str) -> bool:
+        """Wrapper to push a post and handle exceptions, returns success status."""
+        async with semaphore:
+            try:
+                await _push_post(post_path)
+                return True
+            except Exception as e:  # pragma: no cover - logging only
+                logger.error(f"Failed to send batch item {post_path}: {e}")
+                return False
 
-    if total_sent < len(items):
-        for item in items[total_sent:]:
-            cleanup_temp_file(item["temp_path"])
+    tasks = [push_with_semaphore(p["path"]) for p in posts]
+    results = await asyncio.gather(*tasks)
+    sent = sum(results)
 
-    if total_sent:
-        await decrement_batch_count(total_sent)
+    if sent:
+        await decrement_batch_count(sent)
         await stats.record_batch_sent(1)
     suffix = f"?key={key}" if key else ""
     return RedirectResponse(url=f"/batch{suffix}", status_code=303)
