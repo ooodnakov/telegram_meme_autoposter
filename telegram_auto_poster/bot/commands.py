@@ -7,7 +7,11 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 import telegram_auto_poster.utils.db as db
-from telegram_auto_poster.bot.callbacks import send_schedule_preview
+from telegram_auto_poster.bot.callbacks import (
+    list_batch_files,
+    send_batch_preview,
+    send_schedule_preview,
+)
 from telegram_auto_poster.bot.handlers import notify_user
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.config import (
@@ -455,6 +459,25 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         logger.error(f"Error in sch_command: {e}")
         await update.message.reply_text(
             "Sorry, there was an error retrieving the schedule."
+        )
+
+
+async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Command to show batch posts"""
+    logger.info(f"Received /batch command from user {update.effective_user.id}")
+    if not await check_admin_rights(update, context):
+        return
+    try:
+        batch_files = await list_batch_files()
+        if not batch_files:
+            await update.message.reply_text("No items in batch.")
+            return
+        first_path = batch_files[0]
+        await send_batch_preview(context.bot, update.effective_chat.id, first_path, 0)
+    except Exception as e:
+        logger.error(f"Error in batch_command: {e}")
+        await update.message.reply_text(
+            "Sorry, there was an error retrieving the batch."
         )
 
 

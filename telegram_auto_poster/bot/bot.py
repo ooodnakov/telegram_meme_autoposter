@@ -13,6 +13,7 @@ from telegram.ext import (
 
 # Import callbacks from callbacks.py
 from telegram_auto_poster.bot.callbacks import (
+    batch_browser_callback,
     notok_callback,
     ok_callback,
     push_callback,
@@ -23,6 +24,7 @@ from telegram_auto_poster.bot.callbacks import (
 
 # Import commands from commands.py
 from telegram_auto_poster.bot.commands import (
+    batch_command,
     daily_stats_callback,
     delete_batch_command,
     get_chat_id_command,
@@ -109,6 +111,7 @@ class TelegramMemeBot:
         self.application.add_handler(CommandHandler("reset_stats", reset_stats_command))
         self.application.add_handler(CommandHandler("save_stats", save_stats_command))
         self.application.add_handler(CommandHandler("sch", sch_command))
+        self.application.add_handler(CommandHandler("batch", batch_command))
 
         # Register callback handlers - fixed to use exact pattern matching with regex
         logger.info("Registering callback handlers...")
@@ -131,6 +134,12 @@ class TelegramMemeBot:
             CallbackQueryHandler(
                 schedule_browser_callback,
                 pattern=r"^/sch_(prev|next|unschedule|push):",
+            )
+        )
+        self.application.add_handler(
+            CallbackQueryHandler(
+                batch_browser_callback,
+                pattern=r"^/batch_(prev|next|remove|push):",
             )
         )
 

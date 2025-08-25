@@ -603,3 +603,122 @@ async def schedule_browser_callback(
     except Exception as e:
         logger.error(f"Error in schedule_browser_callback: {e}")
         await query.message.reply_text("Failed to process request")
+
+
+async def list_batch_files() -> list[str]:
+    photo_batch = await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
+    video_batch = await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+    return photo_batch + video_batch
+
+
+async def send_batch_preview(bot, chat_id: int, file_path: str, index: int):
+    buttons = [
+        [
+            InlineKeyboardButton("Prev", callback_data=f"/batch_prev:{index}"),
+            InlineKeyboardButton("Remove", callback_data=f"/batch_remove:{index}"),
+            InlineKeyboardButton("Push", callback_data=f"/batch_push:{index}"),
+            InlineKeyboardButton("Next", callback_data=f"/batch_next:{index}"),
+        ]
+    ]
+    markup = InlineKeyboardMarkup(buttons)
+    temp_path = None
+    try:
+        temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+        message = await send_media_to_telegram(
+            bot,
+            chat_id,
+            temp_path,
+            caption=file_path,
+            supports_streaming=_is_streaming_video(temp_path),
+        )
+        await message.edit_reply_markup(reply_markup=markup)
+        return message
+    finally:
+        cleanup_temp_file(temp_path)
+
+
+async def batch_browser_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle navigation and actions for batch posts."""
+    logger.info(
+        f"Received batch browser callback from user {update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    await query.answer()
+    try:
+        data = query.data or ""
+        action_part, *payload_parts = data.split(":")
+        action = action_part.split("_", 1)[1]
+        batch_files = await list_batch_files()
+        if not batch_files:
+            await query.message.edit_text("No items in batch.")
+            return
+        if action in {"prev", "next"}:
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
+            if action == "prev":
+                idx = (idx - 1) % len(batch_files)
+            else:
+                idx = (idx + 1) % len(batch_files)
+            await query.message.delete()
+            file_path = batch_files[idx]
+            await send_batch_preview(context.bot, query.message.chat_id, file_path, idx)
+            return
+        if action == "remove":
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
+            file_path = batch_files[idx]
+            await storage.delete_file(file_path, BUCKET_MAIN)
+            await db.decrement_batch_count(1)
+            batch_files = await list_batch_files()
+            if not batch_files:
+                await query.message.edit_text("No items in batch.")
+                return
+            await query.message.delete()
+            next_idx = min(idx, len(batch_files) - 1)
+            await send_batch_preview(
+                context.bot, query.message.chat_id, batch_files[next_idx], next_idx
+            )
+            return
+        if action == "push":
+            try:
+                idx = int(payload_parts[0])
+            except (ValueError, IndexError):
+                await query.message.reply_text("Invalid request")
+                return
+            file_path = batch_files[idx]
+            temp_path = None
+            try:
+                temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+                target_channel = context.bot_data.get("target_channel_id")
+                if target_channel:
+                    await send_media_to_telegram(
+                        context.bot,
+                        target_channel,
+                        temp_path,
+                        caption=None,
+                        supports_streaming=_is_streaming_video(temp_path),
+                    )
+            finally:
+                cleanup_temp_file(temp_path)
+            await storage.delete_file(file_path, BUCKET_MAIN)
+            await db.decrement_batch_count(1)
+            batch_files = await list_batch_files()
+            if not batch_files:
+                await query.message.edit_text("No items in batch.")
+                return
+            await query.message.delete()
+            next_idx = min(idx, len(batch_files) - 1)
+            await send_batch_preview(
+                context.bot, query.message.chat_id, batch_files[next_idx], next_idx
+            )
+    except Exception as e:
+        logger.error(f"Error in batch_browser_callback: {e}")
+        await query.message.reply_text("Failed to process request")
