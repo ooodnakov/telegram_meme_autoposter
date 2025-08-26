@@ -4,10 +4,19 @@
     <h1 class="m-0">Channel Posts</h1>
     {% set key = request.query_params.get('key') %}
     {% set key_query = '?key=' ~ key if key else '' %}
-    <a class="btn btn-sm btn-outline-secondary" href="/posts{{ key_query }}">Refresh</a>
+    <button
+        class="btn btn-sm btn-outline-secondary"
+        hx-get="/posts{{ key_query }}"
+        hx-target="#posts-grid"
+        hx-swap="innerHTML"
+    >
+        Refresh
+    </button>
 </div>
-{% set origin = "posts" %}
-{% set alt_text = "post" %}
-{% set empty_message = "No posts pending." %}
-{% include "_post_grid.html" %}
+<div id="posts-grid">
+    {% set origin = "posts" %}
+    {% set alt_text = "post" %}
+    {% set empty_message = "No posts pending." %}
+    {% include "_post_grid.html" %}
+</div>
 {% endblock %}
