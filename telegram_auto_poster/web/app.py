@@ -159,6 +159,28 @@ async def _get_suggestions_count() -> int:
     return count
 
 
+async def _get_posts_count() -> int:
+    objects: list[str] = []
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
+    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+
+    tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
+    results = await asyncio.gather(*tasks)
+
+    count = 0
+    groups: set[str] = set()
+    for meta in results:
+        if meta and meta.get("user_id"):
+            continue
+        group_id = meta.get("group_id") if meta else None
+        if group_id:
+            groups.add(group_id)
+        else:
+            count += 1
+
+    return count + len(groups)
+
+
 async def _render_posts_page(
     request: Request,
     *,
@@ -186,9 +208,16 @@ async def _render_posts_page(
 
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
-    suggestions_count, batch_count, scheduled_posts_raw, daily = await asyncio.gather(
+    (
+        suggestions_count,
+        batch_count,
+        posts_count,
+        scheduled_posts_raw,
+        daily,
+    ) = await asyncio.gather(
         _get_suggestions_count(),
         _get_batch_count(),
+        _get_posts_count(),
         run_in_threadpool(get_scheduled_posts),
         stats.get_daily_stats(reset_if_new_day=False),
     )
@@ -196,6 +225,7 @@ async def index(request: Request) -> HTMLResponse:
         "request": request,
         "suggestions_count": suggestions_count,
         "batch_count": batch_count,
+        "posts_count": posts_count,
         "scheduled_count": len(scheduled_posts_raw),
         "daily": daily,
     }

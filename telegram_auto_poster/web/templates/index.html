@@ -10,7 +10,7 @@
 </div>
 
 <div class="row">
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
                 <h5 class="card-title">Pending Suggestions</h5>
@@ -19,7 +19,7 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
                 <h5 class="card-title">Items in Batch</h5>
@@ -28,12 +28,21 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
                 <h5 class="card-title">Scheduled Posts</h5>
                 <p class="card-text fs-1">{{ scheduled_count }}</p>
                 <a href="/queue{{ key_query }}" class="btn btn-primary">View Queue</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center mb-3">
+            <div class="card-body">
+                <h5 class="card-title">Channel Posts</h5>
+                <p class="card-text fs-1">{{ posts_count }}</p>
+                <a href="/posts{{ key_query }}" class="btn btn-primary">View Posts</a>
             </div>
         </div>
     </div>
