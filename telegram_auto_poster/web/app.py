@@ -144,9 +144,11 @@ async def _get_batch_count() -> int:
 
 
 async def _get_suggestions_count() -> int:
-    objects: list[str] = []
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+    photo_files, video_files = await asyncio.gather(
+        storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_"),
+        storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_"),
+    )
+    objects: list[str] = photo_files + video_files
 
     tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
     results = await asyncio.gather(*tasks)
@@ -160,9 +162,11 @@ async def _get_suggestions_count() -> int:
 
 
 async def _get_posts_count() -> int:
-    objects: list[str] = []
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+    photo_files, video_files = await asyncio.gather(
+        storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_"),
+        storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_"),
+    )
+    objects: list[str] = photo_files + video_files
 
     tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
     results = await asyncio.gather(*tasks)
