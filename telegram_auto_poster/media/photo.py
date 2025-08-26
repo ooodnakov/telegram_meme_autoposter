@@ -17,6 +17,7 @@ async def add_watermark_to_image(
     output_filename: str,
     user_metadata: dict | None = None,
     media_hash: str | None = None,
+    group_id: str | None = None,
 ):
     """Add watermark to an image and save it with EXIF data.
 
@@ -72,6 +73,7 @@ async def add_watermark_to_image(
             chat_id=meta.get("chat_id") if meta else None,
             message_id=meta.get("message_id") if meta else None,
             media_hash=media_hash,
+            group_id=group_id,
         )
         if not uploaded:
             raise MinioError(

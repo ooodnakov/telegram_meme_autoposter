@@ -2,11 +2,15 @@ import asyncio
 import os
 import tempfile
 import time
+import uuid
+from typing import IO
 
 from loguru import logger
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
+    InputMediaVideo,
     Update,
 )
 from telegram.ext import ContextTypes
@@ -468,6 +472,79 @@ async def process_video(
     except Exception as e:
         logger.error(f"Unexpected error in process_video: {e}")
         await stats.record_error("processing", f"Unexpected error: {str(e)}")
+    return False
+
+
+async def process_media_group(
+    custom_text: str,
+    media_files: list[tuple[str, str, str]],
+    bot_chat_id: str,
+    application,
+):
+    """Process a list of media files and send as a media group."""
+    processed: list[tuple[str, str]] = []
+    group_id = uuid.uuid4().hex
+    media_group: list[InputMediaPhoto | InputMediaVideo] = []
+    temp_files: list[tuple[str, IO[bytes]]] = []
+    media_config = {
+        "photo": (add_watermark_to_image, PHOTOS_PATH, ".jpg", InputMediaPhoto),
+        "video": (add_watermark_to_video, VIDEOS_PATH, ".mp4", InputMediaVideo),
+    }
+
+    try:
+        for input_path, original_name, media_type in media_files:
+            processed_name = f"processed_{os.path.basename(original_name)}"
+            watermark_func, _, _, _ = media_config[media_type]
+            start_time = time.time()
+            await watermark_func(input_path, processed_name, group_id=group_id)
+            processing_time = time.time() - start_time
+            await stats.record_processed(media_type, processing_time)
+            processed.append((processed_name, media_type))
+
+        for idx, (processed_name, media_type) in enumerate(processed):
+            _, path_prefix, extension, media_class = media_config[media_type]
+            temp_path, _ = await download_from_minio(
+                f"{path_prefix}/{processed_name}", BUCKET_MAIN, extension
+            )
+            caption = None
+            if idx == 0:
+                caption = (
+                    custom_text
+                    + "\nNew post found\n"
+                    + f"{path_prefix}/{processed_name}"
+                )
+            file_handle = open(temp_path, "rb")
+            media_group.append(media_class(file_handle, caption=caption))
+            temp_files.append((temp_path, file_handle))
+
+        if media_group:
+            msgs = await application.bot.send_media_group(
+                bot_chat_id,
+                media_group,
+                read_timeout=60,
+                write_timeout=60,
+                connect_timeout=60,
+                pool_timeout=60,
+            )
+            for msg, (processed_name, _) in zip(msgs, processed):
+                await storage.store_review_message(
+                    processed_name, msg.chat_id, msg.message_id
+                )
+            logger.info(
+                "New media group in channel: {}".format(
+                    ", ".join(name for name, _ in processed)
+                )
+            )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to process media group: {e}")
+        await stats.record_error("processing", f"Media group error: {str(e)}")
+    finally:
+        for temp_path, handle in temp_files:
+            try:
+                handle.close()
+            finally:
+                cleanup_temp_file(temp_path)
     return False
 
 

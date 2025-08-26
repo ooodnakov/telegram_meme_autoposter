@@ -2,35 +2,50 @@
 <div class="row g-3">
     {% for p in posts %}
     <div class="col-sm-6 col-md-4">
-        {% if p.is_video %}
-        <video class="img-fluid" controls playsinline src="{{ p.url }}"></video>
-        {% elif p.is_image %}
-        <img class="img-fluid" src="{{ p.url }}" alt="{{ alt_text }}" />
+        {% for media in p.items %}
+        {% if media.is_video %}
+        <video class="img-fluid" controls src="{{ media.url }}"></video>
+        {% elif media.is_image %}
+        <img class="img-fluid" src="{{ media.url }}" alt="{{ alt_text }}" />
         {% endif %}
+        {% endfor %}
         <div class="mt-2 d-flex flex-wrap gap-1">
             <form method="post" action="/action" data-bg="true">
-                <input type="hidden" name="path" value="{{ p.path }}" />
+                {% for media in p.items %}
+                <input type="hidden" name="paths" value="{{ media.path }}" />
+                {% endfor %}
                 <input type="hidden" name="action" value="ok" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-success" type="submit">Send to batch!</button>
             </form>
             <form method="post" action="/action" data-bg="true">
-                <input type="hidden" name="path" value="{{ p.path }}" />
+                {% for media in p.items %}
+                <input type="hidden" name="paths" value="{{ media.path }}" />
+                {% endfor %}
                 <input type="hidden" name="action" value="schedule" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-secondary" type="submit">Schedule</button>
             </form>
             <form method="post" action="/action" data-bg="true">
-                <input type="hidden" name="path" value="{{ p.path }}" />
+                {% for media in p.items %}
+                <input type="hidden" name="paths" value="{{ media.path }}" />
+                {% endfor %}
                 <input type="hidden" name="action" value="push" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-primary" type="submit">Push!</button>
             </form>
-            <form method="post" action="/action" data-bg="true" onsubmit="return confirm('Reject this item?');">
-                <input type="hidden" name="path" value="{{ p.path }}" />
+            <form
+                method="post"
+                action="/action"
+                data-bg="true"
+                onsubmit="return confirm('Reject this item?');"
+            >
+                {% for media in p.items %}
+                <input type="hidden" name="paths" value="{{ media.path }}" />
+                {% endfor %}
                 <input type="hidden" name="action" value="notok" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
