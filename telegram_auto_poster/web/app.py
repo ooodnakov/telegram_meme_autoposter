@@ -147,6 +147,31 @@ async def _get_suggestions_count() -> int:
     return count
 
 
+async def _render_posts_page(
+    request: Request,
+    *,
+    only_suggestions: bool,
+    origin: str,
+    alt_text: str,
+    empty_message: str,
+    template_name: str,
+) -> HTMLResponse:
+    posts = await _gather_posts(only_suggestions)
+    context = {
+        "request": request,
+        "posts": posts,
+        "origin": origin,
+        "alt_text": alt_text,
+        "empty_message": empty_message,
+    }
+    template = (
+        "_post_grid.html"
+        if request.headers.get("HX-Request", "").lower() == "true"
+        else template_name
+    )
+    return templates.TemplateResponse(template, context)
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
 async def index(request: Request) -> HTMLResponse:
     suggestions_count, batch_count, scheduled_posts_raw, daily = await asyncio.gather(
@@ -171,20 +196,14 @@ async def index(request: Request) -> HTMLResponse:
     dependencies=[Depends(require_access_key)],
 )
 async def suggestions_view(request: Request) -> HTMLResponse:
-    posts = await _gather_posts(True)
-    context = {
-        "request": request,
-        "posts": posts,
-        "origin": "suggestions",
-        "alt_text": "suggestion",
-        "empty_message": "No suggestions pending.",
-    }
-    template = (
-        "_post_grid.html"
-        if request.headers.get("HX-Request", "").lower() == "true"
-        else "suggestions.html"
+    return await _render_posts_page(
+        request,
+        only_suggestions=True,
+        origin="suggestions",
+        alt_text="suggestion",
+        empty_message="No suggestions pending.",
+        template_name="suggestions.html",
     )
-    return templates.TemplateResponse(template, context)
 
 
 @app.get(
@@ -193,20 +212,14 @@ async def suggestions_view(request: Request) -> HTMLResponse:
     dependencies=[Depends(require_access_key)],
 )
 async def posts_view(request: Request) -> HTMLResponse:
-    posts = await _gather_posts(False)
-    context = {
-        "request": request,
-        "posts": posts,
-        "origin": "posts",
-        "alt_text": "post",
-        "empty_message": "No posts pending.",
-    }
-    template = (
-        "_post_grid.html"
-        if request.headers.get("HX-Request", "").lower() == "true"
-        else "posts.html"
+    return await _render_posts_page(
+        request,
+        only_suggestions=False,
+        origin="posts",
+        alt_text="post",
+        empty_message="No posts pending.",
+        template_name="posts.html",
     )
-    return templates.TemplateResponse(template, context)
 
 
 @app.get(

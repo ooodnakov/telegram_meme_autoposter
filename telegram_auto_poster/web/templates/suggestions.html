@@ -7,13 +7,13 @@
     <button
         class="btn btn-sm btn-outline-secondary"
         hx-get="/suggestions{{ key_query }}"
-        hx-target="#posts-grid"
+        hx-target="#suggestions-grid"
         hx-swap="innerHTML"
     >
         Refresh
     </button>
 </div>
-<div id="posts-grid">
+<div id="suggestions-grid">
     {% set origin = "suggestions" %}
     {% set alt_text = "suggestion" %}
     {% set empty_message = "No suggestions pending." %}
