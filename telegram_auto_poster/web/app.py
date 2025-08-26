@@ -21,6 +21,7 @@ from telegram_auto_poster.config import (
     CONFIG,
     PHOTOS_PATH,
     SCHEDULED_PATH,
+    SUGGESTION_CAPTION,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.db import (
@@ -311,13 +312,13 @@ async def _push_post(path: str) -> None:
     caption = ""
     meta = await storage.get_submission_metadata(file_name)
     if meta and meta.get("user_id"):
-        caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
+        caption = SUGGESTION_CAPTION
 
     temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
     # Ensure downloaded file is non-empty; retry once if empty
     try:
         size = os.path.getsize(temp_path)
-    except Exception:
+    except OSError:
         size = 0
     if size == 0:
         logger.warning(f"Downloaded file appears empty, retrying: {path}")
@@ -325,7 +326,7 @@ async def _push_post(path: str) -> None:
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
         try:
             size = os.path.getsize(temp_path)
-        except Exception:
+        except OSError:
             size = 0
         if size == 0:
             logger.error(f"Skipping empty file after retry: {path}")

@@ -7,7 +7,12 @@ from typing import Any, List, Optional, Tuple
 from loguru import logger
 from telegram import InputMediaPhoto, InputMediaVideo
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH, VIDEOS_PATH
+from telegram_auto_poster.config import (
+    BUCKET_MAIN,
+    PHOTOS_PATH,
+    SUGGESTION_CAPTION,
+    VIDEOS_PATH,
+)
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 
@@ -400,14 +405,14 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
 
         meta = await storage.get_submission_metadata(file_name)
         if meta and meta.get("user_id"):
-            caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
+            caption = SUGGESTION_CAPTION
 
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
 
         # Ensure file is not empty; retry once if necessary
         try:
             size = os.path.getsize(temp_path)
-        except Exception:
+        except OSError:
             size = 0
         if size == 0:
             logger.warning(f"Downloaded file appears empty, retrying: {path}")
@@ -415,7 +420,7 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
             temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
             try:
                 size = os.path.getsize(temp_path)
-            except Exception:
+            except OSError:
                 size = 0
             if size == 0:
                 logger.error(f"Skipping empty file after retry: {path}")
