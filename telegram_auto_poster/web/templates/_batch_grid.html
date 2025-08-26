@@ -2,7 +2,7 @@
 <div class="row g-3">
     {% for p in posts %}
     <div class="col-sm-6 col-md-4">
-        {% for media in p.items %}
+        {% for media in p['items'] %}
         {% if media.is_video %}
         <video class="img-fluid" controls src="{{ media.url }}"></video>
         {% elif media.is_image %}
@@ -11,7 +11,7 @@
         {% endfor %}
         <div class="mt-2 d-flex flex-wrap gap-1">
             <form method="post" action="/action" data-bg="true">
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="push" />
@@ -20,7 +20,7 @@
                 <button class="btn btn-sm btn-primary" type="submit">Push!</button>
             </form>
             <form method="post" action="/action" data-bg="true">
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="schedule" />
@@ -34,7 +34,7 @@
                 data-bg="true"
                 onsubmit="return confirm('Remove from batch?');"
             >
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="remove_batch" />

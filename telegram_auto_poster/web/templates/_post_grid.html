@@ -2,7 +2,7 @@
 <div class="row g-3">
     {% for p in posts %}
     <div class="col-sm-6 col-md-4">
-        {% for media in p.items %}
+        {% for media in p['items'] %}
         {% if media.is_video %}
         <video class="img-fluid" controls src="{{ media.url }}"></video>
         {% elif media.is_image %}
@@ -11,7 +11,7 @@
         {% endfor %}
         <div class="mt-2 d-flex flex-wrap gap-1">
             <form method="post" action="/action" data-bg="true">
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="ok" />
@@ -20,7 +20,7 @@
                 <button class="btn btn-sm btn-success" type="submit">Send to batch!</button>
             </form>
             <form method="post" action="/action" data-bg="true">
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="schedule" />
@@ -29,7 +29,7 @@
                 <button class="btn btn-sm btn-secondary" type="submit">Schedule</button>
             </form>
             <form method="post" action="/action" data-bg="true">
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="push" />
@@ -43,7 +43,7 @@
                 data-bg="true"
                 onsubmit="return confirm('Reject this item?');"
             >
-                {% for media in p.items %}
+                {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="notok" />

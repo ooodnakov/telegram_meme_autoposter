@@ -312,6 +312,23 @@ async def _push_post(path: str) -> None:
         caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
 
     temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+    # Ensure downloaded file is non-empty; retry once if empty
+    try:
+        size = os.path.getsize(temp_path)
+    except Exception:
+        size = 0
+    if size == 0:
+        logger.warning(f"Downloaded file appears empty, retrying: {path}")
+        cleanup_temp_file(temp_path)
+        temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+        try:
+            size = os.path.getsize(temp_path)
+        except Exception:
+            size = 0
+        if size == 0:
+            logger.error(f"Skipping empty file after retry: {path}")
+            cleanup_temp_file(temp_path)
+            return
     item = {
         "file_name": file_name,
         "media_type": media_type,
@@ -344,14 +361,26 @@ async def _push_post_group(paths: list[str]) -> None:
             caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
 
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+        # Ensure downloaded file is non-empty; retry once if empty
+        try:
+            size = os.path.getsize(temp_path)
+        except Exception:
+            size = 0
+        if size == 0:
+            logger.warning(f"Downloaded file appears empty, retrying: {path}")
+            cleanup_temp_file(temp_path)
+            temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+            try:
+                size = os.path.getsize(temp_path)
+            except Exception:
+                size = 0
+            if size == 0:
+                logger.error(f"Skipping empty file after retry: {path}")
+                cleanup_temp_file(temp_path)
+                continue
         file_obj = open(temp_path, "rb")
-        if media_type == "video":
-            input_media = InputMediaVideo(file_obj, supports_streaming=True)
-        else:
-            input_media = InputMediaPhoto(file_obj)
         items.append(
             {
-                "input_media": input_media,
                 "file_name": file_name,
                 "media_type": media_type,
                 "temp_path": temp_path,
@@ -362,17 +391,47 @@ async def _push_post_group(paths: list[str]) -> None:
             }
         )
     try:
-        for i in range(0, len(items), 10):
-            chunk = items[i : i + 10]
-            # Only the caption of the first media is used in a group
-            chunk[0]["input_media"].caption = chunk[0]["caption"] or None
-            media_group = [item["input_media"] for item in chunk]
+        if len(items) >= 2:
+            for i in range(0, len(items), 10):
+                chunk = items[i : i + 10]
+                # Build InputMedia with caption at construction for the first item only
+                media_group = []
+                for idx, it in enumerate(chunk):
+                    is_first = i == 0 and idx == 0 and bool(it["caption"])  # type: ignore[index]
+                    fh = it["file_obj"]  # type: ignore[index]
+                    if it["media_type"] == "video":  # type: ignore[index]
+                        media = InputMediaVideo(
+                            fh,
+                            supports_streaming=True,
+                            caption=it["caption"] if is_first else None,  # type: ignore[index]
+                        )
+                    else:
+                        media = InputMediaPhoto(
+                            fh,
+                            caption=it["caption"] if is_first else None,  # type: ignore[index]
+                        )
+                    media_group.append(media)
+                try:
+                    await bot.send_media_group(TARGET_CHANNEL, media_group)
+                    for it in chunk:
+                        await _finalize_post(it)
+                except Exception:
+                    logger.exception("Failed to send media group")
+                    raise
+        elif len(items) == 1:
+            # Single fallback
+            it = items[0]
             try:
-                await bot.send_media_group(TARGET_CHANNEL, media_group)
-                for item in chunk:
-                    await _finalize_post(item)
+                await send_media_to_telegram(
+                    bot,
+                    TARGET_CHANNEL,
+                    it["temp_path"],  # type: ignore[index]
+                    caption=it["caption"] or None,  # type: ignore[index]
+                    supports_streaming=(it["media_type"] == "video"),  # type: ignore[index]
+                )
+                await _finalize_post(it)
             except Exception:
-                logger.exception("Failed to send media group")
+                logger.exception("Failed to send single media item")
                 raise
     finally:
         for item in items:
