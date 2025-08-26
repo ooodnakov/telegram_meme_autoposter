@@ -39,12 +39,12 @@
                     </div>
                     <div class="collapse mt-2" id="preview-{{ loop.index0 }}">
                         {% if p.is_video %}
-                            <video class="queue-video" controls preload="none" playsinline style="max-width: 220px; max-height: 180px;">
+                            <video class="queue-video img-fluid" controls preload="none" playsinline style="max-height: 180px;">
                                 <source src="{{ p.url }}" {% if p.mime %}type="{{ p.mime }}"{% endif %} />
                                 Your browser does not support the video tag.
                             </video>
                         {% elif p.is_image %}
-                            <img src="{{ p.url }}" loading="lazy" class="img-fluid" style="max-width: 220px; max-height: 180px; object-fit: contain;" alt="preview">
+                            <img src="{{ p.url }}" loading="lazy" class="img-fluid" style="max-height: 180px; object-fit: contain;" alt="preview">
                         {% else %}
                             <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer">Open</a>
                         {% endif %}
