@@ -2,6 +2,7 @@ import asyncio
 import os
 import tempfile
 import time
+import uuid
 
 from loguru import logger
 from telegram import (
@@ -481,17 +482,22 @@ async def process_media_group(
 ):
     """Process a list of media files and send as a media group."""
     processed: list[tuple[str, str]] = []
+    group_id = uuid.uuid4().hex
     try:
         for input_path, original_name, media_type in media_files:
             processed_name = f"processed_{os.path.basename(original_name)}"
             if media_type == "photo":
                 start_time = time.time()
-                await add_watermark_to_image(input_path, processed_name)
+                await add_watermark_to_image(
+                    input_path, processed_name, group_id=group_id
+                )
                 processing_time = time.time() - start_time
                 await stats.record_processed("photo", processing_time)
             else:
                 start_time = time.time()
-                await add_watermark_to_video(input_path, processed_name)
+                await add_watermark_to_video(
+                    input_path, processed_name, group_id=group_id
+                )
                 processing_time = time.time() - start_time
                 await stats.record_processed("video", processing_time)
             processed.append((processed_name, media_type))

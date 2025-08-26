@@ -157,11 +157,12 @@ class MinioStorage:
     async def store_submission_metadata(
         self,
         object_name,
-        user_id,
-        chat_id,
-        media_type,
+        user_id=None,
+        chat_id=None,
+        media_type=None,
         message_id=None,
         media_hash: str | None = None,
+        group_id: str | None = None,
     ):
         """Store information about who submitted a particular media object.
 
@@ -176,6 +177,7 @@ class MinioStorage:
             message_id: Optional Telegram ``message_id`` of the original
                 submission.
             media_hash: Optional hash used for deduplication.
+            group_id: Optional identifier for media groups/albums.
         """
         meta = {
             "user_id": user_id,
@@ -185,6 +187,7 @@ class MinioStorage:
             "notified": False,
             "message_id": message_id,
             "hash": media_hash,
+            "group_id": group_id,
         }
         self.submission_metadata[object_name] = meta
         try:
@@ -196,7 +199,9 @@ class MinioStorage:
         except Exception as e:
             logger.error(f"Failed to store submission metadata in Redis: {e}")
         logger.debug(
-            f"Stored metadata for {object_name}: user_id={user_id}, chat_id={chat_id}, message_id={message_id}"
+            "Stored metadata for {}: user_id={}, chat_id={}, message_id={}, group_id={}".format(
+                object_name, user_id, chat_id, message_id, group_id
+            )
         )
 
     async def get_submission_metadata(self, object_name: str) -> dict | None:
@@ -227,6 +232,7 @@ class MinioStorage:
                     "hash": data.get("hash"),
                     "review_chat_id": _to_int(data.get("review_chat_id")),
                     "review_message_id": _to_int(data.get("review_message_id")),
+                    "group_id": data.get("group_id"),
                 }
                 self.submission_metadata[object_name] = meta
                 return meta
@@ -251,12 +257,14 @@ class MinioStorage:
                 chat_id_val = _mget("chat_id", "chat-id")
                 media_type_val = _mget("media_type", "media-type")
                 message_id_val = _mget("message_id", "message-id")
+                group_id_val = _mget("group_id", "group-id")
                 return {
                     "user_id": _to_int(user_id_val),
                     "chat_id": _to_int(chat_id_val),
                     "media_type": media_type_val,
                     "message_id": _to_int(message_id_val),
                     "hash": _mget("hash"),
+                    "group_id": group_id_val,
                     # notified state is managed in-memory
                     "notified": False,
                 }
@@ -324,6 +332,7 @@ class MinioStorage:
         chat_id=None,
         message_id=None,
         media_hash: str | None = None,
+        group_id: str | None = None,
     ):
         """Upload a file to MinIO and record how long the operation took.
 
@@ -387,6 +396,8 @@ class MinioStorage:
                 minio_metadata["message-id"] = str(message_id)
             if media_hash is not None:
                 minio_metadata["hash"] = str(media_hash)
+            if group_id is not None:
+                minio_metadata["group-id"] = str(group_id)
             # Upload file with metadata
             logger.debug(
                 f"Uploading {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
@@ -401,9 +412,18 @@ class MinioStorage:
                 f"Uploaded {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
             )
             # Store submission metadata in-memory as well
-            if user_id and chat_id:
+            if any(
+                x is not None
+                for x in (user_id, chat_id, group_id, media_hash, message_id)
+            ):
                 await self.store_submission_metadata(
-                    object_name, user_id, chat_id, media_type, message_id
+                    object_name,
+                    user_id,
+                    chat_id,
+                    media_type,
+                    message_id,
+                    media_hash,
+                    group_id,
                 )
 
             duration = time.time() - start_time

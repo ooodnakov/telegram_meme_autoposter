@@ -74,6 +74,7 @@ async def _gather_posts(only_suggestions: bool) -> list[dict]:
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
     posts: list[dict] = []
+    grouped: dict[str, list[dict]] = {}
     for obj in objects:
         file_name = os.path.basename(obj)
         meta = await storage.get_submission_metadata(file_name)
@@ -92,14 +93,18 @@ async def _gather_posts(only_suggestions: bool) -> list[dict]:
         is_image = obj.startswith(f"{PHOTOS_PATH}/") or (mime or "").startswith(
             "image/"
         )
-        posts.append(
-            {
-                "path": obj,
-                "url": url,
-                "is_video": is_video,
-                "is_image": is_image,
-            }
-        )
+        item = {
+            "path": obj,
+            "url": url,
+            "is_video": is_video,
+            "is_image": is_image,
+        }
+        group_id = meta.get("group_id") if meta else None
+        if group_id:
+            grouped.setdefault(group_id, []).append(item)
+        else:
+            posts.append({"items": [item]})
+    posts.extend({"items": items} for items in grouped.values())
     return posts
 
 
@@ -108,7 +113,10 @@ async def _gather_batch() -> list[dict]:
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
     posts: list[dict] = []
+    grouped: dict[str, list[dict]] = {}
     for obj in objects:
+        file_name = os.path.basename(obj)
+        meta = await storage.get_submission_metadata(file_name)
         url = await storage.get_presigned_url(obj)
         if not url:
             continue
@@ -119,9 +127,13 @@ async def _gather_batch() -> list[dict]:
         is_image = obj.startswith(f"{PHOTOS_PATH}/") or (mime or "").startswith(
             "image/"
         )
-        posts.append(
-            {"path": obj, "url": url, "is_video": is_video, "is_image": is_image}
-        )
+        item = {"path": obj, "url": url, "is_video": is_video, "is_image": is_image}
+        group_id = meta.get("group_id") if meta else None
+        if group_id:
+            grouped.setdefault(group_id, []).append(item)
+        else:
+            posts.append({"items": [item]})
+    posts.extend({"items": items} for items in grouped.values())
     return posts
 
 
@@ -136,9 +148,7 @@ async def _get_suggestions_count() -> int:
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
 
-    tasks = [
-        storage.get_submission_metadata(os.path.basename(obj)) for obj in objects
-    ]
+    tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
     results = await asyncio.gather(*tasks)
 
     count = 0
@@ -209,16 +219,16 @@ async def send_batch(key: str | None = Form(None)) -> Response:
     if not posts:
         suffix = f"?key={key}" if key else ""
         return RedirectResponse(url=f"/batch{suffix}", status_code=303)
-
-    paths = [p["path"] for p in posts]
-    try:
-        await _push_post_group(paths)
-        await decrement_batch_count(len(paths))
-        await stats.record_batch_sent(1)
-    except Exception:
-        # Error should be logged in _push_post_group. Here we prevent incorrect state changes.
-        # A user-facing error message would be a good addition here.
-        pass
+    for post in posts:
+        paths = [item["path"] for item in post["items"]]
+        try:
+            await _push_post_group(paths)
+            await decrement_batch_count(len(paths))
+            await stats.record_batch_sent(1)
+        except Exception:
+            # Error should be logged in _push_post_group. Here we prevent incorrect state changes.
+            # A user-facing error message would be a good addition here.
+            pass
     suffix = f"?key={key}" if key else ""
     return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
@@ -226,21 +236,32 @@ async def send_batch(key: str | None = Form(None)) -> Response:
 @app.post("/action")
 async def handle_action(
     request: Request,
-    path: str = Form(...),
+    path: str | None = Form(None),
+    paths: list[str] = Form([]),
     action: str = Form(...),
     origin: str = Form("suggestions"),
     key: str | None = Form(None),
 ) -> Response:
+    all_paths = paths or []
+    if path:
+        all_paths.append(path)
     if action == "push":
-        await _push_post(path)
+        if len(all_paths) > 1:
+            await _push_post_group(all_paths)
+        else:
+            await _push_post(all_paths[0])
     elif action == "schedule":
-        await _schedule_post(path)
+        for p in all_paths:
+            await _schedule_post(p)
     elif action == "ok":
-        await _ok_post(path)
+        for p in all_paths:
+            await _ok_post(p)
     elif action == "notok":
-        await _notok_post(path)
+        for p in all_paths:
+            await _notok_post(p)
     elif action == "remove_batch":
-        await _remove_batch(path)
+        for p in all_paths:
+            await _remove_batch(p)
     # If this is a background (AJAX) request, return JSON instead of redirect
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
@@ -398,6 +419,7 @@ async def _ok_post(path: str) -> None:
             user_id=meta.get("user_id") if meta else None,
             chat_id=meta.get("chat_id") if meta else None,
             message_id=meta.get("message_id") if meta else None,
+            group_id=meta.get("group_id") if meta else None,
         )
         await storage.delete_file(path, BUCKET_MAIN)
         count = await increment_batch_count()

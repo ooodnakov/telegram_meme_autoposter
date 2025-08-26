@@ -1,7 +1,6 @@
 import pytest
-from pytest_mock import MockerFixture
 from miniopy_async.error import MinioException
-
+from pytest_mock import MockerFixture
 from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
 from telegram_auto_poster.utils.db import _redis_key
 from telegram_auto_poster.utils.storage import MinioStorage
@@ -80,11 +79,12 @@ async def test_store_and_get_submission_metadata(mock_minio_client):
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
     await storage.store_submission_metadata(
-        "obj1", 123, 456, "photo", message_id=789, media_hash="hash1"
+        "obj1", 123, 456, "photo", message_id=789, media_hash="hash1", group_id="g1"
     )
     meta = await storage.get_submission_metadata("obj1")
     assert meta["user_id"] == 123
     assert meta["chat_id"] == 456
+    assert meta["group_id"] == "g1"
 
 
 @pytest.mark.asyncio
@@ -95,13 +95,20 @@ async def test_get_submission_metadata_from_redis(mock_minio_client, mock_redis_
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
     await storage.store_submission_metadata(
-        "obj_redis", 111, 222, "photo", message_id=333, media_hash="hash2"
+        "obj_redis",
+        111,
+        222,
+        "photo",
+        message_id=333,
+        media_hash="hash2",
+        group_id="g2",
     )
     # Clear in-memory cache to force Redis lookup
     storage.submission_metadata = {}
     meta = await storage.get_submission_metadata("obj_redis")
     assert meta["user_id"] == 111
     assert meta["chat_id"] == 222
+    assert meta["group_id"] == "g2"
     mock_minio_client.stat_object.assert_not_called()
 
 
@@ -117,6 +124,7 @@ async def test_get_submission_metadata_from_minio(
         "media_type": "photo",
         "message_id": "789",
         "hash": "hash1",
+        "group-id": "gid1",
     }
     mock_minio_client.stat_object.return_value = mock_stat
     storage = MinioStorage(client=mock_minio_client)
@@ -130,6 +138,7 @@ async def test_get_submission_metadata_from_minio(
         bucket_name=BUCKET_MAIN, object_name=f"{PHOTOS_PATH}/obj2"
     )
     assert meta["user_id"] == 123
+    assert meta["group_id"] == "gid1"
 
 
 @pytest.mark.asyncio
@@ -158,12 +167,13 @@ async def test_upload_file(mock_minio_client, tmp_path):
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    await storage.upload_file(str(file), user_id=123, chat_id=456)
+    await storage.upload_file(str(file), user_id=123, chat_id=456, group_id="g3")
     mock_minio_client.fput_object.assert_awaited_once()
     kwargs = mock_minio_client.fput_object.await_args.kwargs
     assert kwargs["bucket_name"] == BUCKET_MAIN
     assert kwargs["object_name"].startswith(PHOTOS_PATH)
     assert kwargs["metadata"]["user-id"] == "123"
+    assert kwargs["metadata"]["group-id"] == "g3"
 
 
 @pytest.mark.asyncio

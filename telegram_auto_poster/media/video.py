@@ -41,6 +41,7 @@ async def add_watermark_to_video(
     output_filename: str,
     user_metadata: dict | None = None,
     media_hash: str | None = None,
+    group_id: str | None = None,
 ) -> str:
     """Add watermark to a video with bouncing animation.
 
@@ -129,6 +130,7 @@ async def add_watermark_to_video(
             chat_id=meta.get("chat_id") if meta else None,
             message_id=meta.get("message_id") if meta else None,
             media_hash=media_hash,
+            group_id=group_id,
         )
         if not uploaded:
             raise MinioError(
