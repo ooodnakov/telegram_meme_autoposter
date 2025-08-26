@@ -3,6 +3,7 @@ import os
 import tempfile
 import time
 import uuid
+from typing import IO
 
 from loguru import logger
 from telegram import (
@@ -483,57 +484,38 @@ async def process_media_group(
     """Process a list of media files and send as a media group."""
     processed: list[tuple[str, str]] = []
     group_id = uuid.uuid4().hex
+    media_group: list[InputMediaPhoto | InputMediaVideo] = []
+    temp_files: list[tuple[str, IO[bytes]]] = []
+    media_config = {
+        "photo": (add_watermark_to_image, PHOTOS_PATH, ".jpg", InputMediaPhoto),
+        "video": (add_watermark_to_video, VIDEOS_PATH, ".mp4", InputMediaVideo),
+    }
+
     try:
         for input_path, original_name, media_type in media_files:
             processed_name = f"processed_{os.path.basename(original_name)}"
-            if media_type == "photo":
-                start_time = time.time()
-                await add_watermark_to_image(
-                    input_path, processed_name, group_id=group_id
-                )
-                processing_time = time.time() - start_time
-                await stats.record_processed("photo", processing_time)
-            else:
-                start_time = time.time()
-                await add_watermark_to_video(
-                    input_path, processed_name, group_id=group_id
-                )
-                processing_time = time.time() - start_time
-                await stats.record_processed("video", processing_time)
+            watermark_func, _, _, _ = media_config[media_type]
+            start_time = time.time()
+            await watermark_func(input_path, processed_name, group_id=group_id)
+            processing_time = time.time() - start_time
+            await stats.record_processed(media_type, processing_time)
             processed.append((processed_name, media_type))
 
-        media_group = []
-        temp_paths: list[str] = []
         for idx, (processed_name, media_type) in enumerate(processed):
-            if media_type == "photo":
-                temp_path, _ = await download_from_minio(
-                    PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN, ".jpg"
+            _, path_prefix, extension, media_class = media_config[media_type]
+            temp_path, _ = await download_from_minio(
+                f"{path_prefix}/{processed_name}", BUCKET_MAIN, extension
+            )
+            caption = None
+            if idx == 0:
+                caption = (
+                    custom_text
+                    + "\nNew post found\n"
+                    + f"{path_prefix}/{processed_name}"
                 )
-                caption = None
-                if idx == 0:
-                    caption = (
-                        custom_text
-                        + "\nNew post found\n"
-                        + f"{PHOTOS_PATH}/{processed_name}"
-                    )
-                media_group.append(
-                    InputMediaPhoto(open(temp_path, "rb"), caption=caption)
-                )
-            else:
-                temp_path, _ = await download_from_minio(
-                    VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN, ".mp4"
-                )
-                caption = None
-                if idx == 0:
-                    caption = (
-                        custom_text
-                        + "\nNew post found\n"
-                        + f"{VIDEOS_PATH}/{processed_name}"
-                    )
-                media_group.append(
-                    InputMediaVideo(open(temp_path, "rb"), caption=caption)
-                )
-            temp_paths.append(temp_path)
+            file_handle = open(temp_path, "rb")
+            media_group.append(media_class(file_handle, caption=caption))
+            temp_files.append((temp_path, file_handle))
 
         if media_group:
             msgs = await application.bot.send_media_group(
@@ -544,9 +526,6 @@ async def process_media_group(
                 connect_timeout=60,
                 pool_timeout=60,
             )
-            for m in media_group:
-                if hasattr(m.media, "close"):
-                    m.media.close()
             for msg, (processed_name, _) in zip(msgs, processed):
                 await storage.store_review_message(
                     processed_name, msg.chat_id, msg.message_id
@@ -561,8 +540,11 @@ async def process_media_group(
         logger.error(f"Failed to process media group: {e}")
         await stats.record_error("processing", f"Media group error: {str(e)}")
     finally:
-        for path in temp_paths if "temp_paths" in locals() else []:
-            cleanup_temp_file(path)
+        for temp_path, handle in temp_files:
+            try:
+                handle.close()
+            finally:
+                cleanup_temp_file(temp_path)
     return False
 
 
