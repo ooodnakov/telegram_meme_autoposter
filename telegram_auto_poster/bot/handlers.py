@@ -7,6 +7,8 @@ from loguru import logger
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
+    InputMediaVideo,
     Update,
 )
 from telegram.ext import ContextTypes
@@ -468,6 +470,93 @@ async def process_video(
     except Exception as e:
         logger.error(f"Unexpected error in process_video: {e}")
         await stats.record_error("processing", f"Unexpected error: {str(e)}")
+    return False
+
+
+async def process_media_group(
+    custom_text: str,
+    media_files: list[tuple[str, str, str]],
+    bot_chat_id: str,
+    application,
+):
+    """Process a list of media files and send as a media group."""
+    processed: list[tuple[str, str]] = []
+    try:
+        for input_path, original_name, media_type in media_files:
+            processed_name = f"processed_{os.path.basename(original_name)}"
+            if media_type == "photo":
+                start_time = time.time()
+                await add_watermark_to_image(input_path, processed_name)
+                processing_time = time.time() - start_time
+                await stats.record_processed("photo", processing_time)
+            else:
+                start_time = time.time()
+                await add_watermark_to_video(input_path, processed_name)
+                processing_time = time.time() - start_time
+                await stats.record_processed("video", processing_time)
+            processed.append((processed_name, media_type))
+
+        media_group = []
+        temp_paths: list[str] = []
+        for idx, (processed_name, media_type) in enumerate(processed):
+            if media_type == "photo":
+                temp_path, _ = await download_from_minio(
+                    PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN, ".jpg"
+                )
+                caption = None
+                if idx == 0:
+                    caption = (
+                        custom_text
+                        + "\nNew post found\n"
+                        + f"{PHOTOS_PATH}/{processed_name}"
+                    )
+                media_group.append(
+                    InputMediaPhoto(open(temp_path, "rb"), caption=caption)
+                )
+            else:
+                temp_path, _ = await download_from_minio(
+                    VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN, ".mp4"
+                )
+                caption = None
+                if idx == 0:
+                    caption = (
+                        custom_text
+                        + "\nNew post found\n"
+                        + f"{VIDEOS_PATH}/{processed_name}"
+                    )
+                media_group.append(
+                    InputMediaVideo(open(temp_path, "rb"), caption=caption)
+                )
+            temp_paths.append(temp_path)
+
+        if media_group:
+            msgs = await application.bot.send_media_group(
+                bot_chat_id,
+                media_group,
+                read_timeout=60,
+                write_timeout=60,
+                connect_timeout=60,
+                pool_timeout=60,
+            )
+            for m in media_group:
+                if hasattr(m.media, "close"):
+                    m.media.close()
+            for msg, (processed_name, _) in zip(msgs, processed):
+                await storage.store_review_message(
+                    processed_name, msg.chat_id, msg.message_id
+                )
+            logger.info(
+                "New media group in channel: {}".format(
+                    ", ".join(name for name, _ in processed)
+                )
+            )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to process media group: {e}")
+        await stats.record_error("processing", f"Media group error: {str(e)}")
+    finally:
+        for path in temp_paths if "temp_paths" in locals() else []:
+            cleanup_temp_file(path)
     return False
 
 

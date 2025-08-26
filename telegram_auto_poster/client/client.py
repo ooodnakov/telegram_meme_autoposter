@@ -4,7 +4,11 @@ import os
 from loguru import logger
 from telethon import TelegramClient, events, types
 
-from telegram_auto_poster.bot.handlers import process_photo, process_video
+from telegram_auto_poster.bot.handlers import (
+    process_media_group,
+    process_photo,
+    process_video,
+)
 from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.general import RateLimiter, backoff_delay
@@ -56,6 +60,63 @@ class TelegramMemeClient:
         """Start the client and maintain the connection with retries."""
         self._running = True
 
+        @self.client.on(events.Album(chats=self.selected_chats))
+        async def handle_album(event):  # pragma: no cover - telemetry
+            log = logger.bind(chat_id=event.chat_id, grouped_id=event.grouped_id)
+            limiter = self.rate_limiters.setdefault(
+                event.chat_id,
+                RateLimiter(
+                    rate=self.rate_limit_config.rate,
+                    capacity=self.rate_limit_config.capacity,
+                ),
+            )
+            if not await limiter.acquire(drop=True):
+                log.warning("Rate limit exceeded")
+                if stats_module.stats:
+                    await stats_module.stats.record_rate_limit_drop()
+                return
+
+            files: list[tuple[str, str, str]] = []
+            try:
+                for message in event.messages:
+                    file_path = None
+                    if isinstance(message.media, types.MessageMediaPhoto):
+                        log = log.bind(media_type="photo")
+                        file_path = f"photo_{message.id}.jpg"
+                        if stats_module.stats:
+                            await stats_module.stats.record_received("photo")
+                        await self.client.download_media(
+                            message.media.photo, file=file_path
+                        )
+                        files.append((file_path, os.path.basename(file_path), "photo"))
+                    elif isinstance(message.media, types.MessageMediaDocument):
+                        if message.media.document:
+                            log = log.bind(media_type="video")
+                            file_path = f"video_{message.id}.mp4"
+                            if stats_module.stats:
+                                await stats_module.stats.record_received("video")
+                            await self.client.download_media(
+                                message.media.document, file=file_path
+                            )
+                            files.append(
+                                (file_path, os.path.basename(file_path), "video")
+                            )
+                if files:
+                    await process_media_group(
+                        "New post found with grouped media",
+                        files,
+                        self.bot_chat_id,
+                        self.application,
+                    )
+            except Exception:
+                log.exception("Failed to handle album")
+            finally:
+                for path, _, _ in files:
+                    if path and os.path.exists(path):
+                        os.remove(path)
+                if not files:
+                    log.info("New non photo/video album in channel")
+
         @self.client.on(events.NewMessage(chats=self.selected_chats))
         async def handle_new_message(event):  # pragma: no cover - telemetry
             log = logger.bind(chat_id=event.chat_id, message_id=event.id)
@@ -70,6 +131,9 @@ class TelegramMemeClient:
                 log.warning("Rate limit exceeded")
                 if stats_module.stats:
                     await stats_module.stats.record_rate_limit_drop()
+                return
+
+            if getattr(event.message, "grouped_id", None):
                 return
 
             file_path = None
