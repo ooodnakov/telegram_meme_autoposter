@@ -4,10 +4,19 @@
     <h1 class="m-0">User Suggestions</h1>
     {% set key = request.query_params.get('key') %}
     {% set key_query = '?key=' ~ key if key else '' %}
-    <a class="btn btn-sm btn-outline-secondary" href="/suggestions{{ key_query }}">Refresh</a>
+    <button
+        class="btn btn-sm btn-outline-secondary"
+        hx-get="/suggestions{{ key_query }}"
+        hx-target="#posts-grid"
+        hx-swap="innerHTML"
+    >
+        Refresh
+    </button>
 </div>
-{% set origin = "suggestions" %}
-{% set alt_text = "suggestion" %}
-{% set empty_message = "No suggestions pending." %}
-{% include "_post_grid.html" %}
+<div id="posts-grid">
+    {% set origin = "suggestions" %}
+    {% set alt_text = "suggestion" %}
+    {% set empty_message = "No suggestions pending." %}
+    {% include "_post_grid.html" %}
+</div>
 {% endblock %}

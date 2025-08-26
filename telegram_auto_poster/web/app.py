@@ -136,9 +136,7 @@ async def _get_suggestions_count() -> int:
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
     objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
 
-    tasks = [
-        storage.get_submission_metadata(os.path.basename(obj)) for obj in objects
-    ]
+    tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
     results = await asyncio.gather(*tasks)
 
     count = 0
@@ -174,9 +172,19 @@ async def index(request: Request) -> HTMLResponse:
 )
 async def suggestions_view(request: Request) -> HTMLResponse:
     posts = await _gather_posts(True)
-    return templates.TemplateResponse(
-        "suggestions.html", {"request": request, "posts": posts}
+    context = {
+        "request": request,
+        "posts": posts,
+        "origin": "suggestions",
+        "alt_text": "suggestion",
+        "empty_message": "No suggestions pending.",
+    }
+    template = (
+        "_post_grid.html"
+        if request.headers.get("HX-Request", "").lower() == "true"
+        else "suggestions.html"
     )
+    return templates.TemplateResponse(template, context)
 
 
 @app.get(
@@ -186,9 +194,19 @@ async def suggestions_view(request: Request) -> HTMLResponse:
 )
 async def posts_view(request: Request) -> HTMLResponse:
     posts = await _gather_posts(False)
-    return templates.TemplateResponse(
-        "posts.html", {"request": request, "posts": posts}
+    context = {
+        "request": request,
+        "posts": posts,
+        "origin": "posts",
+        "alt_text": "post",
+        "empty_message": "No posts pending.",
+    }
+    template = (
+        "_post_grid.html"
+        if request.headers.get("HX-Request", "").lower() == "true"
+        else "posts.html"
     )
+    return templates.TemplateResponse(template, context)
 
 
 @app.get(
