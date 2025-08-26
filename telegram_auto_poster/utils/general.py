@@ -49,13 +49,11 @@ def extract_filename(text: str) -> Optional[str]:
     Returns:
         Extracted filename or ``None`` if no filename could be determined.
     """
-    if not text:
+    if not text or not text.strip():
         return None
 
     # Try to get the last line, which should contain the path
     lines = text.strip().split("\n")
-    if not lines:
-        return None
 
     # Look for lines containing file paths
     photo_prefix = f"{PHOTOS_PATH}/"
@@ -256,7 +254,11 @@ def get_file_extension(filename: str) -> str:
         str: Extension including the leading dot.
     """
     _, ext = os.path.splitext(filename)
-    return ext if ext else ".unknown"
+    if ext:
+        return ext
+    if filename.startswith(".") and filename.count(".") == 1:
+        return filename
+    return ".unknown"
 
 
 # Helper function to send media to Telegram
