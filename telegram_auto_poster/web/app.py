@@ -14,13 +14,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
-from telegram import Bot, InputMediaPhoto, InputMediaVideo
+from telegram import Bot
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     CONFIG,
     PHOTOS_PATH,
     SCHEDULED_PATH,
+    SUGGESTION_CAPTION,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.db import (
@@ -38,6 +39,8 @@ from telegram_auto_poster.utils.deduplication import (
 from telegram_auto_poster.utils.general import (
     cleanup_temp_file,
     download_from_minio,
+    prepare_group_items,
+    send_group_media,
     send_media_to_telegram,
 )
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
@@ -343,13 +346,13 @@ async def _push_post(path: str) -> None:
     caption = ""
     meta = await storage.get_submission_metadata(file_name)
     if meta and meta.get("user_id"):
-        caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
+        caption = SUGGESTION_CAPTION
 
     temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
     # Ensure downloaded file is non-empty; retry once if empty
     try:
         size = os.path.getsize(temp_path)
-    except Exception:
+    except OSError:
         size = 0
     if size == 0:
         logger.warning(f"Downloaded file appears empty, retrying: {path}")
@@ -357,7 +360,7 @@ async def _push_post(path: str) -> None:
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
         try:
             size = os.path.getsize(temp_path)
-        except Exception:
+        except OSError:
             size = 0
         if size == 0:
             logger.error(f"Skipping empty file after retry: {path}")
@@ -384,89 +387,11 @@ async def _push_post(path: str) -> None:
 
 
 async def _push_post_group(paths: list[str]) -> None:
-    items: list[dict[str, object]] = []
-
-    for path in paths:
-        file_name = os.path.basename(path)
-        media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
-        caption = ""
-        meta = await storage.get_submission_metadata(file_name)
-        if meta and meta.get("user_id"):
-            caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
-
-        temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
-        # Ensure downloaded file is non-empty; retry once if empty
-        try:
-            size = os.path.getsize(temp_path)
-        except Exception:
-            size = 0
-        if size == 0:
-            logger.warning(f"Downloaded file appears empty, retrying: {path}")
-            cleanup_temp_file(temp_path)
-            temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
-            try:
-                size = os.path.getsize(temp_path)
-            except Exception:
-                size = 0
-            if size == 0:
-                logger.error(f"Skipping empty file after retry: {path}")
-                cleanup_temp_file(temp_path)
-                continue
-        file_obj = open(temp_path, "rb")
-        items.append(
-            {
-                "file_name": file_name,
-                "media_type": media_type,
-                "temp_path": temp_path,
-                "file_obj": file_obj,
-                "meta": meta,
-                "path": path,
-                "caption": caption,
-            }
-        )
+    items, caption = await prepare_group_items(paths)
     try:
-        if len(items) >= 2:
-            for i in range(0, len(items), 10):
-                chunk = items[i : i + 10]
-                # Build InputMedia with caption at construction for the first item only
-                media_group = []
-                for idx, it in enumerate(chunk):
-                    is_first = i == 0 and idx == 0 and bool(it["caption"])  # type: ignore[index]
-                    fh = it["file_obj"]  # type: ignore[index]
-                    if it["media_type"] == "video":  # type: ignore[index]
-                        media = InputMediaVideo(
-                            fh,
-                            supports_streaming=True,
-                            caption=it["caption"] if is_first else None,  # type: ignore[index]
-                        )
-                    else:
-                        media = InputMediaPhoto(
-                            fh,
-                            caption=it["caption"] if is_first else None,  # type: ignore[index]
-                        )
-                    media_group.append(media)
-                try:
-                    await bot.send_media_group(TARGET_CHANNEL, media_group)
-                    for it in chunk:
-                        await _finalize_post(it)
-                except Exception:
-                    logger.exception("Failed to send media group")
-                    raise
-        elif len(items) == 1:
-            # Single fallback
-            it = items[0]
-            try:
-                await send_media_to_telegram(
-                    bot,
-                    TARGET_CHANNEL,
-                    it["temp_path"],  # type: ignore[index]
-                    caption=it["caption"] or None,  # type: ignore[index]
-                    supports_streaming=(it["media_type"] == "video"),  # type: ignore[index]
-                )
-                await _finalize_post(it)
-            except Exception:
-                logger.exception("Failed to send single media item")
-                raise
+        await send_group_media(bot, TARGET_CHANNEL, items, caption)
+        for it in items:
+            await _finalize_post(it)
     finally:
         for item in items:
             file_obj = item["file_obj"]

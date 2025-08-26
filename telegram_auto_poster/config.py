@@ -245,6 +245,9 @@ VIDEOS_PATH = "videos"
 SCHEDULED_PATH = "scheduled"
 DOWNLOADS_PATH = "downloads"
 
+# Caption appended to posts originating from user suggestions
+SUGGESTION_CAPTION = "Пост из предложки @ooodnakov_memes_suggest_bot"
+
 
 # Global configuration instance
 CONFIG = load_config()
