@@ -2,6 +2,9 @@
 <div class="row g-3">
     {% for p in posts %}
     <div class="col-sm-6 col-md-4">
+        {% if p['items']|length > 1 %}
+        <span class="badge bg-secondary mb-1">Group of {{ p['items']|length }}</span>
+        {% endif %}
         {% for media in p['items'] %}
         {% if media.is_video %}
         <video class="img-fluid" controls src="{{ media.url }}"></video>

@@ -7,8 +7,6 @@ from telegram import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InputMediaPhoto,
-    InputMediaVideo,
     Update,
 )
 from telegram.ext import ContextTypes
@@ -36,6 +34,8 @@ from telegram_auto_poster.utils.general import (
     download_from_minio,
     extract_file_paths,
     extract_filename,
+    prepare_group_items,
+    send_group_media,
     send_media_to_telegram,
 )
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
@@ -288,119 +288,12 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     try:
-        caption_to_send = (
-            "Пост из предложки @ooodnakov_memes_suggest_bot"
-            if "suggestion" in message_text
-            else ""
-        )
-
+        media_items, caption_to_send = await prepare_group_items(paths)
         sent_counts = {"photo": 0, "video": 0}
 
-        # Build local files and InputMedia for group sending
-        media_items: list[dict] = []
-        for file_path in paths:
-            file_name = os.path.basename(file_path)
-            media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
-            file_prefix = (
-                f"{PHOTOS_PATH}/"
-                if file_path.startswith(f"{PHOTOS_PATH}/")
-                else f"{VIDEOS_PATH}/"
-            )
-
-            temp_path, _ = await download_from_minio(
-                file_prefix + file_name, BUCKET_MAIN
-            )
-            logger.info(
-                f"Downloaded file {file_name} from {BUCKET_MAIN} to {temp_path}"
-            )
-
-            # Ensure downloaded file is non-empty; retry once if empty
-            try:
-                size = os.path.getsize(temp_path)
-            except Exception:
-                size = 0
-            if size == 0:
-                logger.warning(
-                    f"Downloaded file appears empty, retrying: {file_prefix + file_name}"
-                )
-                cleanup_temp_file(temp_path)
-                temp_path, _ = await download_from_minio(
-                    file_prefix + file_name, BUCKET_MAIN
-                )
-                try:
-                    size = os.path.getsize(temp_path)
-                except Exception:
-                    size = 0
-                if size == 0:
-                    logger.error(
-                        f"Skipping empty file after retry: {file_prefix + file_name}"
-                    )
-                    cleanup_temp_file(temp_path)
-                    continue
-
-            fh = open(temp_path, "rb")
-            user_metadata = await storage.get_submission_metadata(file_name)
-            media_items.append(
-                {
-                    "file_name": file_name,
-                    "media_type": media_type,
-                    "file_prefix": file_prefix,
-                    "temp_path": temp_path,
-                    "fh": fh,
-                    "user_metadata": user_metadata,
-                }
-            )
-
-        # Send as grouped media (albums) when there are at least 2 items; otherwise fallback to single send
-        if len(media_items) >= 2:
-            for i in range(0, len(media_items), 10):
-                chunk = media_items[i : i + 10]
-                # Build InputMedia objects with caption set at creation for the first item only
-                media_to_send = []
-                for idx, item in enumerate(chunk):
-                    is_first = i == 0 and idx == 0 and bool(caption_to_send)
-                    if item["media_type"] == "photo":
-                        im = InputMediaPhoto(
-                            item["fh"],
-                            caption=caption_to_send if is_first else None,
-                        )
-                    else:
-                        im = InputMediaVideo(
-                            item["fh"],
-                            supports_streaming=True,
-                            caption=caption_to_send if is_first else None,
-                        )
-                    media_to_send.append(im)
-                try:
-                    await context.bot.send_media_group(
-                        chat_id=target_channel,
-                        media=media_to_send,
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to send media group to channel: {e} (items={len(chunk)})"
-                    )
-                    await stats.record_error(
-                        "telegram", f"Failed to send media group: {str(e)}"
-                    )
-                    raise
-        elif len(media_items) == 1:
-            # Single item fallback
-            item = media_items[0]
-            try:
-                await send_media_to_telegram(
-                    context.bot,
-                    target_channel,
-                    item["temp_path"],
-                    caption=caption_to_send or None,
-                    supports_streaming=(item["media_type"] == "video"),
-                )
-            except Exception as e:
-                logger.error(f"Failed to send single media item: {e}")
-                await stats.record_error(
-                    "telegram", f"Failed to send single item: {str(e)}"
-                )
-                raise
+        await send_group_media(
+            context.bot, target_channel, media_items, caption_to_send
+        )
 
         # Post-send bookkeeping: dedup, delete, stats, notify
         for item in media_items:
@@ -408,8 +301,8 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             media_type = item["media_type"]
             file_prefix = item["file_prefix"]
             temp_path = item["temp_path"]
-            fh = item["fh"]
-            user_metadata = item["user_metadata"]
+            fh = item["file_obj"]
+            user_metadata = item["meta"]
             try:
                 # Add to dedup corpus
                 try:

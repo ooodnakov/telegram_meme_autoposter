@@ -5,8 +5,9 @@ import tempfile
 from typing import Any, List, Optional, Tuple
 
 from loguru import logger
+from telegram import InputMediaPhoto, InputMediaVideo
 from telegram.error import BadRequest, NetworkError, TimedOut
-from telegram_auto_poster.config import PHOTOS_PATH, VIDEOS_PATH
+from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH, VIDEOS_PATH
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 
@@ -378,3 +379,94 @@ async def send_media_to_telegram(
         logger.error(f"Unexpected error in send_media_to_telegram: {e}")
         await stats.record_error("telegram", f"Unexpected error: {str(e)}")
         raise TelegramMediaError(f"Unexpected error: {str(e)}")
+
+
+async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
+    """Prepare media items for grouped sending.
+
+    Downloads each path from MinIO, ensuring files are not empty, and returns
+    a tuple of ``(items, caption)`` where ``items`` contains metadata required
+    for sending and ``caption`` is applied to the first element of the group if
+    any item originates from user suggestions.
+    """
+
+    items: List[dict] = []
+    caption = ""
+
+    for path in paths:
+        file_name = os.path.basename(path)
+        media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+        file_prefix = f"{PHOTOS_PATH}/" if media_type == "photo" else f"{VIDEOS_PATH}/"
+
+        meta = await storage.get_submission_metadata(file_name)
+        if meta and meta.get("user_id"):
+            caption = "Пост из предложки @ooodnakov_memes_suggest_bot"
+
+        temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+
+        # Ensure file is not empty; retry once if necessary
+        try:
+            size = os.path.getsize(temp_path)
+        except Exception:
+            size = 0
+        if size == 0:
+            logger.warning(f"Downloaded file appears empty, retrying: {path}")
+            cleanup_temp_file(temp_path)
+            temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+            try:
+                size = os.path.getsize(temp_path)
+            except Exception:
+                size = 0
+            if size == 0:
+                logger.error(f"Skipping empty file after retry: {path}")
+                cleanup_temp_file(temp_path)
+                continue
+
+        fh = open(temp_path, "rb")
+        items.append(
+            {
+                "file_name": file_name,
+                "media_type": media_type,
+                "file_prefix": file_prefix,
+                "path": path,
+                "temp_path": temp_path,
+                "file_obj": fh,
+                "meta": meta,
+            }
+        )
+
+    return items, caption
+
+
+async def send_group_media(bot, chat_id, items: List[dict], caption: str) -> None:
+    """Send a list of prepared items to Telegram as a group or single message."""
+
+    if len(items) >= 2:
+        for i in range(0, len(items), 10):
+            chunk = items[i : i + 10]
+            media_group = []
+            for idx, it in enumerate(chunk):
+                is_first = i == 0 and idx == 0 and bool(caption)
+                fh = it["file_obj"]
+                if it["media_type"] == "video":
+                    media = InputMediaVideo(
+                        fh,
+                        supports_streaming=True,
+                        caption=caption if is_first else None,
+                    )
+                else:
+                    media = InputMediaPhoto(
+                        fh,
+                        caption=caption if is_first else None,
+                    )
+                media_group.append(media)
+            await bot.send_media_group(chat_id=chat_id, media=media_group)
+    elif len(items) == 1:
+        it = items[0]
+        await send_media_to_telegram(
+            bot,
+            chat_id,
+            it["temp_path"],
+            caption=caption or None,
+            supports_streaming=(it["media_type"] == "video"),
+        )
