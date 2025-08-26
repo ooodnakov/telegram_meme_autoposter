@@ -3,7 +3,14 @@ import os
 
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
-from telegram import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    InputMediaVideo,
+    Update,
+)
 from telegram.ext import ContextTypes
 
 import telegram_auto_poster.utils.db as db
@@ -27,6 +34,7 @@ from telegram_auto_poster.utils.general import (
     TelegramMediaError,
     cleanup_temp_file,
     download_from_minio,
+    extract_file_paths,
     extract_filename,
     send_media_to_telegram,
 )
@@ -55,72 +63,87 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await query.answer()
 
     message_text = query.message.caption or query.message.text
-    file_path = extract_filename(message_text)
-    if not file_path:
+    paths = extract_file_paths(message_text)
+    # Backward-compatible fallback to single path extraction
+    if not paths:
+        single = extract_filename(message_text)
+        if single:
+            paths = [single]
+    if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return
 
-    file_name = os.path.basename(file_path)
-    file_prefix = (
-        f"{PHOTOS_PATH}/"
-        if file_path.startswith(f"{PHOTOS_PATH}/")
-        else f"{VIDEOS_PATH}/"
-    )
-
     try:
-        # 1. Find next available slot
+        # Prepare common config
         now = now_utc()
-        scheduled_posts = db.get_scheduled_posts()
         bot_data = context.application.bot_data
         quiet_start = bot_data.get("quiet_hours_start", 22)
         quiet_end = bot_data.get("quiet_hours_end", 10)
-        next_slot = find_next_available_slot(
-            now, scheduled_posts, quiet_start, quiet_end
-        )
 
-        # 2. Add to approved dedup corpus (use stored hash or compute)
-        media_hash = None
-        try:
-            user_meta = await storage.get_submission_metadata(file_name)
-            if user_meta and user_meta.get("hash"):
-                media_hash = user_meta.get("hash")
-            else:
-                temp_path, _ = await download_from_minio(
-                    file_prefix + file_name, BUCKET_MAIN
+        scheduled_info: list[tuple[str, str]] = []  # (file_name, display_time)
+
+        for file_path in paths:
+            file_name = os.path.basename(file_path)
+            file_prefix = (
+                f"{PHOTOS_PATH}/"
+                if file_path.startswith(f"{PHOTOS_PATH}/")
+                else f"{VIDEOS_PATH}/"
+            )
+
+            # 1. Find next available slot (refresh scheduled posts each time)
+            scheduled_posts = db.get_scheduled_posts()
+            next_slot = find_next_available_slot(
+                now, scheduled_posts, quiet_start, quiet_end
+            )
+            # Shift base time slightly for next computation
+            now = next_slot
+
+            # 2. Add to approved dedup corpus (use stored hash or compute)
+            media_hash = None
+            try:
+                user_meta = await storage.get_submission_metadata(file_name)
+                if user_meta and user_meta.get("hash"):
+                    media_hash = user_meta.get("hash")
+                else:
+                    temp_path, _ = await download_from_minio(
+                        file_prefix + file_name, BUCKET_MAIN
+                    )
+                    try:
+                        if file_path.startswith(f"{PHOTOS_PATH}/"):
+                            media_hash = calculate_image_hash(temp_path)
+                        else:
+                            media_hash = calculate_video_hash(temp_path)
+                    finally:
+                        cleanup_temp_file(temp_path)
+                if media_hash:
+                    add_approved_hash(media_hash)
+            except Exception as _e:
+                logger.warning(
+                    f"Failed to add approved hash for {file_name} in schedule_callback: {_e}"
                 )
-                try:
-                    if file_path.startswith(f"{PHOTOS_PATH}/"):
-                        media_hash = calculate_image_hash(temp_path)
-                    else:
-                        media_hash = calculate_video_hash(temp_path)
-                finally:
-                    cleanup_temp_file(temp_path)
-            if media_hash:
-                add_approved_hash(media_hash)
-        except Exception as _e:
-            # Non-blocking: failure to compute hash should not prevent scheduling
-            logger.warning(f"Failed to add approved hash for {file_name}: {_e}")
 
-        # 3. Move file in MinIO
-        new_object_name = SCHEDULED_PATH + "/" + file_name
-        # Copy object within the same bucket using proper CopySource
-        source = CopySource(BUCKET_MAIN, f"{file_prefix}{file_name}")
-        await storage.client.copy_object(
-            BUCKET_MAIN,
-            new_object_name,
-            source,
+            # 3. Move file in MinIO
+            new_object_name = SCHEDULED_PATH + "/" + file_name
+            source = CopySource(BUCKET_MAIN, f"{file_prefix}{file_name}")
+            await storage.client.copy_object(
+                BUCKET_MAIN,
+                new_object_name,
+                source,
+            )
+            await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+
+            # 4. Add to database
+            db.add_scheduled_post(int(next_slot.timestamp()), new_object_name)
+            scheduled_info.append((file_name, format_display(next_slot)))
+
+        # 5. Update message (caption if media, otherwise text)
+        summary = "Scheduled posts:\n" + "\n".join(
+            f"{n} → {t}" for n, t in scheduled_info
         )
-        await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
-
-        # 4. Add to database
-        db.add_scheduled_post(int(next_slot.timestamp()), new_object_name)
-
-        # 5. Update message
-        await query.message.edit_caption(
-            f"Post scheduled for {format_display(next_slot)}!",
-            reply_markup=None,
-        )
-        # stats.record_scheduled(media_type)
+        if query.message.caption:
+            await query.message.edit_caption(summary, reply_markup=None)
+        else:
+            await query.message.edit_text(summary, reply_markup=None)
     except Exception as e:
         logger.error(f"Error in schedule_callback: {e}")
         await query.message.reply_text(f"An unexpected error occurred: {str(e)}")
@@ -135,96 +158,101 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await query.answer()
 
     message_text = query.message.caption or query.message.text
-    file_path = extract_filename(message_text)
-    if not file_path:
+    paths = extract_file_paths(message_text)
+    if not paths:
+        single = extract_filename(message_text)
+        if single:
+            paths = [single]
+    if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return
 
-    file_name = os.path.basename(file_path)
-    media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
-    file_prefix = (
-        f"{PHOTOS_PATH}/"
-        if file_path.startswith(f"{PHOTOS_PATH}/")
-        else f"{VIDEOS_PATH}/"
-    )
-
     try:
-        # Verify file existence
-        if not await storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
-            raise MinioError(
-                f"File not found: {file_prefix + file_name} in {BUCKET_MAIN}"
+        approved_counts = {"photo": 0, "video": 0}
+        total_batch_count = None
+
+        for file_path in paths:
+            file_name = os.path.basename(file_path)
+            media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
+            file_prefix = (
+                f"{PHOTOS_PATH}/"
+                if file_path.startswith(f"{PHOTOS_PATH}/")
+                else f"{VIDEOS_PATH}/"
             )
 
-        # Add to batch in MinIO for later sending
-        new_object_name = f"batch_{file_name}"
-        temp_path, _ = await download_from_minio(file_prefix + file_name, BUCKET_MAIN)
-        try:
-            # Upload to appropriate prefix as batch_*, preserving metadata and hash
-            target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
-            src_meta = await storage.get_submission_metadata(file_name)
-            media_hash = None
-            if src_meta and src_meta.get("hash"):
-                media_hash = src_meta.get("hash")
-            else:
-                media_hash = (
-                    calculate_image_hash(temp_path)
-                    if media_type == "photo"
-                    else calculate_video_hash(temp_path)
+            # Verify file existence
+            if not await storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
+                raise MinioError(
+                    f"File not found: {file_prefix + file_name} in {BUCKET_MAIN}"
                 )
-            await storage.upload_file(
-                temp_path,
-                BUCKET_MAIN,
-                f"{target_prefix}/{new_object_name}",
-                user_id=src_meta.get("user_id") if src_meta else None,
-                chat_id=src_meta.get("chat_id") if src_meta else None,
-                message_id=src_meta.get("message_id") if src_meta else None,
-                media_hash=media_hash,
-            )
 
-            # Add to approved dedup corpus
+            # Add to batch in MinIO for later sending
+            new_object_name = f"batch_{file_name}"
+            temp_path, _ = await download_from_minio(
+                file_prefix + file_name, BUCKET_MAIN
+            )
             try:
-                if media_hash:
-                    add_approved_hash(media_hash)
-            except Exception as _e:
-                logger.warning(
-                    f"Failed to add approved hash for {file_name} in ok_callback(batch): {_e}"
+                target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
+                src_meta = await storage.get_submission_metadata(file_name)
+                media_hash = None
+                if src_meta and src_meta.get("hash"):
+                    media_hash = src_meta.get("hash")
+                else:
+                    media_hash = (
+                        calculate_image_hash(temp_path)
+                        if media_type == "photo"
+                        else calculate_video_hash(temp_path)
+                    )
+                await storage.upload_file(
+                    temp_path,
+                    BUCKET_MAIN,
+                    f"{target_prefix}/{new_object_name}",
+                    user_id=src_meta.get("user_id") if src_meta else None,
+                    chat_id=src_meta.get("chat_id") if src_meta else None,
+                    message_id=src_meta.get("message_id") if src_meta else None,
+                    media_hash=media_hash,
                 )
 
-            # Get user metadata
-            user_metadata = await storage.get_submission_metadata(new_object_name)
+                try:
+                    if media_hash:
+                        add_approved_hash(media_hash)
+                except Exception as _e:
+                    logger.warning(
+                        f"Failed to add approved hash for {file_name} in ok_callback(batch): {_e}"
+                    )
 
-            # Delete from MinIO
-            await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+                user_metadata = await storage.get_submission_metadata(new_object_name)
+                await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
-            batch_count = await db.increment_batch_count()
+                total_batch_count = await db.increment_batch_count()
+                approved_counts[media_type] += 1
+                await stats.record_added_to_batch(media_type)
 
-            await query.message.edit_caption(
-                f"Post added to batch! There are {batch_count} posts in the batch.",
-                reply_markup=None,
-            )
-            await stats.record_added_to_batch(media_type)
-            logger.info(
-                f"Added {file_prefix + file_name} to batch ({batch_count} total)"
-            )
-            # Notify original submitter
-            if (
-                user_metadata
-                and not user_metadata.get("notified")
-                and user_metadata.get("user_id")
-            ):
-                translated_media_type = "фото" if media_type == "photo" else "видео"
-                await notify_user(
-                    context,
-                    user_metadata.get("user_id"),
-                    f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
-                    reply_to_message_id=user_metadata.get("message_id"),
-                )
-                await storage.mark_notified(new_object_name)
-                logger.info(
-                    f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
-                )
-        finally:
-            cleanup_temp_file(temp_path)
+                # Notify original submitter
+                if (
+                    user_metadata
+                    and not user_metadata.get("notified")
+                    and user_metadata.get("user_id")
+                ):
+                    translated_media_type = "фото" if media_type == "photo" else "видео"
+                    await notify_user(
+                        context,
+                        user_metadata.get("user_id"),
+                        f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и скоро будет размещена. Спасибо за ваш вклад!",
+                        reply_to_message_id=user_metadata.get("message_id"),
+                    )
+                    await storage.mark_notified(new_object_name)
+            finally:
+                cleanup_temp_file(temp_path)
+
+        # Update the summary message
+        summary = f"Added to batch: {approved_counts['photo']} photos, {approved_counts['video']} videos.\n"
+        if total_batch_count is not None:
+            summary += f"There are {total_batch_count} items in the batch."
+        if query.message.caption:
+            await query.message.edit_caption(summary, reply_markup=None)
+        else:
+            await query.message.edit_text(summary, reply_markup=None)
     except MinioError as e:
         logger.error(f"MinIO error in ok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
@@ -250,93 +278,188 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     target_channel = context.bot_data.get("target_channel_id")
 
     message_text = query.message.caption or query.message.text
-    file_path = extract_filename(message_text)
-    if not file_path:
+    paths = extract_file_paths(message_text)
+    if not paths:
+        single = extract_filename(message_text)
+        if single:
+            paths = [single]
+    if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return
 
-    file_name = os.path.basename(file_path)
-    media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
-    file_prefix = (
-        f"{PHOTOS_PATH}/"
-        if file_path.startswith(f"{PHOTOS_PATH}/")
-        else f"{VIDEOS_PATH}/"
-    )
-
     try:
-        if not await storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
-            raise MinioError(
-                f"File not found: {file_prefix + file_name} in {BUCKET_MAIN}"
-            )
-
         caption_to_send = (
             "Пост из предложки @ooodnakov_memes_suggest_bot"
             if "suggestion" in message_text
             else ""
         )
 
-        await query.message.edit_caption(
-            f"Post approved with media {file_name}!", reply_markup=None
-        )
+        sent_counts = {"photo": 0, "video": 0}
 
-        temp_path, _ = await download_from_minio(file_prefix + file_name, BUCKET_MAIN)
-        logger.info(f"Downloaded file {file_name} from {BUCKET_MAIN} to {temp_path}")
-        try:
-            # Use helper function to send media
-            await send_media_to_telegram(
-                context.bot, target_channel, temp_path, caption_to_send
+        # Build local files and InputMedia for group sending
+        media_items: list[dict] = []
+        for file_path in paths:
+            file_name = os.path.basename(file_path)
+            media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
+            file_prefix = (
+                f"{PHOTOS_PATH}/"
+                if file_path.startswith(f"{PHOTOS_PATH}/")
+                else f"{VIDEOS_PATH}/"
             )
-            logger.info(f"Created new post from image {file_path}!")
 
-            # Add to approved dedup corpus
+            temp_path, _ = await download_from_minio(
+                file_prefix + file_name, BUCKET_MAIN
+            )
+            logger.info(
+                f"Downloaded file {file_name} from {BUCKET_MAIN} to {temp_path}"
+            )
+
+            # Ensure downloaded file is non-empty; retry once if empty
             try:
-                user_metadata = await storage.get_submission_metadata(file_name)
-                media_hash = user_metadata.get("hash") if user_metadata else None
-                if not media_hash:
-                    media_hash = (
-                        calculate_image_hash(temp_path)
-                        if media_type == "photo"
-                        else calculate_video_hash(temp_path)
-                    )
-                if media_hash:
-                    add_approved_hash(media_hash)
-            except Exception as _e:
+                size = os.path.getsize(temp_path)
+            except Exception:
+                size = 0
+            if size == 0:
                 logger.warning(
-                    f"Failed to add approved hash for {file_name} in push_callback: {_e}"
+                    f"Downloaded file appears empty, retrying: {file_prefix + file_name}"
                 )
+                cleanup_temp_file(temp_path)
+                temp_path, _ = await download_from_minio(
+                    file_prefix + file_name, BUCKET_MAIN
+                )
+                try:
+                    size = os.path.getsize(temp_path)
+                except Exception:
+                    size = 0
+                if size == 0:
+                    logger.error(
+                        f"Skipping empty file after retry: {file_prefix + file_name}"
+                    )
+                    cleanup_temp_file(temp_path)
+                    continue
 
-            # Get user metadata
+            fh = open(temp_path, "rb")
             user_metadata = await storage.get_submission_metadata(file_name)
-
-            # Delete from MinIO
-            await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
-
-            await stats.record_approved(
-                media_type, filename=file_name, source="push_callback"
+            media_items.append(
+                {
+                    "file_name": file_name,
+                    "media_type": media_type,
+                    "file_prefix": file_prefix,
+                    "temp_path": temp_path,
+                    "fh": fh,
+                    "user_metadata": user_metadata,
+                }
             )
 
-            # Notify original submitter
-            if (
-                user_metadata
-                and not user_metadata.get("notified")
-                and user_metadata.get("user_id")
-            ):
-                translated_media_type = "фото" if media_type == "photo" else "видео"
-                await notify_user(
-                    context,
-                    user_metadata.get("user_id"),
-                    f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
-                    reply_to_message_id=user_metadata.get("message_id"),
+        # Send as grouped media (albums) when there are at least 2 items; otherwise fallback to single send
+        if len(media_items) >= 2:
+            for i in range(0, len(media_items), 10):
+                chunk = media_items[i : i + 10]
+                # Build InputMedia objects with caption set at creation for the first item only
+                media_to_send = []
+                for idx, item in enumerate(chunk):
+                    is_first = i == 0 and idx == 0 and bool(caption_to_send)
+                    if item["media_type"] == "photo":
+                        im = InputMediaPhoto(
+                            item["fh"],
+                            caption=caption_to_send if is_first else None,
+                        )
+                    else:
+                        im = InputMediaVideo(
+                            item["fh"],
+                            supports_streaming=True,
+                            caption=caption_to_send if is_first else None,
+                        )
+                    media_to_send.append(im)
+                try:
+                    await context.bot.send_media_group(
+                        chat_id=target_channel,
+                        media=media_to_send,
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to send media group to channel: {e} (items={len(chunk)})"
+                    )
+                    await stats.record_error(
+                        "telegram", f"Failed to send media group: {str(e)}"
+                    )
+                    raise
+        elif len(media_items) == 1:
+            # Single item fallback
+            item = media_items[0]
+            try:
+                await send_media_to_telegram(
+                    context.bot,
+                    target_channel,
+                    item["temp_path"],
+                    caption=caption_to_send or None,
+                    supports_streaming=(item["media_type"] == "video"),
                 )
-                await storage.mark_notified(file_name)
-                logger.info(
-                    f"User {user_metadata.get('user_id')} was notified about approval of {file_name} from message_id {user_metadata.get('message_id')}"
+            except Exception as e:
+                logger.error(f"Failed to send single media item: {e}")
+                await stats.record_error(
+                    "telegram", f"Failed to send single item: {str(e)}"
                 )
-        finally:
-            cleanup_temp_file(temp_path)
+                raise
 
-        # await query.message.reply_text(f"{media_type.capitalize()} sent to channel!")
-        logger.info(f"Media {file_name} sent to channel {target_channel}")
+        # Post-send bookkeeping: dedup, delete, stats, notify
+        for item in media_items:
+            file_name = item["file_name"]
+            media_type = item["media_type"]
+            file_prefix = item["file_prefix"]
+            temp_path = item["temp_path"]
+            fh = item["fh"]
+            user_metadata = item["user_metadata"]
+            try:
+                # Add to dedup corpus
+                try:
+                    media_hash = user_metadata.get("hash") if user_metadata else None
+                    if not media_hash:
+                        media_hash = (
+                            calculate_image_hash(temp_path)
+                            if media_type == "photo"
+                            else calculate_video_hash(temp_path)
+                        )
+                    if media_hash:
+                        add_approved_hash(media_hash)
+                except Exception as _e:
+                    logger.warning(
+                        f"Failed to add approved hash for {file_name} in push_callback: {_e}"
+                    )
+
+                # Delete from MinIO
+                await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+
+                await stats.record_approved(
+                    media_type, filename=file_name, source="push_callback"
+                )
+                sent_counts[media_type] += 1
+
+                # Notify original submitter
+                if user_metadata and user_metadata.get("user_id"):
+                    translated_media_type = "фото" if media_type == "photo" else "видео"
+                    await notify_user(
+                        context,
+                        user_metadata.get("user_id"),
+                        f"Отличные новости! Ваша {translated_media_type} публикация была одобрена и размещена в канале. Спасибо за ваш вклад!",
+                        reply_to_message_id=user_metadata.get("message_id"),
+                    )
+                    await storage.mark_notified(file_name)
+            finally:
+                try:
+                    fh.close()
+                finally:
+                    cleanup_temp_file(temp_path)
+
+        # Update the summary message
+        summary = (
+            f"Pushed: {sent_counts['photo']} photos, {sent_counts['video']} videos."
+        )
+        if query.message.caption:
+            await query.message.edit_caption(summary, reply_markup=None)
+        else:
+            await query.message.edit_text(summary, reply_markup=None)
+        logger.info(f"Media group sent to channel {target_channel}")
     except MinioError as e:
         logger.error(f"MinIO error in push_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
@@ -361,56 +484,61 @@ async def notok_callback(update, context) -> None:
 
     try:
         message_text = query.message.caption or query.message.text
-        file_path = extract_filename(message_text)
-        if not file_path:
+        paths = extract_file_paths(message_text)
+        if not paths:
+            single = extract_filename(message_text)
+            if single:
+                paths = [single]
+        if not paths:
             await query.message.reply_text(
                 "Could not extract file path from the message"
             )
             return
 
-        file_name = os.path.basename(file_path)
-        media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
-
-        await query.message.edit_caption(
-            f"Post disapproved with media {file_name}!", reply_markup=None
-        )
-
-        file_prefix = (
-            f"{PHOTOS_PATH}/"
-            if file_path.startswith(f"{PHOTOS_PATH}/")
-            else f"{VIDEOS_PATH}/"
-        )
-        # Get user metadata
-        user_metadata = await storage.get_submission_metadata(file_name)
-        # Delete from MinIO
-        if await storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
-            await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+        # Update the message first
+        if query.message.caption:
+            await query.message.edit_caption("Post(s) disapproved!", reply_markup=None)
         else:
-            logger.warning(
-                f"File not found for deletion: {BUCKET_MAIN}/{file_prefix + file_name}"
+            await query.message.edit_text("Post(s) disapproved!", reply_markup=None)
+
+        for file_path in paths:
+            file_name = os.path.basename(file_path)
+            media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
+            file_prefix = (
+                f"{PHOTOS_PATH}/"
+                if file_path.startswith(f"{PHOTOS_PATH}/")
+                else f"{VIDEOS_PATH}/"
+            )
+            # Get user metadata
+            user_metadata = await storage.get_submission_metadata(file_name)
+            # Delete from MinIO if exists
+            if await storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
+                await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
+            else:
+                logger.warning(
+                    f"File not found for deletion: {BUCKET_MAIN}/{file_prefix + file_name}"
+                )
+
+            await stats.record_rejected(
+                media_type, filename=file_name, source="notok_callback"
             )
 
-        await stats.record_rejected(
-            media_type, filename=file_name, source="notok_callback"
-        )
-
-        # Notify original submitter using notify_user reply functionality
-        if (
-            user_metadata
-            and not user_metadata.get("notified")
-            and user_metadata.get("user_id")
-        ):
-            translated_media_type = "фото" if media_type == "photo" else "видео"
-            await notify_user(
-                context,
-                user_metadata.get("user_id"),
-                f"Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
-                reply_to_message_id=user_metadata.get("message_id"),
-            )
-            await storage.mark_notified(file_name)
-            logger.info(
-                f"Notified user {user_metadata.get('user_id')} about rejection of {file_name} from message_id {user_metadata.get('message_id')}"
-            )
+            if (
+                user_metadata
+                and not user_metadata.get("notified")
+                and user_metadata.get("user_id")
+            ):
+                translated_media_type = "фото" if media_type == "photo" else "видео"
+                await notify_user(
+                    context,
+                    user_metadata.get("user_id"),
+                    f"Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
+                    reply_to_message_id=user_metadata.get("message_id"),
+                )
+                await storage.mark_notified(file_name)
+                logger.info(
+                    f"Notified user {user_metadata.get('user_id')} about rejection of {file_name} from message_id {user_metadata.get('message_id')}"
+                )
     except Exception as e:
         logger.error(f"Error in notok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))

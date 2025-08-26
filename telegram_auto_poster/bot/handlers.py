@@ -484,7 +484,6 @@ async def process_media_group(
     """Process a list of media files and send as a media group."""
     processed: list[tuple[str, str]] = []
     group_id = uuid.uuid4().hex
-    media_group: list[InputMediaPhoto | InputMediaVideo] = []
     temp_files: list[tuple[str, IO[bytes]]] = []
     media_config = {
         "photo": (add_watermark_to_image, PHOTOS_PATH, ".jpg", InputMediaPhoto),
@@ -500,39 +499,79 @@ async def process_media_group(
             processing_time = time.time() - start_time
             await stats.record_processed(media_type, processing_time)
             processed.append((processed_name, media_type))
-
-        for idx, (processed_name, media_type) in enumerate(processed):
-            _, path_prefix, extension, media_class = media_config[media_type]
+        # Download processed files and send as a single media group
+        # (chunked by 10 to respect Telegram limits)
+        input_media: list[tuple[str, str, object, IO[bytes]]] = []
+        # tuple: (processed_name, object_path, input_media_obj, file_handle)
+        for processed_name, media_type in processed:
+            _, path_prefix, extension, media_cls = media_config[media_type]
+            object_path = f"{path_prefix}/{processed_name}"
             temp_path, _ = await download_from_minio(
-                f"{path_prefix}/{processed_name}", BUCKET_MAIN, extension
+                object_path, BUCKET_MAIN, extension
             )
-            caption = None
-            if idx == 0:
-                caption = (
-                    custom_text
-                    + "\nNew post found\n"
-                    + f"{path_prefix}/{processed_name}"
-                )
-            file_handle = open(temp_path, "rb")
-            media_group.append(media_class(file_handle, caption=caption))
-            temp_files.append((temp_path, file_handle))
+            fh = open(temp_path, "rb")
+            temp_files.append((temp_path, fh))
+            if media_type == "photo":
+                im = media_cls(fh)
+            else:
+                # InputMediaVideo supports supports_streaming
+                im = media_cls(fh, supports_streaming=True)
+            input_media.append((processed_name, object_path, im, fh))
 
-        if media_group:
-            msgs = await application.bot.send_media_group(
-                bot_chat_id,
-                media_group,
+        sent_paths: list[str] = []
+        if input_media:
+            # Chunk by 10
+            for i in range(0, len(input_media), 10):
+                chunk = input_media[i : i + 10]
+                media_group = [im for _, _, im, _ in chunk]
+                try:
+                    msgs = await application.bot.send_media_group(
+                        chat_id=bot_chat_id,
+                        media=media_group,
+                        read_timeout=60,
+                        write_timeout=60,
+                        connect_timeout=60,
+                        pool_timeout=60,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send media group to review channel: {e}")
+                    await stats.record_error(
+                        "telegram", f"Failed to send media group: {str(e)}"
+                    )
+                    raise
+                # Store mapping for each message
+                for (processed_name, object_path, _im, _fh), msg in zip(chunk, msgs):
+                    await storage.store_review_message(
+                        processed_name, msg.chat_id, msg.message_id
+                    )
+                    sent_paths.append(object_path)
+
+            # Send the summary message with keyboard for approval actions
+            keyboard = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton("Send to batch!", callback_data="/ok"),
+                        InlineKeyboardButton("Schedule", callback_data="/schedule"),
+                    ],
+                    [
+                        InlineKeyboardButton("Push!", callback_data="/push"),
+                        InlineKeyboardButton("No!", callback_data="/notok"),
+                    ],
+                ]
+            )
+            summary_text = custom_text + "\nNew grouped post:\n" + "\n".join(sent_paths)
+            await application.bot.send_message(
+                chat_id=bot_chat_id,
+                text=summary_text,
+                reply_markup=keyboard,
                 read_timeout=60,
                 write_timeout=60,
                 connect_timeout=60,
                 pool_timeout=60,
             )
-            for msg, (processed_name, _) in zip(msgs, processed):
-                await storage.store_review_message(
-                    processed_name, msg.chat_id, msg.message_id
-                )
             logger.info(
-                "New media group in channel: {}".format(
-                    ", ".join(name for name, _ in processed)
+                "New media group in review chat (album): {}".format(
+                    ", ".join(sent_paths)
                 )
             )
         return True

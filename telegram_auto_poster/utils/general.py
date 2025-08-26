@@ -2,7 +2,7 @@ import asyncio
 import os
 import random
 import tempfile
-from typing import Any, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 from loguru import logger
 from telegram.error import BadRequest, NetworkError, TimedOut
@@ -60,6 +60,35 @@ def extract_filename(text: str) -> Optional[str]:
 
     # Fall back to the last line if no path was found
     return lines[-1].strip()
+
+
+def extract_file_paths(text: str) -> List[str]:
+    """Extract all media paths from a message text.
+
+    The message can contain multiple lines with MinIO-style paths like
+    ``photos/processed_...`` or ``videos/processed_...``. This helper returns
+    all such lines in order of appearance.
+
+    Args:
+        text: Message text that may contain multiple media paths.
+
+    Returns:
+        List[str]: All detected media paths.
+    """
+    if not text:
+        return []
+
+    lines = [line.strip() for line in text.strip().split("\n") if line.strip()]
+    if not lines:
+        return []
+
+    photo_prefix = f"{PHOTOS_PATH}/"
+    video_prefix = f"{VIDEOS_PATH}/"
+    results: List[str] = []
+    for line in lines:
+        if line.startswith(photo_prefix) or line.startswith(video_prefix):
+            results.append(line)
+    return results
 
 
 def cleanup_temp_file(file_path: str | None) -> None:
