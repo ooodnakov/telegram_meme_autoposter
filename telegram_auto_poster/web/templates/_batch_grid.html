@@ -1,9 +1,9 @@
 {% if posts %}
 <div class="row g-3">
     {% for p in posts %}
-    <div class="col-md-4">
+    <div class="col-sm-6 col-md-4">
         {% if p.is_video %}
-        <video class="img-fluid" controls src="{{ p.url }}"></video>
+        <video class="img-fluid" controls playsinline src="{{ p.url }}"></video>
         {% elif p.is_image %}
         <img class="img-fluid" src="{{ p.url }}" alt="{{ alt_text }}" />
         {% endif %}
