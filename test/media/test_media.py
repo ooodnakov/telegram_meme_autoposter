@@ -123,7 +123,7 @@ async def test_add_watermark_to_video(mocker: MockerFixture, sample_video):
     )
     mock_storage.upload_file = mocker.AsyncMock(return_value=True)
 
-    mock_probe = mocker.patch(
+    mocker.patch(
         "telegram_auto_poster.media.video._probe_video_size",
         return_value=(1920, 1080),
     )

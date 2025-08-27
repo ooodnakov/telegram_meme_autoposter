@@ -2,7 +2,6 @@ from types import SimpleNamespace
 
 import pytest
 from pytest_mock import MockerFixture
-
 from telegram_auto_poster.bot import commands
 
 

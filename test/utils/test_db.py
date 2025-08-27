@@ -1,5 +1,4 @@
 import pytest
-
 from telegram_auto_poster.utils import db
 
 

@@ -1,5 +1,4 @@
 import pytest
-
 from telegram_auto_poster.utils.general import (
     cleanup_temp_file,
     extract_file_paths,
