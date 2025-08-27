@@ -95,10 +95,17 @@ async def test_start_command(mocker: MockerFixture, commands):
 
 
 @pytest.mark.asyncio
-async def test_help_command(mocker: MockerFixture, commands):
-    """Test the help command for a non-admin user."""
+@pytest.mark.parametrize(
+    "user_id, has_admin",
+    [
+        (456, False),
+        (123, True),
+    ],
+)
+async def test_help_command(mocker: MockerFixture, commands, user_id, has_admin):
+    """Test the help command for different user roles."""
     update = SimpleNamespace(
-        effective_user=SimpleNamespace(id=456),
+        effective_user=SimpleNamespace(id=user_id),
         message=SimpleNamespace(reply_text=mocker.AsyncMock()),
     )
     context = SimpleNamespace(bot_data={"admin_ids": [123]})
@@ -106,22 +113,7 @@ async def test_help_command(mocker: MockerFixture, commands):
     update.message.reply_text.assert_awaited_once()
     call_args = update.message.reply_text.call_args[0][0]
     assert "Команды пользователя:" in call_args
-    assert "Команды администратора:" not in call_args
-
-
-@pytest.mark.asyncio
-async def test_help_command_admin(mocker: MockerFixture, commands):
-    """Test the help command for an admin user."""
-    update = SimpleNamespace(
-        effective_user=SimpleNamespace(id=123),
-        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
-    )
-    context = SimpleNamespace(bot_data={"admin_ids": [123]})
-    await commands.help_command(update, context)
-    update.message.reply_text.assert_awaited_once()
-    call_args = update.message.reply_text.call_args[0][0]
-    assert "Команды пользователя:" in call_args
-    assert "Команды администратора:" in call_args
+    assert ("Команды администратора:" in call_args) == has_admin
 
 
 @pytest.mark.asyncio
@@ -180,8 +172,15 @@ async def test_send_batch_video_closes_file_and_cleans(
 
 
 @pytest.mark.asyncio
-async def test_stats_command(mocker: MockerFixture, commands):
-    """Test the stats command."""
+@pytest.mark.parametrize(
+    "report, expected",
+    [
+        ("report", "report"),
+        ("", "No statistics available."),
+    ],
+)
+async def test_stats_command(mocker: MockerFixture, commands, report, expected):
+    """Test the stats command with different report outputs."""
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=123),
         message=SimpleNamespace(reply_text=mocker.AsyncMock()),
@@ -189,17 +188,24 @@ async def test_stats_command(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.generate_stats_report = mocker.AsyncMock(return_value="report")
+    mock_stats.generate_stats_report = mocker.AsyncMock(return_value=report)
 
     await commands.stats_command(update, context)
 
     mock_stats.generate_stats_report.assert_awaited_once()
-    update.message.reply_text.assert_awaited_once_with("report", parse_mode="HTML")
+    update.message.reply_text.assert_awaited_once_with(expected, parse_mode="HTML")
 
 
 @pytest.mark.asyncio
-async def test_stats_command_empty_report(mocker: MockerFixture, commands):
-    """Fallback message is sent when report is empty."""
+@pytest.mark.parametrize(
+    "response, expected",
+    [
+        ("reset", "reset"),
+        ("", "Daily statistics have been reset."),
+    ],
+)
+async def test_reset_stats_command(mocker: MockerFixture, commands, response, expected):
+    """Test the reset_stats command responses."""
     update = SimpleNamespace(
         effective_user=SimpleNamespace(id=123),
         message=SimpleNamespace(reply_text=mocker.AsyncMock()),
@@ -207,50 +213,12 @@ async def test_stats_command_empty_report(mocker: MockerFixture, commands):
     context = mocker.MagicMock()
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.generate_stats_report = mocker.AsyncMock(return_value="")
-
-    await commands.stats_command(update, context)
-
-    update.message.reply_text.assert_awaited_once_with(
-        "No statistics available.", parse_mode="HTML"
-    )
-
-
-@pytest.mark.asyncio
-async def test_reset_stats_command(mocker: MockerFixture, commands):
-    """Test the reset_stats command."""
-    update = SimpleNamespace(
-        effective_user=SimpleNamespace(id=123),
-        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
-    )
-    context = mocker.MagicMock()
-    mocker.patch.object(commands, "check_admin_rights", return_value=True)
-    mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value="reset")
+    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value=response)
 
     await commands.reset_stats_command(update, context)
 
     mock_stats.reset_daily_stats.assert_awaited_once()
-    update.message.reply_text.assert_awaited_once_with("reset")
-
-
-@pytest.mark.asyncio
-async def test_reset_stats_command_empty(mocker: MockerFixture, commands):
-    """Fallback message is sent when reset response is empty."""
-    update = SimpleNamespace(
-        effective_user=SimpleNamespace(id=123),
-        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
-    )
-    context = mocker.MagicMock()
-    mocker.patch.object(commands, "check_admin_rights", return_value=True)
-    mock_stats = mocker.patch.object(commands, "stats")
-    mock_stats.reset_daily_stats = mocker.AsyncMock(return_value="")
-
-    await commands.reset_stats_command(update, context)
-
-    update.message.reply_text.assert_awaited_once_with(
-        "Daily statistics have been reset."
-    )
+    update.message.reply_text.assert_awaited_once_with(expected)
 
 
 @pytest.mark.asyncio
@@ -269,6 +237,60 @@ async def test_save_stats_command(mocker: MockerFixture, commands):
 
     mock_stats.force_save.assert_awaited_once()
     update.message.reply_text.assert_awaited_once_with("Stats saved!")
+
+
+@pytest.mark.asyncio
+async def test_stats_command_handles_exception(mocker: MockerFixture, commands):
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch.object(commands, "check_admin_rights", return_value=True)
+    mock_stats = mocker.patch.object(commands, "stats")
+    mock_stats.generate_stats_report = mocker.AsyncMock(side_effect=Exception("boom"))
+
+    await commands.stats_command(update, context)
+
+    update.message.reply_text.assert_awaited_once_with(
+        "Sorry, there was an error generating the statistics report."
+    )
+
+
+@pytest.mark.asyncio
+async def test_reset_stats_command_handles_exception(mocker: MockerFixture, commands):
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch.object(commands, "check_admin_rights", return_value=True)
+    mock_stats = mocker.patch.object(commands, "stats")
+    mock_stats.reset_daily_stats = mocker.AsyncMock(side_effect=Exception("boom"))
+
+    await commands.reset_stats_command(update, context)
+
+    update.message.reply_text.assert_awaited_once_with(
+        "Sorry, there was an error resetting the statistics."
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_stats_command_handles_exception(mocker: MockerFixture, commands):
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        message=SimpleNamespace(reply_text=mocker.AsyncMock()),
+    )
+    context = mocker.MagicMock()
+    mocker.patch.object(commands, "check_admin_rights", return_value=True)
+    mock_stats = mocker.patch.object(commands, "stats")
+    mock_stats.force_save = mocker.AsyncMock(side_effect=Exception("boom"))
+
+    await commands.save_stats_command(update, context)
+
+    update.message.reply_text.assert_awaited_once_with(
+        "Sorry, there was an error saving the statistics."
+    )
 
 
 @pytest.mark.asyncio
@@ -311,7 +333,9 @@ async def test_sch_command_uses_preview(mocker: MockerFixture, commands):
     )
     context = SimpleNamespace(bot=SimpleNamespace())
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
-    mocker.patch.object(commands.db, "get_scheduled_posts", return_value=[("p1.jpg", 0)])
+    mocker.patch.object(
+        commands.db, "get_scheduled_posts", return_value=[("p1.jpg", 0)]
+    )
     preview = mocker.patch.object(
         commands, "send_schedule_preview", new=mocker.AsyncMock()
     )
@@ -330,7 +354,9 @@ async def test_batch_command_uses_preview(mocker: MockerFixture, commands):
     )
     context = SimpleNamespace(bot=SimpleNamespace())
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
-    mocker.patch.object(commands, "list_batch_files", new=mocker.AsyncMock(return_value=["p1.jpg"]))
+    mocker.patch.object(
+        commands, "list_batch_files", new=mocker.AsyncMock(return_value=["p1.jpg"])
+    )
     preview = mocker.patch.object(
         commands, "send_batch_preview", new=mocker.AsyncMock()
     )
@@ -341,9 +367,7 @@ async def test_batch_command_uses_preview(mocker: MockerFixture, commands):
 
 
 @pytest.mark.asyncio
-async def test_send_schedule_preview_builds_markup(
-    tmp_path, mocker: MockerFixture
-):
+async def test_send_schedule_preview_builds_markup(tmp_path, mocker: MockerFixture):
     from telegram_auto_poster.bot.callbacks import send_schedule_preview
 
     temp_file = tmp_path / "t.jpg"

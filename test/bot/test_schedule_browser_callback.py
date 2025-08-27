@@ -1,7 +1,7 @@
-import pytest
 from types import SimpleNamespace
-from pytest_mock import MockerFixture
 
+import pytest
+from pytest_mock import MockerFixture
 from telegram_auto_poster.bot.callbacks import schedule_browser_callback
 
 
@@ -50,9 +50,7 @@ async def test_schedule_browser_unschedule_removes_and_shows_next(
         "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts",
         side_effect=[[("p1", 0), ("p2", 0), ("p3", 0)], [("p1", 0), ("p3", 0)]],
     )
-    remove = mocker.patch(
-        "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
-    )
+    remove = mocker.patch("telegram_auto_poster.bot.callbacks.db.remove_scheduled_post")
     exists = mocker.patch(
         "telegram_auto_poster.bot.callbacks.storage.file_exists",
         new=mocker.AsyncMock(return_value=True),
@@ -91,9 +89,7 @@ async def test_schedule_browser_push_sends_and_shows_next(mocker: MockerFixture)
         "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts",
         side_effect=[[("p2.mp4", 0), ("p1.mp4", 0)], [("p1.mp4", 0)]],
     )
-    mocker.patch(
-        "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
-    )
+    mocker.patch("telegram_auto_poster.bot.callbacks.db.remove_scheduled_post")
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.storage.file_exists",
         new=mocker.AsyncMock(return_value=False),
@@ -139,9 +135,7 @@ async def test_schedule_browser_unschedule_last_shows_none(mocker: MockerFixture
         "telegram_auto_poster.bot.callbacks.db.get_scheduled_posts",
         side_effect=[[("p1", 0)], []],
     )
-    mocker.patch(
-        "telegram_auto_poster.bot.callbacks.db.remove_scheduled_post"
-    )
+    mocker.patch("telegram_auto_poster.bot.callbacks.db.remove_scheduled_post")
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.storage.file_exists",
         new=mocker.AsyncMock(return_value=False),

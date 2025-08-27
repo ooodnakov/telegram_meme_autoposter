@@ -24,9 +24,11 @@ def stats_module(monkeypatch, mocker):
     monkeypatch.setenv("REDIS_PREFIX", "telegram_auto_poster_test")
 
     import telegram_auto_poster.config as cfg
+
     importlib.reload(cfg)
-    import telegram_auto_poster.utils.storage as storage_module
     import telegram_auto_poster.utils.stats as stats_module
+    import telegram_auto_poster.utils.storage as storage_module
+
     importlib.reload(storage_module)
     importlib.reload(stats_module)
     return stats_module
@@ -64,4 +66,3 @@ async def test_generate_stats_report_format(stats_module, mocker):
     assert "✨" in report
     assert "🛑" in report
     assert "🗃️" in report
-

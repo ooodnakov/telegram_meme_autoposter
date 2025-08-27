@@ -1,7 +1,8 @@
-import pytest
 from types import SimpleNamespace
-from telegram_auto_poster.bot.handlers import process_media_group
+
+import pytest
 from telegram import InputMediaPhoto, InputMediaVideo
+from telegram_auto_poster.bot.handlers import process_media_group
 
 
 @pytest.mark.asyncio

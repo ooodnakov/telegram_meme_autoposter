@@ -1,7 +1,7 @@
-import pytest
 from types import SimpleNamespace
-from pytest_mock import MockerFixture
 
+import pytest
+from pytest_mock import MockerFixture
 from telegram_auto_poster.bot.callbacks import unschedule_callback
 
 
@@ -19,4 +19,3 @@ async def test_unschedule_callback_invalid_data(mocker: MockerFixture):
     await unschedule_callback(update, SimpleNamespace())
 
     message.reply_text.assert_awaited_once_with("Invalid request")
-

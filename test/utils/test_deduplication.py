@@ -1,16 +1,16 @@
 import os
+
 import pytest
-from PIL import Image
 from fakeredis import FakeStrictRedis
 from loguru import logger
-
+from PIL import Image
 from telegram_auto_poster.utils.deduplication import (
+    DEDUPLICATION_SET_KEY,
+    add_approved_hash,
     calculate_image_hash,
     calculate_video_hash,
     check_and_add_hash,
     is_duplicate_hash,
-    add_approved_hash,
-    DEDUPLICATION_SET_KEY,
 )
 
 

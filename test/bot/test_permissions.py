@@ -1,8 +1,7 @@
-import pytest
 from types import SimpleNamespace
 
+import pytest
 from pytest_mock import MockerFixture
-
 from telegram_auto_poster.bot.permissions import check_admin_rights
 from telegram_auto_poster.config import (
     BotConfig,
