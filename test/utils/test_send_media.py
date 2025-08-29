@@ -1,5 +1,6 @@
 import asyncio
 import os
+from unittest.mock import call
 
 import pytest
 from telegram.error import TimedOut
@@ -78,7 +79,7 @@ async def test_send_media_retries_on_network_error(tmp_path, bot, mocker):
         await send_media_to_telegram(bot, 123, str(file_path))
 
     assert bot.send_photo.await_count == 3
-    assert sleep.await_count == 3
+    assert sleep.await_args_list == [call(2), call(4), call(8)]
     assert record_error.await_count == 4
 
 
