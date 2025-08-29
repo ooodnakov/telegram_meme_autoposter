@@ -96,15 +96,8 @@ async def test_download_from_minio_missing_object_records_error_and_cleanup(monk
     monkeypatch.setattr(storage, "file_exists", AsyncMock(return_value=True))
     monkeypatch.setattr(storage.client, "get_object", AsyncMock())
     monkeypatch.setattr(
-        storage.client, "fget_object", AsyncMock(side_effect=Exception("boom"))
+        storage, "download_file", AsyncMock(side_effect=Exception("boom"))
     )
-
-    async def fake_download(object_name, bucket, file_path):
-        await storage.client.fget_object(
-            bucket_name=bucket, object_name=object_name, file_path=file_path
-        )
-
-    monkeypatch.setattr(storage, "download_file", fake_download)
     monkeypatch.setattr(stats, "record_error", AsyncMock())
 
     unlink_calls = []
