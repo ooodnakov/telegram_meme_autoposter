@@ -1,0 +1,25 @@
+name: Respond to Code Review Comment
+
+# This workflow triggers whenever a new comment is created on an issue or pull request.
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  post-fix-comment:
+    # This job only runs for comments on pull requests that contain "## Code Review".
+    if: github.event.issue.pull_request && contains(github.event.comment.body, '## Code Review')
+    runs-on: ubuntu-latest
+    permissions:
+      # The action needs permission to write comments on pull requests.
+      pull-requests: write
+    steps:
+      - name: Post "fix it" comment
+        uses: mshick/add-pr-comment@v2
+        with:
+          # The content of the new comment to be posted.
+          message: "@codex fix mentioned problems in this pr"
+          # By setting a unique message-id, we ensure a new comment is posted
+          # for each triggering comment, rather than updating an old one.
+          # We use the ID of the trigger comment to guarantee uniqueness.
+          message-id: "codex-fix-${{ github.event.comment.id }}"
