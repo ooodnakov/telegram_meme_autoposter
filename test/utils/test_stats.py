@@ -62,6 +62,10 @@ async def test_generate_stats_report_sections(stats_instance):
     assert "<b>Last 24 Hours:</b>" in report
     assert "<b>Performance Metrics:</b>" in report
     assert "<b>All-Time Totals:</b>" in report
+    assert report.count("<b>Photos Processed:</b> 1") == 2
+    assert report.count("<b>Videos Processed:</b> 1") == 2
+    assert "<b>Avg Photo Processing:</b> 1.20s" in report
+    assert "<b>Avg Upload:</b> 0.50s" in report
 
 
 @pytest.mark.asyncio
@@ -69,7 +73,7 @@ async def test_reset_daily_stats_clears_counters(stats_instance):
     for name in stats_instance.names:
         await stats_instance._increment(name)
     await stats_instance.r.set(_redis_key("hourly", "1"), 5)
-
+    await stats_instance.r.set(_redis_meta_key(), "old-dummy-value")
     old_meta = await stats_instance.r.get(_redis_meta_key())
 
     await stats_instance.reset_daily_stats()
