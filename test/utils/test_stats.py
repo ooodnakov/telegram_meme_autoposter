@@ -5,7 +5,7 @@ import pytest_asyncio
 from telegram_auto_poster.config import CONFIG
 from telegram_auto_poster.utils import db
 from telegram_auto_poster.utils.stats import MediaStats
-from telegram_auto_poster.utils.db import _redis_key
+from telegram_auto_poster.utils.db import _redis_key, _redis_meta_key
 
 
 @pytest_asyncio.fixture
@@ -46,3 +46,48 @@ async def test_get_busiest_hour(stats_instance):
     await stats_instance.r.set(_redis_key("hourly", "2"), 3)
     await stats_instance.r.set(_redis_key("hourly", "5"), 7)
     assert await stats_instance.get_busiest_hour() == (5, 7)
+
+
+@pytest.mark.asyncio
+async def test_generate_stats_report_sections(stats_instance):
+    for name in ("photos_processed", "videos_processed"):
+        await stats_instance._increment(name)
+        await stats_instance._increment(name, scope="total")
+
+    await stats_instance._record_duration("photo_processing", 1.2)
+    await stats_instance._record_duration("upload", 0.5)
+
+    report = await stats_instance.generate_stats_report()
+
+    assert "<b>Last 24 Hours:</b>" in report
+    assert "<b>Performance Metrics:</b>" in report
+    assert "<b>All-Time Totals:</b>" in report
+
+
+@pytest.mark.asyncio
+async def test_reset_daily_stats_clears_counters(stats_instance):
+    for name in stats_instance.names:
+        await stats_instance._increment(name)
+    await stats_instance.r.set(_redis_key("hourly", "1"), 5)
+
+    old_meta = await stats_instance.r.get(_redis_meta_key())
+
+    await stats_instance.reset_daily_stats()
+
+    for name in stats_instance.names:
+        assert await stats_instance.r.get(_redis_key("daily", name)) == "0"
+    for hour in range(24):
+        assert await stats_instance.r.get(_redis_key("hourly", str(hour))) is None
+
+    new_meta = await stats_instance.r.get(_redis_meta_key())
+    assert new_meta and new_meta != old_meta
+
+
+@pytest.mark.asyncio
+async def test_force_save_swallows_errors(stats_instance, mocker):
+    mock_save = mocker.AsyncMock(side_effect=Exception("boom"))
+    mocker.patch.object(stats_instance.r, "save", mock_save)
+
+    await stats_instance.force_save()
+
+    mock_save.assert_awaited_once()
