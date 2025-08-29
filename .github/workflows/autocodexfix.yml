@@ -2,7 +2,7 @@ name: Respond to Code Review Comment
 
 # This workflow triggers whenever a new comment is created on an issue or pull request.
 on:
-  issue_comment:
+  pull_request_review_comment:
     types: [created]
 
 jobs:
