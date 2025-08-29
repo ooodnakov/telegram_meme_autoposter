@@ -1,12 +1,17 @@
 import os
+from unittest.mock import AsyncMock
 
 import pytest
 from telegram_auto_poster.utils.general import (
+    MinioError,
     cleanup_temp_file,
+    download_from_minio,
     extract_file_paths,
     extract_filename,
     get_file_extension,
 )
+from telegram_auto_poster.utils.stats import stats
+from telegram_auto_poster.utils.storage import storage
 
 
 @pytest.mark.parametrize(
@@ -81,3 +86,32 @@ def test_cleanup_temp_file_logs_error(tmp_path, monkeypatch):
 )
 def test_get_file_extension(filename, expected_extension):
     assert get_file_extension(filename) == expected_extension
+
+
+@pytest.mark.asyncio
+async def test_download_from_minio_missing_object_records_error_and_cleanup(monkeypatch):
+    object_name = "photos/example.jpg"
+    bucket = "bucket"
+
+    monkeypatch.setattr(storage, "file_exists", AsyncMock(return_value=True))
+    monkeypatch.setattr(storage.client, "get_object", AsyncMock())
+    monkeypatch.setattr(
+        storage, "download_file", AsyncMock(side_effect=Exception("boom"))
+    )
+    monkeypatch.setattr(stats, "record_error", AsyncMock())
+
+    unlink_calls = []
+
+    def fake_unlink(path):
+        unlink_calls.append(path)
+
+    monkeypatch.setattr(os, "unlink", fake_unlink)
+
+    with pytest.raises(MinioError):
+        await download_from_minio(object_name, bucket, extension=None)
+
+    assert stats.record_error.await_count == 1
+    assert stats.record_error.await_args.args[0] == "storage"
+    assert len(unlink_calls) == 1
+    assert unlink_calls[0].endswith(".jpg")
+    storage.client.get_object.assert_not_called()
