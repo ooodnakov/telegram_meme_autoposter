@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from telegram_auto_poster.utils.general import (
     cleanup_temp_file,
@@ -30,6 +32,7 @@ def test_extract_filename(text, expected):
         ("", []),
         ("photos/a.jpg\nphotos/b.jpg", ["photos/a.jpg", "photos/b.jpg"]),
         ("videos/a.mp4", ["videos/a.mp4"]),
+        ("   ", []),
     ],
 )
 def test_extract_file_paths(text, expected):
@@ -52,6 +55,18 @@ def test_cleanup_temp_file_non_existent_file(tmp_path):
     # Should not raise when file does not exist
     non_existent_file = tmp_path / "non_existent_file.txt"
     cleanup_temp_file(str(non_existent_file))
+
+
+def test_cleanup_temp_file_logs_error(tmp_path, monkeypatch):
+    temp_file = tmp_path / "temp.txt"
+    temp_file.write_text("data")
+
+    def boom(path):  # pragma: no cover - raises intentionally
+        raise OSError("fail")
+
+    monkeypatch.setattr(os, "unlink", boom)
+    cleanup_temp_file(str(temp_file))
+    assert temp_file.exists()
 
 
 @pytest.mark.parametrize(
