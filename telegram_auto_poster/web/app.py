@@ -303,7 +303,7 @@ async def send_batch(key: str | None = Form(None)) -> Response:
     return RedirectResponse(url=f"/batch{suffix}", status_code=303)
 
 
-@app.post("/action")
+@app.post("/action", dependencies=[Depends(require_access_key)])
 async def handle_action(
     request: Request,
     path: str | None = Form(None),
@@ -543,7 +543,7 @@ async def queue(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("queue.html", context)
 
 
-@app.post("/queue/unschedule")
+@app.post("/queue/unschedule", dependencies=[Depends(require_access_key)])
 async def unschedule(
     request: Request, path: str = Form(...), key: str | None = Form(None)
 ) -> Response:
