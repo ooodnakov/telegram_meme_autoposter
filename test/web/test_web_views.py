@@ -135,9 +135,21 @@ def test_handle_action_push_single(mocker):
         "telegram_auto_poster.web.app._push_post",
         new=mocker.AsyncMock(),
     )
+    CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         resp = client.post(
             "/action",
+            data={
+                "path": f"{PHOTOS_PATH}/a.jpg",
+                "action": "push",
+                "origin": "suggestions",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 401
+
+        resp = client.post(
+            "/action?key=token",
             data={
                 "path": f"{PHOTOS_PATH}/a.jpg",
                 "action": "push",
@@ -156,14 +168,20 @@ def test_handle_action_push_group(mocker):
         "telegram_auto_poster.web.app._push_post_group",
         new=mocker.AsyncMock(),
     )
+    CONFIG.web.access_key = SecretStr("token")
     data = {
         "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
         "action": "push",
         "origin": "posts",
-        "key": "token",
     }
     with TestClient(app) as client:
         resp = client.post("/action", data=data, follow_redirects=False)
+        assert resp.status_code == 401
+
+        data["key"] = "token"
+        resp = client.post(
+            "/action?key=token", data=data, follow_redirects=False
+        )
         assert resp.status_code == 303
         assert resp.headers["location"] == "/posts?key=token"
     group.assert_awaited_once_with(
@@ -176,14 +194,21 @@ def test_handle_action_schedule(mocker):
         "telegram_auto_poster.web.app._schedule_post",
         new=mocker.AsyncMock(),
     )
+    CONFIG.web.access_key = SecretStr("token")
     data = {
         "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
         "action": "schedule",
-        "key": "token",
     }
     with TestClient(app) as client:
         resp = client.post("/action", data=data, follow_redirects=False)
+        assert resp.status_code == 401
+
+        data["key"] = "token"
+        resp = client.post(
+            "/action?key=token", data=data, follow_redirects=False
+        )
         assert resp.status_code == 303
+        assert resp.headers["location"] == "/suggestions?key=token"
     assert sched.await_args_list == [
         call(f"{PHOTOS_PATH}/a.jpg"),
         call(f"{PHOTOS_PATH}/b.jpg"),
@@ -195,10 +220,22 @@ def test_handle_action_notok_background(mocker):
         "telegram_auto_poster.web.app._notok_post",
         new=mocker.AsyncMock(),
     )
+    CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         resp = client.post(
             "/action",
             data={"path": f"{PHOTOS_PATH}/a.jpg", "action": "notok"},
+            headers={"X-Background-Request": "true"},
+        )
+        assert resp.status_code == 401
+
+        resp = client.post(
+            "/action?key=token",
+            data={
+                "path": f"{PHOTOS_PATH}/a.jpg",
+                "action": "notok",
+                "key": "token",
+            },
             headers={"X-Background-Request": "true"},
         )
         assert resp.status_code == 200
@@ -219,9 +256,17 @@ def test_unschedule_removes_and_redirects(mocker):
         "telegram_auto_poster.web.app.storage.delete_file",
         new=mocker.AsyncMock(),
     )
+    CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         resp = client.post(
             "/queue/unschedule",
+            data={"path": f"{PHOTOS_PATH}/a.jpg"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 401
+
+        resp = client.post(
+            "/queue/unschedule?key=token",
             data={"path": f"{PHOTOS_PATH}/a.jpg", "key": "token"},
             follow_redirects=False,
         )
@@ -245,10 +290,18 @@ def test_unschedule_background_returns_json(mocker):
         "telegram_auto_poster.web.app.storage.delete_file",
         new=mocker.AsyncMock(),
     )
+    CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         resp = client.post(
             "/queue/unschedule",
             data={"path": f"{PHOTOS_PATH}/a.jpg"},
+            headers={"X-Background-Request": "true"},
+        )
+        assert resp.status_code == 401
+
+        resp = client.post(
+            "/queue/unschedule?key=token",
+            data={"path": f"{PHOTOS_PATH}/a.jpg", "key": "token"},
             headers={"X-Background-Request": "true"},
         )
         assert resp.status_code == 200
