@@ -85,21 +85,18 @@ def require_access_key(request: Request) -> None:
         )
 
 
-async def _gather_posts(
-    only_suggestions: bool,
-    *,
-    offset: int = 0,
-    limit: int | None = None,
-) -> list[dict]:
+async def _list_media(
+    prefix_type: str, *, offset: int = 0, limit: int | None = None
+) -> list[str]:
     photos_count = await storage.count_files(
-        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_"
+        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/{prefix_type}_"
     )
     objects: list[str] = []
     if offset < photos_count:
         photo_limit = None if limit is None else min(limit, photos_count - offset)
         objects += await storage.list_files(
             BUCKET_MAIN,
-            prefix=f"{PHOTOS_PATH}/processed_",
+            prefix=f"{PHOTOS_PATH}/{prefix_type}_",
             offset=offset,
             limit=photo_limit,
         )
@@ -111,10 +108,20 @@ async def _gather_posts(
     if remaining is None or remaining > 0:
         objects += await storage.list_files(
             BUCKET_MAIN,
-            prefix=f"{VIDEOS_PATH}/processed_",
+            prefix=f"{VIDEOS_PATH}/{prefix_type}_",
             offset=video_offset,
             limit=remaining,
         )
+    return objects
+
+
+async def _gather_posts(
+    only_suggestions: bool,
+    *,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[dict]:
+    objects = await _list_media("processed", offset=offset, limit=limit)
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
     for obj in objects:
@@ -151,30 +158,7 @@ async def _gather_posts(
 
 
 async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[dict]:
-    photos_count = await storage.count_files(
-        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_"
-    )
-    objects: list[str] = []
-    if offset < photos_count:
-        photo_limit = None if limit is None else min(limit, photos_count - offset)
-        objects += await storage.list_files(
-            BUCKET_MAIN,
-            prefix=f"{PHOTOS_PATH}/batch_",
-            offset=offset,
-            limit=photo_limit,
-        )
-        video_offset = 0
-        remaining = None if limit is None else limit - len(objects)
-    else:
-        video_offset = offset - photos_count
-        remaining = None if limit is None else limit
-    if remaining is None or remaining > 0:
-        objects += await storage.list_files(
-            BUCKET_MAIN,
-            prefix=f"{VIDEOS_PATH}/batch_",
-            offset=video_offset,
-            limit=remaining,
-        )
+    objects = await _list_media("batch", offset=offset, limit=limit)
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
     for obj in objects:
