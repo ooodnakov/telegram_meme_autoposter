@@ -28,6 +28,7 @@ from telegram_auto_poster.utils.db import (
     add_scheduled_post,
     decrement_batch_count,
     get_scheduled_posts,
+    get_scheduled_posts_count,
     increment_batch_count,
     remove_scheduled_post,
 )
@@ -58,6 +59,18 @@ bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())
 TARGET_CHANNEL = CONFIG.telegram.target_channel
 QUIET_START = CONFIG.schedule.quiet_hours_start
 QUIET_END = CONFIG.schedule.quiet_hours_end
+ITEMS_PER_PAGE = 30
+
+
+def _paginate(
+    total: int, page: int, per_page: int = ITEMS_PER_PAGE
+) -> tuple[int, int, int]:
+    """Return sanitized page number, total pages and offset."""
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+    return page, total_pages, offset
 
 
 def require_access_key(request: Request) -> None:
@@ -72,10 +85,43 @@ def require_access_key(request: Request) -> None:
         )
 
 
-async def _gather_posts(only_suggestions: bool) -> list[dict]:
+async def _list_media(
+    prefix_type: str, *, offset: int = 0, limit: int | None = None
+) -> list[str]:
+    photos_count = await storage.count_files(
+        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/{prefix_type}_"
+    )
     objects: list[str] = []
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+    if offset < photos_count:
+        photo_limit = None if limit is None else min(limit, photos_count - offset)
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{PHOTOS_PATH}/{prefix_type}_",
+            offset=offset,
+            limit=photo_limit,
+        )
+        video_offset = 0
+        remaining = None if limit is None else limit - len(objects)
+    else:
+        video_offset = offset - photos_count
+        remaining = None if limit is None else limit
+    if remaining is None or remaining > 0:
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{VIDEOS_PATH}/{prefix_type}_",
+            offset=video_offset,
+            limit=remaining,
+        )
+    return objects
+
+
+async def _gather_posts(
+    only_suggestions: bool,
+    *,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[dict]:
+    objects = await _list_media("processed", offset=offset, limit=limit)
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
     for obj in objects:
@@ -111,10 +157,8 @@ async def _gather_posts(only_suggestions: bool) -> list[dict]:
     return posts
 
 
-async def _gather_batch() -> list[dict]:
-    objects: list[str] = []
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[dict]:
+    objects = await _list_media("batch", offset=offset, limit=limit)
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
     for obj in objects:
@@ -196,14 +240,22 @@ async def _render_posts_page(
     alt_text: str,
     empty_message: str,
     template_name: str,
+    page: int = 1,
+    per_page: int = ITEMS_PER_PAGE,
 ) -> HTMLResponse:
-    posts = await _gather_posts(only_suggestions)
+    count = (
+        await _get_suggestions_count() if only_suggestions else await _get_posts_count()
+    )
+    page, total_pages, offset = _paginate(count, page, per_page)
+    posts = await _gather_posts(only_suggestions, offset=offset, limit=per_page)
     context = {
         "request": request,
         "posts": posts,
         "origin": origin,
         "alt_text": alt_text,
         "empty_message": empty_message,
+        "page": page,
+        "total_pages": total_pages,
     }
     template = (
         "_post_grid.html"
@@ -244,7 +296,7 @@ async def index(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def suggestions_view(request: Request) -> HTMLResponse:
+async def suggestions_view(request: Request, page: int = 1) -> HTMLResponse:
     return await _render_posts_page(
         request,
         only_suggestions=True,
@@ -252,6 +304,7 @@ async def suggestions_view(request: Request) -> HTMLResponse:
         alt_text="suggestion",
         empty_message="No suggestions pending.",
         template_name="suggestions.html",
+        page=page,
     )
 
 
@@ -260,7 +313,7 @@ async def suggestions_view(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def posts_view(request: Request) -> HTMLResponse:
+async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
     return await _render_posts_page(
         request,
         only_suggestions=False,
@@ -268,6 +321,7 @@ async def posts_view(request: Request) -> HTMLResponse:
         alt_text="post",
         empty_message="No posts pending.",
         template_name="posts.html",
+        page=page,
     )
 
 
@@ -276,11 +330,25 @@ async def posts_view(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def batch_view(request: Request) -> HTMLResponse:
-    posts = await _gather_batch()
-    return templates.TemplateResponse(
-        "batch.html", {"request": request, "posts": posts}
+async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
+    count = await _get_batch_count()
+    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
+    posts_page = await _gather_batch(offset=offset, limit=ITEMS_PER_PAGE)
+    context = {
+        "request": request,
+        "posts": posts_page,
+        "origin": "batch",
+        "alt_text": "batch item",
+        "empty_message": "Batch is empty.",
+        "page": page,
+        "total_pages": total_pages,
+    }
+    template = (
+        "_batch_grid.html"
+        if request.headers.get("HX-Request", "").lower() == "true"
+        else "batch.html"
     )
+    return templates.TemplateResponse(template, context)
 
 
 @app.post("/batch/send", dependencies=[Depends(require_access_key)])
@@ -515,8 +583,12 @@ async def _remove_batch(path: str) -> None:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def queue(request: Request) -> HTMLResponse:
-    raw_posts = await run_in_threadpool(get_scheduled_posts)
+async def queue(request: Request, page: int = 1) -> HTMLResponse:
+    count = await run_in_threadpool(get_scheduled_posts_count)
+    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
+    raw_posts = await run_in_threadpool(
+        get_scheduled_posts, offset=offset, limit=ITEMS_PER_PAGE
+    )
     posts: list[dict] = []
     for path, ts in raw_posts:
         url = await storage.get_presigned_url(path)
@@ -539,7 +611,12 @@ async def queue(request: Request) -> HTMLResponse:
             }
         )
 
-    context = {"request": request, "posts": posts}
+    context = {
+        "request": request,
+        "posts": posts,
+        "page": page,
+        "total_pages": total_pages,
+    }
     return templates.TemplateResponse("queue.html", context)
 
 

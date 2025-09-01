@@ -1,3 +1,5 @@
+{% set key = request.query_params.get('key') %}
+{% set key_query = '&key=' ~ key if key else '' %}
 {% if posts %}
 <div class="row g-3">
     {% for p in posts %}
@@ -51,4 +53,35 @@
 </div>
 {% else %}
 <div class="alert alert-info" role="alert">{{ empty_message }}</div>
+{% endif %}
+{% if total_pages > 1 %}
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center mt-3">
+        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+            {% if page == 1 %}
+            <span class="page-link">Previous</span>
+            {% else %}
+            <a class="page-link"
+               hx-get="/batch?page={{ page - 1 }}{{ key_query }}"
+               hx-target="#batch-grid"
+               hx-swap="innerHTML"
+               href="/batch?page={{ page - 1 }}{{ key_query }}">Previous</a>
+            {% endif %}
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+        </li>
+        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+            {% if page == total_pages %}
+            <span class="page-link">Next</span>
+            {% else %}
+            <a class="page-link"
+               hx-get="/batch?page={{ page + 1 }}{{ key_query }}"
+               hx-target="#batch-grid"
+               hx-swap="innerHTML"
+               href="/batch?page={{ page + 1 }}{{ key_query }}">Next</a>
+            {% endif %}
+        </li>
+    </ul>
+</nav>
 {% endif %}

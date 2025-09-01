@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
 {% set key = request.query_params.get('key') %}
-{% set key_query = '?key=' ~ key if key else '' %}
+{% set query_suffix = '?page=' ~ page ~ ('&key=' ~ key if key else '') %}
+{% set key_only_query = '?key=' ~ key if key else '' %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="m-0">Batch</h1>
-    <a class="btn btn-sm btn-outline-secondary" href="/batch{{ key_query }}">Refresh</a>
+    <a class="btn btn-sm btn-outline-secondary" href="/batch{{ query_suffix }}">Refresh</a>
 </div>
 {% if posts %}
 <form
     method="post"
-    action="/batch/send{{ key_query }}"
+    action="/batch/send{{ key_only_query }}"
     onsubmit="return confirm('Send whole batch?');"
 >
     <input type="hidden" name="key" value="{{ key }}" />
@@ -18,8 +19,10 @@
     </button>
 </form>
 {% endif %}
-{% set origin = "batch" %}
-{% set alt_text = "batch item" %}
-{% set empty_message = "Batch is empty." %}
-{% include "_batch_grid.html" %}
+<div id="batch-grid">
+    {% set origin = "batch" %}
+    {% set alt_text = "batch item" %}
+    {% set empty_message = "Batch is empty." %}
+    {% include "_batch_grid.html" %}
+</div>
 {% endblock %}
