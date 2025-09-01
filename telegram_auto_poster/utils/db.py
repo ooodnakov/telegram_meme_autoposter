@@ -106,7 +106,11 @@ def add_scheduled_post(scheduled_time: int, file_path: str) -> None:
 
 
 def get_scheduled_posts(
-    min_score: int = 0, max_score: int | None = None
+    min_score: int = 0,
+    max_score: int | None = None,
+    *,
+    offset: int = 0,
+    limit: int | None = None,
 ) -> list[tuple[str, float]]:
     """Retrieve scheduled posts by score (Unix timestamp).
 
@@ -124,7 +128,21 @@ def get_scheduled_posts(
     # Use score-based range; default to all (0 .. +inf)
     min_bound = min_score
     max_bound = "+inf" if max_score is None else max_score
-    return client.zrangebyscore(key, min_bound, max_bound, withscores=True)
+    kwargs = {"withscores": True}
+    if offset or limit is not None:
+        kwargs["start"] = offset
+        kwargs["num"] = limit
+    return client.zrangebyscore(key, min_bound, max_bound, **kwargs)
+
+
+def get_scheduled_posts_count(min_score: int = 0, max_score: int | None = None) -> int:
+    """Return the number of scheduled posts in the given score range."""
+
+    client = get_redis_client()
+    key = _redis_key("scheduled_posts", "schedule")
+    min_bound = min_score
+    max_bound = "+inf" if max_score is None else max_score
+    return client.zcount(key, min_bound, max_bound)
 
 
 def remove_scheduled_post(file_path: str) -> None:
