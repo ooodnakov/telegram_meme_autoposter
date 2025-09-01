@@ -58,6 +58,7 @@ bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())
 TARGET_CHANNEL = CONFIG.telegram.target_channel
 QUIET_START = CONFIG.schedule.quiet_hours_start
 QUIET_END = CONFIG.schedule.quiet_hours_end
+ITEMS_PER_PAGE = 30
 
 
 def require_access_key(request: Request) -> None:
@@ -196,14 +197,22 @@ async def _render_posts_page(
     alt_text: str,
     empty_message: str,
     template_name: str,
+    page: int = 1,
+    per_page: int = ITEMS_PER_PAGE,
 ) -> HTMLResponse:
     posts = await _gather_posts(only_suggestions)
+    total_pages = max(1, (len(posts) + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    posts = posts[start : start + per_page]
     context = {
         "request": request,
         "posts": posts,
         "origin": origin,
         "alt_text": alt_text,
         "empty_message": empty_message,
+        "page": page,
+        "total_pages": total_pages,
     }
     template = (
         "_post_grid.html"
@@ -244,7 +253,7 @@ async def index(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def suggestions_view(request: Request) -> HTMLResponse:
+async def suggestions_view(request: Request, page: int = 1) -> HTMLResponse:
     return await _render_posts_page(
         request,
         only_suggestions=True,
@@ -252,6 +261,7 @@ async def suggestions_view(request: Request) -> HTMLResponse:
         alt_text="suggestion",
         empty_message="No suggestions pending.",
         template_name="suggestions.html",
+        page=page,
     )
 
 
@@ -260,7 +270,7 @@ async def suggestions_view(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def posts_view(request: Request) -> HTMLResponse:
+async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
     return await _render_posts_page(
         request,
         only_suggestions=False,
@@ -268,6 +278,7 @@ async def posts_view(request: Request) -> HTMLResponse:
         alt_text="post",
         empty_message="No posts pending.",
         template_name="posts.html",
+        page=page,
     )
 
 
@@ -276,11 +287,27 @@ async def posts_view(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def batch_view(request: Request) -> HTMLResponse:
+async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
     posts = await _gather_batch()
-    return templates.TemplateResponse(
-        "batch.html", {"request": request, "posts": posts}
+    total_pages = max(1, (len(posts) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * ITEMS_PER_PAGE
+    posts_page = posts[start : start + ITEMS_PER_PAGE]
+    context = {
+        "request": request,
+        "posts": posts_page,
+        "origin": "batch",
+        "alt_text": "batch item",
+        "empty_message": "Batch is empty.",
+        "page": page,
+        "total_pages": total_pages,
+    }
+    template = (
+        "_batch_grid.html"
+        if request.headers.get("HX-Request", "").lower() == "true"
+        else "batch.html"
     )
+    return templates.TemplateResponse(template, context)
 
 
 @app.post("/batch/send", dependencies=[Depends(require_access_key)])
@@ -515,7 +542,7 @@ async def _remove_batch(path: str) -> None:
     response_class=HTMLResponse,
     dependencies=[Depends(require_access_key)],
 )
-async def queue(request: Request) -> HTMLResponse:
+async def queue(request: Request, page: int = 1) -> HTMLResponse:
     raw_posts = await run_in_threadpool(get_scheduled_posts)
     posts: list[dict] = []
     for path, ts in raw_posts:
@@ -539,7 +566,16 @@ async def queue(request: Request) -> HTMLResponse:
             }
         )
 
-    context = {"request": request, "posts": posts}
+    total_pages = max(1, (len(posts) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * ITEMS_PER_PAGE
+    posts_page = posts[start : start + ITEMS_PER_PAGE]
+    context = {
+        "request": request,
+        "posts": posts_page,
+        "page": page,
+        "total_pages": total_pages,
+    }
     return templates.TemplateResponse("queue.html", context)
 
 

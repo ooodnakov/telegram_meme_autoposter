@@ -3,10 +3,10 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="m-0">User Suggestions</h1>
     {% set key = request.query_params.get('key') %}
-    {% set key_query = '?key=' ~ key if key else '' %}
+    {% set query_suffix = '?page=' ~ page ~ ('&key=' ~ key if key else '') %}
     <button
         class="btn btn-sm btn-outline-secondary"
-        hx-get="/suggestions{{ key_query }}"
+        hx-get="/suggestions{{ query_suffix }}"
         hx-target="#suggestions-grid"
         hx-swap="innerHTML"
     >
