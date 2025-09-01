@@ -546,12 +546,14 @@ class MinioStorage:
             )
             return False
 
-    async def list_files(self, bucket, prefix=None):
+    async def list_files(self, bucket, prefix=None, *, offset=0, limit=None):
         """List objects in a bucket and record how long the listing took.
 
         Args:
             bucket: Bucket name.
             prefix: Optional prefix filter.
+            offset: Number of leading objects to skip.
+            limit: Maximum number of objects to return.
 
         Returns:
             list: List of object names.
@@ -559,11 +561,16 @@ class MinioStorage:
         start_time = time.time()
         try:
             objects = []
-            results = await self.client.list_objects(
-                bucket, prefix=prefix, recursive=True
-            )
-            for obj in results:
+            results = self.client.list_objects(bucket, prefix=prefix, recursive=True)
+            index = 0
+            async for obj in results:
+                if index < offset:
+                    index += 1
+                    continue
                 objects.append(obj.object_name)
+                index += 1
+                if limit is not None and len(objects) >= limit:
+                    break
             logger.debug(
                 f"Listed {len(objects)} objects in {bucket} with prefix {prefix}"
             )
@@ -587,6 +594,37 @@ class MinioStorage:
                 f"Unexpected error listing objects in {bucket} with prefix {prefix}: {e}",
             )
             return []
+
+    async def count_files(self, bucket, prefix=None):
+        """Return the number of objects matching ``prefix`` in ``bucket``."""
+
+        start_time = time.time()
+        try:
+            count = 0
+            results = self.client.list_objects(bucket, prefix=prefix, recursive=True)
+            async for _ in results:
+                count += 1
+            duration = time.time() - start_time
+            await _stats_record_operation("list", duration)
+            return count
+        except MinioException as e:
+            logger.error(
+                f"MinIO error listing objects in {bucket} with prefix {prefix}: {e}"
+            )
+            await _stats_record_error(
+                "storage",
+                f"Failed to count objects in {bucket} with prefix {prefix}: {e}",
+            )
+            return 0
+        except Exception as e:
+            logger.error(
+                f"Error counting objects in {bucket} with prefix {prefix}: {e}"
+            )
+            await _stats_record_error(
+                "storage",
+                f"Unexpected error counting objects in {bucket} with prefix {prefix}: {e}",
+            )
+            return 0
 
     async def file_exists(self, object_name, bucket):
         """Check if a file exists in MinIO by attempting to stat it.

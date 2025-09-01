@@ -28,6 +28,7 @@ from telegram_auto_poster.utils.db import (
     add_scheduled_post,
     decrement_batch_count,
     get_scheduled_posts,
+    get_scheduled_posts_count,
     increment_batch_count,
     remove_scheduled_post,
 )
@@ -61,6 +62,17 @@ QUIET_END = CONFIG.schedule.quiet_hours_end
 ITEMS_PER_PAGE = 30
 
 
+def _paginate(
+    total: int, page: int, per_page: int = ITEMS_PER_PAGE
+) -> tuple[int, int, int]:
+    """Return sanitized page number, total pages and offset."""
+
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+    return page, total_pages, offset
+
+
 def require_access_key(request: Request) -> None:
     access_key = CONFIG.web.access_key
     if access_key is None:
@@ -73,10 +85,36 @@ def require_access_key(request: Request) -> None:
         )
 
 
-async def _gather_posts(only_suggestions: bool) -> list[dict]:
+async def _gather_posts(
+    only_suggestions: bool,
+    *,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[dict]:
+    photos_count = await storage.count_files(
+        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_"
+    )
     objects: list[str] = []
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_")
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_")
+    if offset < photos_count:
+        photo_limit = None if limit is None else min(limit, photos_count - offset)
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{PHOTOS_PATH}/processed_",
+            offset=offset,
+            limit=photo_limit,
+        )
+        video_offset = 0
+        remaining = None if limit is None else limit - len(objects)
+    else:
+        video_offset = offset - photos_count
+        remaining = None if limit is None else limit
+    if remaining is None or remaining > 0:
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{VIDEOS_PATH}/processed_",
+            offset=video_offset,
+            limit=remaining,
+        )
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
     for obj in objects:
@@ -112,10 +150,31 @@ async def _gather_posts(only_suggestions: bool) -> list[dict]:
     return posts
 
 
-async def _gather_batch() -> list[dict]:
+async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[dict]:
+    photos_count = await storage.count_files(
+        BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_"
+    )
     objects: list[str] = []
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
-    objects += await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+    if offset < photos_count:
+        photo_limit = None if limit is None else min(limit, photos_count - offset)
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{PHOTOS_PATH}/batch_",
+            offset=offset,
+            limit=photo_limit,
+        )
+        video_offset = 0
+        remaining = None if limit is None else limit - len(objects)
+    else:
+        video_offset = offset - photos_count
+        remaining = None if limit is None else limit
+    if remaining is None or remaining > 0:
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{VIDEOS_PATH}/batch_",
+            offset=video_offset,
+            limit=remaining,
+        )
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
     for obj in objects:
@@ -200,11 +259,11 @@ async def _render_posts_page(
     page: int = 1,
     per_page: int = ITEMS_PER_PAGE,
 ) -> HTMLResponse:
-    posts = await _gather_posts(only_suggestions)
-    total_pages = max(1, (len(posts) + per_page - 1) // per_page)
-    page = max(1, min(page, total_pages))
-    start = (page - 1) * per_page
-    posts = posts[start : start + per_page]
+    count = (
+        await _get_suggestions_count() if only_suggestions else await _get_posts_count()
+    )
+    page, total_pages, offset = _paginate(count, page, per_page)
+    posts = await _gather_posts(only_suggestions, offset=offset, limit=per_page)
     context = {
         "request": request,
         "posts": posts,
@@ -288,11 +347,9 @@ async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
     dependencies=[Depends(require_access_key)],
 )
 async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
-    posts = await _gather_batch()
-    total_pages = max(1, (len(posts) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
-    page = max(1, min(page, total_pages))
-    start = (page - 1) * ITEMS_PER_PAGE
-    posts_page = posts[start : start + ITEMS_PER_PAGE]
+    count = await _get_batch_count()
+    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
+    posts_page = await _gather_batch(offset=offset, limit=ITEMS_PER_PAGE)
     context = {
         "request": request,
         "posts": posts_page,
@@ -543,7 +600,11 @@ async def _remove_batch(path: str) -> None:
     dependencies=[Depends(require_access_key)],
 )
 async def queue(request: Request, page: int = 1) -> HTMLResponse:
-    raw_posts = await run_in_threadpool(get_scheduled_posts)
+    count = await run_in_threadpool(get_scheduled_posts_count)
+    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
+    raw_posts = await run_in_threadpool(
+        get_scheduled_posts, offset=offset, limit=ITEMS_PER_PAGE
+    )
     posts: list[dict] = []
     for path, ts in raw_posts:
         url = await storage.get_presigned_url(path)
@@ -566,13 +627,9 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
             }
         )
 
-    total_pages = max(1, (len(posts) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
-    page = max(1, min(page, total_pages))
-    start = (page - 1) * ITEMS_PER_PAGE
-    posts_page = posts[start : start + ITEMS_PER_PAGE]
     context = {
         "request": request,
-        "posts": posts_page,
+        "posts": posts,
         "page": page,
         "total_pages": total_pages,
     }

@@ -15,8 +15,18 @@ def clear_access_key():
 
 
 def test_queue_requires_access_key(mocker):
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
     mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool",
+        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts_count",
+        new=mocker.AsyncMock(return_value=0),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts",
         new=mocker.AsyncMock(return_value=[]),
     )
     CONFIG.web.access_key = SecretStr("token")
@@ -28,8 +38,18 @@ def test_queue_requires_access_key(mocker):
 
 
 def test_queue_rejects_wrong_key(mocker):
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
     mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool",
+        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts_count",
+        new=mocker.AsyncMock(return_value=0),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts",
         new=mocker.AsyncMock(return_value=[]),
     )
     CONFIG.web.access_key = SecretStr("token")
@@ -39,8 +59,18 @@ def test_queue_rejects_wrong_key(mocker):
 
 
 def test_queue_lists_posts(mocker):
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
     mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool",
+        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts_count",
+        new=mocker.AsyncMock(return_value=1),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts",
         new=mocker.AsyncMock(return_value=[("photos/processed.jpg", 1)]),
     )
     mocker.patch(

@@ -22,6 +22,10 @@ def test_suggestions_view_requires_access_key(mocker):
         "telegram_auto_poster.web.app._gather_posts",
         new=mocker.AsyncMock(return_value=[]),
     )
+    mocker.patch(
+        "telegram_auto_poster.web.app._get_suggestions_count",
+        new=mocker.AsyncMock(return_value=0),
+    )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         assert client.get("/suggestions").status_code == 401
@@ -32,6 +36,10 @@ def test_posts_view_requires_access_key(mocker):
     mocker.patch(
         "telegram_auto_poster.web.app._gather_posts",
         new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._get_posts_count",
+        new=mocker.AsyncMock(return_value=0),
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
@@ -56,6 +64,10 @@ def test_batch_view_lists_posts(mocker):
                 }
             ]
         ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._get_batch_count",
+        new=mocker.AsyncMock(return_value=1),
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:

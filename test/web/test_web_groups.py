@@ -13,9 +13,24 @@ async def test_gather_posts_groups_by_group_id(mocker: MockerFixture):
         f"{PHOTOS_PATH}/processed_b.jpg",
         f"{PHOTOS_PATH}/processed_c.jpg",
     ]
+    async def fake_count_files(bucket, prefix, *, offset=0, limit=None):
+        return len(objects) if prefix.startswith(f"{PHOTOS_PATH}/processed_") else 0
+
+    async def fake_list_files(bucket, prefix, *, offset=0, limit=None):
+        if prefix.startswith(f"{PHOTOS_PATH}/processed_"):
+            data = objects
+        else:
+            data = []
+        end = None if limit is None else offset + limit
+        return data[offset:end]
+
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.count_files",
+        side_effect=fake_count_files,
+    )
     mocker.patch(
         "telegram_auto_poster.web.app.storage.list_files",
-        side_effect=[objects, []],
+        side_effect=fake_list_files,
     )
 
     async def fake_get_meta(name):
@@ -43,14 +58,24 @@ async def test_gather_posts_groups_by_group_id(mocker: MockerFixture):
 
 @pytest.mark.asyncio
 async def test_gather_posts_filters_suggestions(mocker: MockerFixture):
-    async def fake_list_files(bucket, prefix):
+    async def fake_count_files(bucket, prefix, *, offset=0, limit=None):
+        return 2 if prefix.startswith(f"{PHOTOS_PATH}/processed_") else 0
+
+    async def fake_list_files(bucket, prefix, *, offset=0, limit=None):
         if prefix.startswith(f"{PHOTOS_PATH}/processed_"):
-            return [
+            data = [
                 f"{PHOTOS_PATH}/processed_sug.jpg",
                 f"{PHOTOS_PATH}/processed_post.jpg",
             ]
-        return []
+        else:
+            data = []
+        end = None if limit is None else offset + limit
+        return data[offset:end]
 
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.count_files",
+        side_effect=fake_count_files,
+    )
     mocker.patch(
         "telegram_auto_poster.web.app.storage.list_files",
         side_effect=fake_list_files,
@@ -121,7 +146,7 @@ async def test_render_posts_page_uses_partial_template(mocker: MockerFixture):
         empty_message="none",
         template_name="suggestions.html",
     )
-    gather.assert_awaited_once_with(True)
+    gather.assert_awaited_once()
     template.assert_called_once()
     assert template.call_args[0][0] == "_post_grid.html"
     ctx = template.call_args[0][1]
