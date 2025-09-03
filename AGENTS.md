@@ -12,14 +12,14 @@ The project is written in Python and uses the following technologies:
 * **Telegram User API**: `Telethon` monitors channels for new media.
 * **MinIO**: Stores original and processed media.
 * **Valkey**: Keeps statistics in memory.
-* **MySQL**: Persists data for the web dashboard and permissions.
+* **MySQL**: Stores the submission queue and user permissions for the web dashboard.
 * **Docker**: Provides containerized deployment via `Dockerfile` and `docker-compose.yaml`.
 
 The application is divided into three main components:
 
 1. **Bot (`bot.py`)** – handles user commands, content submission, feedback, and admin approvals.
 2. **Client (`client.py`)** – watches source channels and downloads media for processing.
-3. **Web Dashboard (`web/`)** – FastAPI app for reviewing queued items and viewing analytics.
+3. **Web Dashboard (`web/`)** – FastAPI app for reviewing queued items and viewing analytics backed by MySQL.
 
 ## Building and Running
 
