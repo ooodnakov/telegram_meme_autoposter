@@ -1,15 +1,12 @@
 from types import SimpleNamespace
 
 import pytest
-import sqlalchemy
 from pytest_mock import MockerFixture
 from telegram_auto_poster.config import SCHEDULED_PATH
 
 
 @pytest.fixture
-def commands(mocker: MockerFixture):
-    engine = sqlalchemy.create_engine("sqlite:///:memory:")
-    mocker.patch("sqlalchemy.create_engine", lambda *a, **k: engine)
+def commands():
     from telegram_auto_poster.bot import commands as commands_module
 
     return commands_module

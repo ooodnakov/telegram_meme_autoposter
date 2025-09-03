@@ -58,14 +58,6 @@ class ValkeyConfig(BaseModel):
     prefix: str = "telegram_auto_poster"
 
 
-class MySQLConfig(BaseModel):
-    host: str = "localhost"
-    port: int = 3306
-    user: str
-    password: SecretStr
-    name: str
-
-
 class WebConfig(BaseModel):
     access_key: SecretStr | None = None
 
@@ -82,7 +74,6 @@ class Config(BaseModel):
     schedule: ScheduleConfig = ScheduleConfig()
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
-    mysql: MySQLConfig
     web: WebConfig = WebConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
     timezone: str = "UTC"
@@ -111,11 +102,6 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "VALKEY_PORT": ("valkey", "port"),
     "VALKEY_PASS": ("valkey", "password"),
     "REDIS_PREFIX": ("valkey", "prefix"),
-    "DB_MYSQL_HOST": ("mysql", "host"),
-    "DB_MYSQL_PORT": ("mysql", "port"),
-    "DB_MYSQL_USER": ("mysql", "user"),
-    "DB_MYSQL_PASSWORD": ("mysql", "password"),
-    "DB_MYSQL_NAME": ("mysql", "name"),
     "WEB_ACCESS_KEY": ("web", "access_key"),
     "RATE_LIMIT_RATE": ("rate_limit", "rate"),
     "RATE_LIMIT_CAPACITY": ("rate_limit", "capacity"),
@@ -134,7 +120,6 @@ def _load_ini(path: str) -> dict[str, Any]:
         "Schedule": ("schedule", ScheduleConfig),
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),
-        "MySQL": ("mysql", MySQLConfig),
         "RateLimit": ("rate_limit", RateLimitConfig),
     }
 
