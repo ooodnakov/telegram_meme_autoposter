@@ -60,6 +60,34 @@ def test_queue_rejects_wrong_key(mocker):
         assert resp.status_code == 401
 
 
+def test_access_key_query_sets_cookie(mocker):
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
+    mocker.patch(
+        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts_count",
+        new=mocker.AsyncMock(return_value=0),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    CONFIG.web.access_key = SecretStr("token")
+    with TestClient(app) as client:
+        resp = client.get("https://testserver/queue?key=token")
+        assert resp.status_code == 200
+        assert resp.cookies.get("access_key") == "token"
+        cookie_header = resp.headers.get("set-cookie")
+        assert "HttpOnly" in cookie_header
+        assert "Secure" in cookie_header
+        assert "SameSite=lax" in cookie_header
+        resp2 = client.get("https://testserver/queue")
+        assert resp2.status_code == 200
+
+
 def test_queue_lists_posts(mocker):
     async def fake_run_in_threadpool(func, *args, **kwargs):
         return await func(*args, **kwargs)
