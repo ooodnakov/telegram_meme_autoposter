@@ -113,32 +113,16 @@ async def test_get_submission_metadata_from_redis(mock_minio_client, mock_redis_
 
 
 @pytest.mark.asyncio
-async def test_get_submission_metadata_from_minio(
-    mock_minio_client, mocker: MockerFixture
-):
-    """Test retrieving submission metadata from Minio if not in memory."""
-    mock_stat = mocker.MagicMock()
-    mock_stat.metadata = {
-        "user_id": "123",
-        "chat_id": "456",
-        "media_type": "photo",
-        "message_id": "789",
-        "hash": "hash1",
-        "group-id": "gid1",
-    }
-    mock_minio_client.stat_object.return_value = mock_stat
+async def test_get_submission_metadata_missing(mock_minio_client):
+    """Return ``None`` when metadata is absent in memory and Valkey."""
     storage = MinioStorage(client=mock_minio_client)
     storage._instance = None
     storage._initialized = False
     storage = MinioStorage(client=mock_minio_client)
-    # Make get_submission_metadata return None from memory
     storage.submission_metadata = {}
     meta = await storage.get_submission_metadata("obj2")
-    mock_minio_client.stat_object.assert_awaited_with(
-        bucket_name=BUCKET_MAIN, object_name=f"{PHOTOS_PATH}/obj2"
-    )
-    assert meta["user_id"] == 123
-    assert meta["group_id"] == "gid1"
+    assert meta is None
+    mock_minio_client.stat_object.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -172,8 +156,10 @@ async def test_upload_file(mock_minio_client, tmp_path):
     kwargs = mock_minio_client.fput_object.await_args.kwargs
     assert kwargs["bucket_name"] == BUCKET_MAIN
     assert kwargs["object_name"].startswith(PHOTOS_PATH)
-    assert kwargs["metadata"]["user-id"] == "123"
-    assert kwargs["metadata"]["group-id"] == "g3"
+    assert "metadata" not in kwargs
+    meta = storage.submission_metadata[kwargs["object_name"]]
+    assert meta["user_id"] == 123
+    assert meta["group_id"] == "g3"
 
 
 @pytest.mark.asyncio

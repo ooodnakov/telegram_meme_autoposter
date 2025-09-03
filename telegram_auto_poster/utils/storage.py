@@ -167,7 +167,7 @@ class MinioStorage:
         """Store information about who submitted a particular media object.
 
         The metadata is kept in memory for quick feedback to users and also
-        mirrored in MinIO object metadata so it survives restarts.
+        mirrored in Valkey so it survives restarts.
 
         Args:
             object_name: Name of the object in MinIO.
@@ -238,38 +238,6 @@ class MinioStorage:
                 return meta
         except Exception as e:
             logger.error(f"Failed to get submission metadata from Redis: {e}")
-        # Try to fetch metadata from MinIO across known buckets
-        for prepath in [PHOTOS_PATH, VIDEOS_PATH, DOWNLOADS_PATH]:
-            try:
-                stat = await self.client.stat_object(
-                    bucket_name=BUCKET_MAIN, object_name=prepath + "/" + object_name
-                )
-                md = stat.metadata or {}
-
-                # Support both underscore and hyphenated metadata keys
-                def _mget(key: str, *alts: str):
-                    for k in (key, *alts):
-                        if md.get(k) is not None:
-                            return md.get(k)
-                    return None
-
-                user_id_val = _mget("user_id", "user-id")
-                chat_id_val = _mget("chat_id", "chat-id")
-                media_type_val = _mget("media_type", "media-type")
-                message_id_val = _mget("message_id", "message-id")
-                group_id_val = _mget("group_id", "group-id")
-                return {
-                    "user_id": _to_int(user_id_val),
-                    "chat_id": _to_int(chat_id_val),
-                    "media_type": media_type_val,
-                    "message_id": _to_int(message_id_val),
-                    "hash": _mget("hash"),
-                    "group_id": group_id_val,
-                    # notified state is managed in-memory
-                    "notified": False,
-                }
-            except Exception:
-                continue
         return None
 
     async def mark_notified(self, object_name):
@@ -336,8 +304,8 @@ class MinioStorage:
     ):
         """Upload a file to MinIO and record how long the operation took.
 
-        Additional metadata about the submitting user can be attached to the
-        object for later feedback or auditing.  The appropriate bucket and
+        Additional metadata about the submitting user is stored separately in
+        Valkey for later feedback or auditing. The appropriate bucket and
         object name are determined automatically when not supplied.
 
         Args:
@@ -384,33 +352,13 @@ class MinioStorage:
             if "/" not in object_name:
                 object_name = object_prefix + "/" + object_name
 
-            # Build MinIO object metadata
-            # Use hyphenated keys to avoid proxy/header issues with underscores
-            minio_metadata = {}
-            if user_id is not None:
-                minio_metadata["user-id"] = str(user_id)
-            if chat_id is not None:
-                minio_metadata["chat-id"] = str(chat_id)
-            minio_metadata["media-type"] = media_type
-            if message_id is not None:
-                minio_metadata["message-id"] = str(message_id)
-            if media_hash is not None:
-                minio_metadata["hash"] = str(media_hash)
-            if group_id is not None:
-                minio_metadata["group-id"] = str(group_id)
-            # Upload file with metadata
-            logger.debug(
-                f"Uploading {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
-            )
+            logger.debug(f"Uploading {file_path} to {bucket}/{object_name}")
             await self.client.fput_object(
                 bucket_name=bucket,
                 object_name=object_name,
                 file_path=file_path,
-                metadata=minio_metadata,
             )
-            logger.debug(
-                f"Uploaded {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
-            )
+            logger.debug(f"Uploaded {file_path} to {bucket}/{object_name}")
             # Store submission metadata in-memory as well
             if any(
                 x is not None
