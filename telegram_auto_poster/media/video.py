@@ -69,14 +69,17 @@ async def add_watermark_to_video(
         # 2. Calculate final watermark width
         wm_w = int(min(v_w, v_h) * random.randint(15, 25) / 100)
 
-        # Define diagonal bouncing movement for watermark
-        speed = 100
+        # Define diagonal bouncing movement for watermark. Use independent speeds for
+        # the horizontal and vertical directions to mimic the CSS animation where the
+        # durations differ, producing a less predictable path.
+        speed_x = random.randint(80, 120)
+        speed_y = random.randint(80, 120)
         filter_complex = (
             f"[1]scale={wm_w}:{wm_w}[wm];"
-            f"[0][wm]overlay=x='if(gt(mod(t*{speed},2*({v_w}-{wm_w})),({v_w}-{wm_w})), "
-            f"2*({v_w}-{wm_w})-mod(t*{speed},2*({v_w}-{wm_w})), mod(t*{speed},2*({v_w}-{wm_w})))':"
-            f"y='if(gt(mod(t*{speed},2*({v_h}-{wm_w})),({v_h}-{wm_w})), "
-            f"2*({v_h}-{wm_w})-mod(t*{speed},2*({v_h}-{wm_w})), mod(t*{speed},2*({v_h}-{wm_w})))'"
+            f"[0][wm]overlay=x='if(gt(mod(t*{speed_x},2*({v_w}-{wm_w})),({v_w}-{wm_w})), "
+            f"2*({v_w}-{wm_w})-mod(t*{speed_x},2*({v_w}-{wm_w})), mod(t*{speed_x},2*({v_w}-{wm_w})))':"
+            f"y='if(gt(mod(t*{speed_y},2*({v_h}-{wm_w})),({v_h}-{wm_w})), "
+            f"2*({v_h}-{wm_w})-mod(t*{speed_y},2*({v_h}-{wm_w})), mod(t*{speed_y},2*({v_h}-{wm_w})))'"
         )
 
         cmd = [
