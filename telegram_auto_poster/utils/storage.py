@@ -213,29 +213,43 @@ class MinioStorage:
         Returns:
             dict | None: Metadata dictionary or ``None`` if not found.
         """
+        # Normalise object name to account for callers that pass only the basename
+        candidates = [object_name]
+        if "/" not in object_name:
+            candidates.extend(
+                [
+                    f"{PHOTOS_PATH}/{object_name}",
+                    f"{VIDEOS_PATH}/{object_name}",
+                    f"{DOWNLOADS_PATH}/{object_name}",
+                ]
+            )
+
         # Check in-memory metadata first
-        meta = self.submission_metadata.get(object_name)
-        if meta:
-            return meta
+        for name in candidates:
+            meta = self.submission_metadata.get(name)
+            if meta:
+                return meta
+
         # Try Redis (Valkey) next
         try:
             r = get_async_redis_client()
-            data = await r.hgetall(_redis_key("submissions", object_name))
-            if data:
-                meta = {
-                    "user_id": _to_int(data.get("user_id")),
-                    "chat_id": _to_int(data.get("chat_id")),
-                    "media_type": data.get("media_type"),
-                    "timestamp": data.get("timestamp"),
-                    "notified": data.get("notified") in {"True", "1"},
-                    "message_id": _to_int(data.get("message_id")),
-                    "hash": data.get("hash"),
-                    "review_chat_id": _to_int(data.get("review_chat_id")),
-                    "review_message_id": _to_int(data.get("review_message_id")),
-                    "group_id": data.get("group_id"),
-                }
-                self.submission_metadata[object_name] = meta
-                return meta
+            for name in candidates:
+                data = await r.hgetall(_redis_key("submissions", name))
+                if data:
+                    meta = {
+                        "user_id": _to_int(data.get("user_id")),
+                        "chat_id": _to_int(data.get("chat_id")),
+                        "media_type": data.get("media_type"),
+                        "timestamp": data.get("timestamp"),
+                        "notified": data.get("notified") in {"True", "1"},
+                        "message_id": _to_int(data.get("message_id")),
+                        "hash": data.get("hash"),
+                        "review_chat_id": _to_int(data.get("review_chat_id")),
+                        "review_message_id": _to_int(data.get("review_message_id")),
+                        "group_id": data.get("group_id"),
+                    }
+                    self.submission_metadata[name] = meta
+                    return meta
         except Exception as e:
             logger.error(f"Failed to get submission metadata from Redis: {e}")
         return None
