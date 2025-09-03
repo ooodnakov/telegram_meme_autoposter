@@ -4,53 +4,63 @@ This document provides context for the AGENTS Code Assistant to understand the p
 
 ## Project Overview
 
-This project is a Telegram bot that automatically posts memes to a specified channel. It monitors a list of source channels for new media (images and videos), processes them by adding watermarks, and forwards them to a target channel after an administrator's approval. The bot also provides statistics on media processing and user engagement.
+This project is a Telegram bot that automatically posts memes to a specified channel. It watches multiple source channels for new media (images and videos), adds a watermark, and forwards the content to a target channel after an administrator's approval. The system also sends feedback to submitters, maintains usage statistics, and includes a simple web dashboard for reviewing queued media.
 
-The project is written in Python and uses the following main technologies:
+The project is written in Python and uses the following technologies:
 
-* **Telegram Bot API**: The `python-telegram-bot` library is used to create and manage the Telegram bot.
-* **Telegram User API**: The `Telethon` library is used to monitor Telegram channels for new media.
-* **MinIO**: Used for object storage to store media files.
-* **Valkey**: Used for in-memory data storage to manage statistics.
-* **Docker**: The project includes a `Dockerfile` and `docker-compose.yaml` for containerization.
+* **Telegram Bot API**: `python-telegram-bot` drives the interactive bot.
+* **Telegram User API**: `Telethon` monitors channels for new media.
+* **MinIO**: Stores original and processed media.
+* **Valkey**: Keeps statistics in memory.
+* **MySQL**: Persists data for the web dashboard and permissions.
+* **Docker**: Provides containerized deployment via `Dockerfile` and `docker-compose.yaml`.
 
-The application is divided into two main components:
+The application is divided into three main components:
 
-1. **The Bot (`bot.py`)**: Handles user interactions, such as commands and media submissions. It also manages the approval workflow for new media.
-2. **The Client (`client.py`)**: Monitors the source channels for new media and downloads them for processing.
+1. **Bot (`bot.py`)** – handles user commands, content submission, feedback, and admin approvals.
+2. **Client (`client.py`)** – watches source channels and downloads media for processing.
+3. **Web Dashboard (`web/`)** – FastAPI app for reviewing queued items and viewing analytics.
 
 ## Building and Running
 
 ### Prerequisites
 
-* Python 3.12
+* Python 3.12 and [uv](https://github.com/astral-sh/uv)
 * MinIO server
 * Valkey server
+* MySQL server
 * A Telegram bot token and API credentials
 
 ### Installation
 
 1. Clone the repository.
-2. Create a `config.ini` file from the `config.example.ini` and fill in the required values.
+2. Create configuration files:
+   ```bash
+   cp config.example.ini config.ini
+   cp .env.example .env
+   ```
 3. Install the dependencies:
-
-    ```bash
-    uv sync
-    ```
+   ```bash
+   uv sync
+   ```
 
 ### Running the Application
 
-To run the application, use the following command:
+To run the bot, use:
 
 ```bash
 uv run python -m telegram_auto_poster.main
 ```
 
-Alternatively, you can use the provided `run_bg.sh` script to run the application in the background.
+You can also run both the bot and the dashboard in the background:
+
+```bash
+./run_bg.sh
+```
 
 ### Running with Docker
 
-The project can also be run using Docker:
+The project can be run with Docker:
 
 ```bash
 docker-compose up -d
@@ -68,11 +78,11 @@ uv run ruff check
 uv run ruff format
 ```
 
-The `ruff` configuration can be found in the `pyproject.toml` file.
+Configuration for `ruff` resides in `pyproject.toml`.
 
 ### Testing
 
-The project uses `pytest` for testing. The tests are located in the `test/` directory. To run the tests, use the following command:
+Tests live in the `test/` directory and are executed with:
 
 ```bash
 uv run pytest -n auto
@@ -80,8 +90,9 @@ uv run pytest -n auto
 
 ### Logging
 
-The project uses the `loguru` library for logging. The logger is configured in the `telegram_auto_poster/utils/logger_setup.py` file.
+Logging uses `loguru` with configuration in `telegram_auto_poster/utils/logger_setup.py`.
 
 ### Configuration
 
-The application is configured through a `config.ini` file and environment variables. The configuration is loaded by the `load_config()` function in the `telegram_auto_poster/config.py` file.
+Settings are loaded from `config.ini` and environment variables by `load_config()` in `telegram_auto_poster/config.py`.
+
