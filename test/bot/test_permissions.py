@@ -33,7 +33,7 @@ async def test_check_admin_rights_bot_data(mocker, mock_update):
 async def test_check_admin_rights_config(mocker, mock_update):
     """Test that admin rights are granted if user ID is in config."""
     context = SimpleNamespace(bot_data={})
-    mocker.patch(
+    load_config_mock = mocker.patch(
         "telegram_auto_poster.bot.permissions.load_config",
         return_value=Config(
             telegram=TelegramConfig(
@@ -49,13 +49,39 @@ async def test_check_admin_rights_config(mocker, mock_update):
         ),
     )
     assert await check_admin_rights(mock_update, context) is True
+    assert load_config_mock.call_count == 1
+    assert context.bot_data["admin_ids"] == [123]
+
+
+@pytest.mark.asyncio
+async def test_check_admin_rights_config_cached(mocker, mock_update):
+    """Test that configuration is cached between calls."""
+    context = SimpleNamespace(bot_data={})
+    load_config_mock = mocker.patch(
+        "telegram_auto_poster.bot.permissions.load_config",
+        return_value=Config(
+            telegram=TelegramConfig(
+                api_id=1, api_hash="h", username="u", target_channel="@c"
+            ),
+            bot=BotConfig(
+                bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
+            ),
+            chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
+            mysql=MySQLConfig(
+                host="localhost", port=3306, user="u", password="p", name="db"
+            ),
+        ),
+    )
+    assert await check_admin_rights(mock_update, context) is True
+    assert await check_admin_rights(mock_update, context) is True
+    assert load_config_mock.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_check_admin_rights_bot_chat_id(mocker, mock_update):
     """Test backward compatibility with bot_chat_id."""
     context = SimpleNamespace(bot_data={})
-    mocker.patch(
+    load_config_mock = mocker.patch(
         "telegram_auto_poster.bot.permissions.load_config",
         return_value=Config(
             telegram=TelegramConfig(
@@ -69,6 +95,7 @@ async def test_check_admin_rights_bot_chat_id(mocker, mock_update):
         ),
     )
     assert await check_admin_rights(mock_update, context) is True
+    assert load_config_mock.call_count == 1
 
 
 @pytest.mark.asyncio
