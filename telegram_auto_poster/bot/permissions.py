@@ -23,29 +23,25 @@ async def check_admin_rights(
         user_id = update.effective_user.id
 
         admin_ids = None
-
         if hasattr(context, "bot_data"):
             admin_ids = context.bot_data.get("admin_ids")
 
-            if admin_ids is None:
+        if admin_ids is None:
+            config = None
+            if hasattr(context, "bot_data"):
                 config = context.bot_data.get("config")
 
-                if config is None:
-                    config = load_config()
+            if config is None:
+                config = load_config()
+                if hasattr(context, "bot_data"):
                     context.bot_data["config"] = config
 
-                admin_ids = list(config.bot.admin_ids or [])
-
-                if not admin_ids and getattr(config.bot, "bot_chat_id", None):
-                    admin_ids = [config.bot.bot_chat_id]
-
-                context.bot_data["admin_ids"] = admin_ids
-
-        else:
-            config = load_config()
             admin_ids = list(config.bot.admin_ids or [])
             if not admin_ids and getattr(config.bot, "bot_chat_id", None):
                 admin_ids = [config.bot.bot_chat_id]
+
+            if hasattr(context, "bot_data"):
+                context.bot_data["admin_ids"] = admin_ids
 
         if user_id in admin_ids:
             logger.debug(f"User {user_id} has admin rights")
