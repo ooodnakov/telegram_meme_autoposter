@@ -7,7 +7,6 @@ from telegram_auto_poster.config import (
     BotConfig,
     ChatsConfig,
     Config,
-    MySQLConfig,
     TelegramConfig,
 )
 
@@ -43,9 +42,6 @@ async def test_check_admin_rights_config(mocker, mock_update):
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
             ),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
-            mysql=MySQLConfig(
-                host="localhost", port=3306, user="u", password="p", name="db"
-            ),
         ),
     )
     assert await check_admin_rights(mock_update, context) is True
@@ -67,9 +63,6 @@ async def test_check_admin_rights_config_cached(mocker, mock_update):
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
             ),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
-            mysql=MySQLConfig(
-                host="localhost", port=3306, user="u", password="p", name="db"
-            ),
         ),
     )
     assert await check_admin_rights(mock_update, context) is True
@@ -89,9 +82,6 @@ async def test_check_admin_rights_bot_chat_id(mocker, mock_update):
             ),
             bot=BotConfig(bot_token="t", bot_username="b", bot_chat_id=123),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
-            mysql=MySQLConfig(
-                host="localhost", port=3306, user="u", password="p", name="db"
-            ),
         ),
     )
     assert await check_admin_rights(mock_update, context) is True
@@ -113,9 +103,6 @@ async def test_check_admin_rights_no_permission(mocker, mock_update):
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
             ),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
-            mysql=MySQLConfig(
-                host="localhost", port=3306, user="u", password="p", name="db"
-            ),
         ),
     )
     assert await check_admin_rights(mock_update, context) is False

@@ -7,11 +7,8 @@ from types import SimpleNamespace
 import fakeredis
 import fakeredis.aioredis
 import pytest
-import sqlalchemy as sa
 import valkey
 
-_real_create_engine = sa.create_engine
-sa.create_engine = lambda *args, **kwargs: _real_create_engine("sqlite:///:memory:")
 valkey.Valkey = lambda *a, **k: fakeredis.FakeRedis(decode_responses=True)
 valkey.asyncio.Valkey = lambda *a, **k: fakeredis.aioredis.FakeRedis(
     decode_responses=True
@@ -113,11 +110,6 @@ luba_chat = @luba
 config_path = Path("/tmp/test_config.ini")
 config_path.write_text(CONFIG_CONTENT, encoding="utf-8")
 os.environ.setdefault("CONFIG_PATH", str(config_path))
-os.environ.setdefault("DB_MYSQL_USER", "user")
-os.environ.setdefault("DB_MYSQL_PASSWORD", "pass")
-os.environ.setdefault("DB_MYSQL_NAME", "db")
-os.environ.setdefault("DB_MYSQL_HOST", "localhost")
-os.environ.setdefault("DB_MYSQL_PORT", "3306")
 os.environ.setdefault("MINIO_HOST", "localhost")
 os.environ.setdefault("MINIO_PORT", "9000")
 os.environ.setdefault("MINIO_ACCESS_KEY", "minio")
@@ -142,7 +134,6 @@ def mock_config(mocker):
         BotConfig,
         ChatsConfig,
         Config,
-        MySQLConfig,
         TelegramConfig,
     )
 
@@ -164,13 +155,6 @@ def mock_config(mocker):
             chats=ChatsConfig(
                 selected_chats=["@test1", "@test2"],
                 luba_chat="@luba",
-            ),
-            mysql=MySQLConfig(
-                host="localhost",
-                port=3306,
-                user="user",
-                password="pass",
-                name="db",
             ),
         ),
     )
