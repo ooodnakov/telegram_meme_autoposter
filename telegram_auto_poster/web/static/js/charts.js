@@ -99,18 +99,19 @@
             avgUploadTime,
             avgDownloadTime,
         } = dataset;
+        const data = [
+            Number(avgPhotoProcessingTime),
+            Number(avgVideoProcessingTime),
+            Number(avgUploadTime),
+            Number(avgDownloadTime),
+        ].map((value) => (value === 0 ? 0.1 : value));
         return {
             type: 'bar',
             data: {
                 labels: ['Photo Processing', 'Video Processing', 'Upload', 'Download'],
                 datasets: [{
                     label: 'Avg Seconds',
-                    data: [
-                        Number(avgPhotoProcessingTime),
-                        Number(avgVideoProcessingTime),
-                        Number(avgUploadTime),
-                        Number(avgDownloadTime),
-                    ],
+                    data,
                     backgroundColor: ['#0d6efd', '#0d6efd', '#0dcaf0', '#0dcaf0'],
                 }],
             },
