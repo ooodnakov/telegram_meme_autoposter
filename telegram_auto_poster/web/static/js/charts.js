@@ -121,7 +121,8 @@
                 },
                 scales: {
                     y: {
-                        beginAtZero: true,
+                        type: 'logarithmic',
+                        min: 0.1,
                     }
                 }
             },
