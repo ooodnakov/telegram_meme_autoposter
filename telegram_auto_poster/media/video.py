@@ -7,7 +7,12 @@ from pathlib import Path
 
 from loguru import logger
 
-from telegram_auto_poster.config import BUCKET_MAIN, VIDEOS_PATH
+from telegram_auto_poster.config import (
+    BUCKET_MAIN,
+    VIDEOS_PATH,
+    WATERMARK_MAX_SPEED,
+    WATERMARK_MIN_SPEED,
+)
 from telegram_auto_poster.utils.general import MinioError
 from telegram_auto_poster.utils.storage import storage
 
@@ -72,8 +77,8 @@ async def add_watermark_to_video(
         # Define diagonal bouncing movement for watermark. Use independent speeds for
         # the horizontal and vertical directions to mimic the CSS animation where the
         # durations differ, producing a less predictable path.
-        speed_x = random.randint(80, 120)
-        speed_y = random.randint(80, 120)
+        speed_x = random.randint(WATERMARK_MIN_SPEED, WATERMARK_MAX_SPEED)
+        speed_y = random.randint(WATERMARK_MIN_SPEED, WATERMARK_MAX_SPEED)
         filter_complex = (
             f"[1]scale={wm_w}:{wm_w}[wm];"
             f"[0][wm]overlay=x='if(gt(mod(t*{speed_x},2*({v_w}-{wm_w})),({v_w}-{wm_w})), "
