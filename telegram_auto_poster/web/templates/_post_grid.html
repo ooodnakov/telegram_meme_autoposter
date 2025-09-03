@@ -1,5 +1,3 @@
-{% set key = request.query_params.get('key') %}
-{% set key_query = '&key=' ~ key if key else '' %}
 {% if posts %}
 <div class="row g-3">
     {% for p in posts %}
@@ -21,7 +19,6 @@
                 {% endfor %}
                 <input type="hidden" name="action" value="ok" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-success" type="submit">Send to batch!</button>
             </form>
             <form method="post" action="/action" data-bg="true">
@@ -30,7 +27,6 @@
                 {% endfor %}
                 <input type="hidden" name="action" value="schedule" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-secondary" type="submit">Schedule</button>
             </form>
             <form method="post" action="/action" data-bg="true">
@@ -39,7 +35,6 @@
                 {% endfor %}
                 <input type="hidden" name="action" value="push" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-primary" type="submit">Push!</button>
             </form>
             <form
@@ -53,7 +48,6 @@
                 {% endfor %}
                 <input type="hidden" name="action" value="notok" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                 <button class="btn btn-sm btn-danger" type="submit">No!</button>
             </form>
         </div>
@@ -71,10 +65,10 @@
             <span class="page-link">Previous</span>
             {% else %}
             <a class="page-link"
-               hx-get="/{{ origin }}?page={{ page - 1 }}{{ key_query }}"
+               hx-get="/{{ origin }}?page={{ page - 1 }}"
                hx-target="#{{ origin }}-grid"
                hx-swap="innerHTML"
-               href="/{{ origin }}?page={{ page - 1 }}{{ key_query }}">Previous</a>
+               href="/{{ origin }}?page={{ page - 1 }}">Previous</a>
             {% endif %}
         </li>
         <li class="page-item disabled">
@@ -85,10 +79,10 @@
             <span class="page-link">Next</span>
             {% else %}
             <a class="page-link"
-               hx-get="/{{ origin }}?page={{ page + 1 }}{{ key_query }}"
+               hx-get="/{{ origin }}?page={{ page + 1 }}"
                hx-target="#{{ origin }}-grid"
                hx-swap="innerHTML"
-               href="/{{ origin }}?page={{ page + 1 }}{{ key_query }}">Next</a>
+               href="/{{ origin }}?page={{ page + 1 }}">Next</a>
             {% endif %}
         </li>
     </ul>

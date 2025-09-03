@@ -33,7 +33,8 @@ def test_queue_requires_access_key(mocker):
     with TestClient(app) as client:
         resp = client.get("/queue")
         assert resp.status_code == 401
-        resp = client.get("/queue?key=token")
+        client.cookies.set("access_key", "token")
+        resp = client.get("/queue")
         assert resp.status_code == 200
 
 
@@ -54,7 +55,8 @@ def test_queue_rejects_wrong_key(mocker):
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
-        resp = client.get("/queue?key=bad")
+        client.cookies.set("access_key", "bad")
+        resp = client.get("/queue")
         assert resp.status_code == 401
 
 
@@ -79,7 +81,8 @@ def test_queue_lists_posts(mocker):
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
-        resp = client.get("/queue?key=token")
+        client.cookies.set("access_key", "token")
+        resp = client.get("/queue")
         assert resp.status_code == 200
         assert "http://example.com/photos/processed.jpg" in resp.text
 
@@ -134,7 +137,8 @@ def test_stats_endpoint(mocker):
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
-        resp = client.get("/stats?key=token")
+        client.cookies.set("access_key", "token")
+        resp = client.get("/stats")
         assert resp.status_code == 200
 
 
@@ -147,5 +151,6 @@ def test_stats_requires_access_key():
 def test_stats_rejects_wrong_key():
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
-        resp = client.get("/stats?key=bad")
+        client.cookies.set("access_key", "bad")
+        resp = client.get("/stats")
         assert resp.status_code == 401

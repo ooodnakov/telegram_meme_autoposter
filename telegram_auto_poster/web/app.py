@@ -73,16 +73,26 @@ def _paginate(
     return page, total_pages, offset
 
 
-def require_access_key(request: Request) -> None:
+def require_access_key(request: Request, response: Response) -> None:
     access_key = CONFIG.web.access_key
     if access_key is None:
         return
-    provided = request.query_params.get("key")
     expected = access_key.get_secret_value()
-    if not (provided and secrets.compare_digest(provided, expected)):
+    query_key = request.query_params.get("key")
+    if query_key is not None:
+        if secrets.compare_digest(query_key, expected):
+            response.set_cookie("access_key", query_key, httponly=True)
+            return
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid access key",
         )
+    cookie_key = request.cookies.get("access_key")
+    if cookie_key and secrets.compare_digest(cookie_key, expected):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key"
+    )
 
 
 async def _list_media(
@@ -352,11 +362,10 @@ async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
 
 
 @app.post("/batch/send", dependencies=[Depends(require_access_key)])
-async def send_batch(key: str | None = Form(None)) -> Response:
+async def send_batch() -> Response:
     posts = await _gather_batch()
     if not posts:
-        suffix = f"?key={key}" if key else ""
-        return RedirectResponse(url=f"/batch{suffix}", status_code=303)
+        return RedirectResponse(url="/batch", status_code=303)
     for post in posts:
         paths = [item["path"] for item in post["items"]]
         try:
@@ -367,8 +376,7 @@ async def send_batch(key: str | None = Form(None)) -> Response:
             # Error should be logged in _push_post_group. Here we prevent incorrect state changes.
             # A user-facing error message would be a good addition here.
             pass
-    suffix = f"?key={key}" if key else ""
-    return RedirectResponse(url=f"/batch{suffix}", status_code=303)
+    return RedirectResponse(url="/batch", status_code=303)
 
 
 @app.post("/action", dependencies=[Depends(require_access_key)])
@@ -378,7 +386,6 @@ async def handle_action(
     paths: list[str] = Form([]),
     action: str = Form(...),
     origin: str = Form("suggestions"),
-    key: str | None = Form(None),
 ) -> Response:
     all_paths = paths or []
     if path:
@@ -404,8 +411,7 @@ async def handle_action(
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
 
-    suffix = f"?key={key}" if key else ""
-    return RedirectResponse(url=f"/{origin}{suffix}", status_code=303)
+    return RedirectResponse(url=f"/{origin}", status_code=303)
 
 
 async def _push_post(path: str) -> None:
@@ -621,9 +627,7 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
 
 
 @app.post("/queue/unschedule", dependencies=[Depends(require_access_key)])
-async def unschedule(
-    request: Request, path: str = Form(...), key: str | None = Form(None)
-) -> Response:
+async def unschedule(request: Request, path: str = Form(...)) -> Response:
     await run_in_threadpool(remove_scheduled_post, path)
     try:
         if await storage.file_exists(path, BUCKET_MAIN):
@@ -635,8 +639,7 @@ async def unschedule(
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
 
-    suffix = f"?key={key}" if key else ""
-    return RedirectResponse(url=f"/queue{suffix}", status_code=303)
+    return RedirectResponse(url="/queue", status_code=303)
 
 
 @app.get(

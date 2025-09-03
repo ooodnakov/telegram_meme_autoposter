@@ -2,8 +2,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="m-0">Channel Posts</h1>
-    {% set key = request.query_params.get('key') %}
-    {% set query_suffix = '?page=' ~ page ~ ('&key=' ~ key if key else '') %}
+    {% set query_suffix = '?page=' ~ page %}
     <button
         class="btn btn-sm btn-outline-secondary"
         hx-get="/posts{{ query_suffix }}"

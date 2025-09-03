@@ -1,7 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-{% set key = request.query_params.get('key') %}
-{% set key_query = '?key=' ~ key if key else '' %}
 <div class="p-5 mb-4 bg-light rounded-3">
     <div class="container-fluid py-5">
         <h1 class="display-5 fw-bold">Admin Panel</h1>
@@ -15,7 +13,7 @@
             <div class="card-body">
                 <h5 class="card-title">Pending Suggestions</h5>
                 <p class="card-text fs-1">{{ suggestions_count }}</p>
-                <a href="/suggestions{{ key_query }}" class="btn btn-primary">Review Suggestions</a>
+                <a href="/suggestions" class="btn btn-primary">Review Suggestions</a>
             </div>
         </div>
     </div>
@@ -24,7 +22,7 @@
             <div class="card-body">
                 <h5 class="card-title">Items in Batch</h5>
                 <p class="card-text fs-1">{{ batch_count }}</p>
-                <a href="/batch{{ key_query }}" class="btn btn-primary">View Batch</a>
+                <a href="/batch" class="btn btn-primary">View Batch</a>
             </div>
         </div>
     </div>
@@ -33,7 +31,7 @@
             <div class="card-body">
                 <h5 class="card-title">Scheduled Posts</h5>
                 <p class="card-text fs-1">{{ scheduled_count }}</p>
-                <a href="/queue{{ key_query }}" class="btn btn-primary">View Queue</a>
+                <a href="/queue" class="btn btn-primary">View Queue</a>
             </div>
         </div>
     </div>
@@ -42,7 +40,7 @@
             <div class="card-body">
                 <h5 class="card-title">Channel Posts</h5>
                 <p class="card-text fs-1">{{ posts_count }}</p>
-                <a href="/posts{{ key_query }}" class="btn btn-primary">View Posts</a>
+                <a href="/posts" class="btn btn-primary">View Posts</a>
             </div>
         </div>
     </div>

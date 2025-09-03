@@ -2,9 +2,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="m-0">Queued Media</h1>
-    {% set key = request.query_params.get('key') %}
-    {% set key_query = '&key=' ~ key if key else '' %}
-    {% set query_suffix = '?page=' ~ page ~ key_query %}
+    {% set query_suffix = '?page=' ~ page %}
     <a class="btn btn-sm btn-outline-secondary" href="/queue{{ query_suffix }}">Refresh</a>
 
 </div>
@@ -34,7 +32,6 @@
                         </button>
                         <form method="post" action="/queue/unschedule" data-bg="true" onsubmit="return confirm('Unschedule this item?');">
                             <input type="hidden" name="path" value="{{ p.path }}" />
-                            <input type="hidden" name="key" value="{{ request.query_params.get('key') }}" />
                             <button class="btn btn-sm btn-danger" type="submit">Unschedule</button>
                         </form>
                     </div>
@@ -68,7 +65,7 @@
             {% if page == 1 %}
             <span class="page-link">Previous</span>
             {% else %}
-            <a class="page-link" href="/queue?page={{ page - 1 }}{{ key_query }}">Previous</a>
+            <a class="page-link" href="/queue?page={{ page - 1 }}">Previous</a>
             {% endif %}
         </li>
         <li class="page-item disabled">
@@ -78,7 +75,7 @@
             {% if page == total_pages %}
             <span class="page-link">Next</span>
             {% else %}
-            <a class="page-link" href="/queue?page={{ page + 1 }}{{ key_query }}">Next</a>
+            <a class="page-link" href="/queue?page={{ page + 1 }}">Next</a>
             {% endif %}
         </li>
     </ul>
