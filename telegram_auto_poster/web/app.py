@@ -7,7 +7,7 @@ import os
 import secrets
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
+from fastapi import FastAPI, Form, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -73,16 +73,30 @@ def _paginate(
     return page, total_pages, offset
 
 
-def require_access_key(request: Request) -> None:
+@app.middleware("http")
+async def require_access_key(request: Request, call_next):
     access_key = CONFIG.web.access_key
     if access_key is None:
-        return
-    provided = request.query_params.get("key")
+        return await call_next(request)
     expected = access_key.get_secret_value()
-    if not (provided and secrets.compare_digest(provided, expected)):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access key"
+    query_key = request.query_params.get("key")
+    if query_key is not None:
+        if secrets.compare_digest(query_key, expected):
+            response = await call_next(request)
+            response.set_cookie(
+                "access_key", query_key, httponly=True, secure=True, samesite="lax"
+            )
+            return response
+        return Response(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content="Invalid access key",
         )
+    cookie_key = request.cookies.get("access_key")
+    if cookie_key and secrets.compare_digest(cookie_key, expected):
+        return await call_next(request)
+    return Response(
+        status_code=status.HTTP_401_UNAUTHORIZED, content="Invalid access key"
+    )
 
 
 async def _list_media(
@@ -265,7 +279,7 @@ async def _render_posts_page(
     return templates.TemplateResponse(template, context)
 
 
-@app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_access_key)])
+@app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     (
         suggestions_count,
@@ -294,7 +308,6 @@ async def index(request: Request) -> HTMLResponse:
 @app.get(
     "/suggestions",
     response_class=HTMLResponse,
-    dependencies=[Depends(require_access_key)],
 )
 async def suggestions_view(request: Request, page: int = 1) -> HTMLResponse:
     return await _render_posts_page(
@@ -311,7 +324,6 @@ async def suggestions_view(request: Request, page: int = 1) -> HTMLResponse:
 @app.get(
     "/posts",
     response_class=HTMLResponse,
-    dependencies=[Depends(require_access_key)],
 )
 async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
     return await _render_posts_page(
@@ -328,7 +340,6 @@ async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
 @app.get(
     "/batch",
     response_class=HTMLResponse,
-    dependencies=[Depends(require_access_key)],
 )
 async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
     count = await _get_batch_count()
@@ -351,12 +362,11 @@ async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
     return templates.TemplateResponse(template, context)
 
 
-@app.post("/batch/send", dependencies=[Depends(require_access_key)])
-async def send_batch(key: str | None = Form(None)) -> Response:
+@app.post("/batch/send")
+async def send_batch() -> Response:
     posts = await _gather_batch()
     if not posts:
-        suffix = f"?key={key}" if key else ""
-        return RedirectResponse(url=f"/batch{suffix}", status_code=303)
+        return RedirectResponse(url="/batch", status_code=303)
     for post in posts:
         paths = [item["path"] for item in post["items"]]
         try:
@@ -367,18 +377,16 @@ async def send_batch(key: str | None = Form(None)) -> Response:
             # Error should be logged in _push_post_group. Here we prevent incorrect state changes.
             # A user-facing error message would be a good addition here.
             pass
-    suffix = f"?key={key}" if key else ""
-    return RedirectResponse(url=f"/batch{suffix}", status_code=303)
+    return RedirectResponse(url="/batch", status_code=303)
 
 
-@app.post("/action", dependencies=[Depends(require_access_key)])
+@app.post("/action")
 async def handle_action(
     request: Request,
     path: str | None = Form(None),
     paths: list[str] = Form([]),
     action: str = Form(...),
     origin: str = Form("suggestions"),
-    key: str | None = Form(None),
 ) -> Response:
     all_paths = paths or []
     if path:
@@ -404,8 +412,7 @@ async def handle_action(
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
 
-    suffix = f"?key={key}" if key else ""
-    return RedirectResponse(url=f"/{origin}{suffix}", status_code=303)
+    return RedirectResponse(url=f"/{origin}", status_code=303)
 
 
 async def _push_post(path: str) -> None:
@@ -581,7 +588,6 @@ async def _remove_batch(path: str) -> None:
 @app.get(
     "/queue",
     response_class=HTMLResponse,
-    dependencies=[Depends(require_access_key)],
 )
 async def queue(request: Request, page: int = 1) -> HTMLResponse:
     count = await run_in_threadpool(get_scheduled_posts_count)
@@ -620,10 +626,8 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
     return templates.TemplateResponse("queue.html", context)
 
 
-@app.post("/queue/unschedule", dependencies=[Depends(require_access_key)])
-async def unschedule(
-    request: Request, path: str = Form(...), key: str | None = Form(None)
-) -> Response:
+@app.post("/queue/unschedule")
+async def unschedule(request: Request, path: str = Form(...)) -> Response:
     await run_in_threadpool(remove_scheduled_post, path)
     try:
         if await storage.file_exists(path, BUCKET_MAIN):
@@ -635,14 +639,12 @@ async def unschedule(
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
 
-    suffix = f"?key={key}" if key else ""
-    return RedirectResponse(url=f"/queue{suffix}", status_code=303)
+    return RedirectResponse(url="/queue", status_code=303)
 
 
 @app.get(
     "/stats",
     response_class=HTMLResponse,
-    dependencies=[Depends(require_access_key)],
 )
 async def stats_view(request: Request) -> HTMLResponse:
     daily, total, perf, busiest = await asyncio.gather(

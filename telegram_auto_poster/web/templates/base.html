@@ -13,9 +13,7 @@
 <body>
 <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
     <div class="container-fluid">
-        {% set key = request.query_params.get('key') %}
-        {% set key_query = '?key=' ~ key if key else '' %}
-        <a class="navbar-brand" href="/{{ key_query }}">Telegram Autoposter</a>
+        <a class="navbar-brand" href="/">Telegram Autoposter</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExampleDefault" aria-controls="navbarsExampleDefault" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
@@ -23,22 +21,22 @@
         <div class="collapse navbar-collapse" id="navbarsExampleDefault">
             <ul class="navbar-nav me-auto mb-2 mb-md-0">
                 <li class="nav-item">
-                    <a class="nav-link" href="/{{ key_query }}">Home</a>
+                    <a class="nav-link" href="/">Home</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/queue{{ key_query }}">Queue</a>
+                    <a class="nav-link" href="/queue">Queue</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/batch{{ key_query }}">Batch</a>
+                    <a class="nav-link" href="/batch">Batch</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/suggestions{{ key_query }}">Suggestions</a>
+                    <a class="nav-link" href="/suggestions">Suggestions</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/posts{{ key_query }}">Channel Posts</a>
+                    <a class="nav-link" href="/posts">Channel Posts</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/stats{{ key_query }}">Stats</a>
+                    <a class="nav-link" href="/stats">Stats</a>
                 </li>
             </ul>
         </div>

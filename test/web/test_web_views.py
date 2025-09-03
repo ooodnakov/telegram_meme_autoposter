@@ -29,7 +29,8 @@ def test_suggestions_view_requires_access_key(mocker):
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         assert client.get("/suggestions").status_code == 401
-        assert client.get("/suggestions?key=token").status_code == 200
+        client.cookies.set("access_key", "token")
+        assert client.get("/suggestions").status_code == 200
 
 
 def test_posts_view_requires_access_key(mocker):
@@ -44,7 +45,8 @@ def test_posts_view_requires_access_key(mocker):
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         assert client.get("/posts").status_code == 401
-        assert client.get("/posts?key=token").status_code == 200
+        client.cookies.set("access_key", "token")
+        assert client.get("/posts").status_code == 200
 
 
 def test_batch_view_lists_posts(mocker):
@@ -72,7 +74,8 @@ def test_batch_view_lists_posts(mocker):
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
         assert client.get("/batch").status_code == 401
-        resp = client.get("/batch?key=token")
+        client.cookies.set("access_key", "token")
+        resp = client.get("/batch")
         assert resp.status_code == 200
         assert "http://x" in resp.text
 
@@ -111,13 +114,13 @@ def test_send_batch_processes_posts(mocker):
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
+        client.cookies.set("access_key", "token")
         resp = client.post(
-            "/batch/send?key=token",
-            data={"key": "token"},
+            "/batch/send",
             follow_redirects=False,
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/batch?key=token"
+        assert resp.headers["location"] == "/batch"
     assert push_group.await_args_list == [
         call([f"{PHOTOS_PATH}/batch_a.jpg"]),
         call([f"{PHOTOS_PATH}/batch_b.jpg"]),
@@ -133,13 +136,13 @@ def test_send_batch_redirects_when_empty(mocker):
     )
     CONFIG.web.access_key = SecretStr("token")
     with TestClient(app) as client:
+        client.cookies.set("access_key", "token")
         resp = client.post(
-            "/batch/send?key=token",
-            data={"key": "token"},
+            "/batch/send",
             follow_redirects=False,
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/batch?key=token"
+        assert resp.headers["location"] == "/batch"
 
 
 def test_handle_action_push_single(mocker):
@@ -160,18 +163,18 @@ def test_handle_action_push_single(mocker):
         )
         assert resp.status_code == 401
 
+        client.cookies.set("access_key", "token")
         resp = client.post(
-            "/action?key=token",
+            "/action",
             data={
                 "path": f"{PHOTOS_PATH}/a.jpg",
                 "action": "push",
                 "origin": "suggestions",
-                "key": "token",
             },
             follow_redirects=False,
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/suggestions?key=token"
+        assert resp.headers["location"] == "/suggestions"
     push.assert_awaited_once_with(f"{PHOTOS_PATH}/a.jpg")
 
 
@@ -190,12 +193,10 @@ def test_handle_action_push_group(mocker):
         resp = client.post("/action", data=data, follow_redirects=False)
         assert resp.status_code == 401
 
-        data["key"] = "token"
-        resp = client.post(
-            "/action?key=token", data=data, follow_redirects=False
-        )
+        client.cookies.set("access_key", "token")
+        resp = client.post("/action", data=data, follow_redirects=False)
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/posts?key=token"
+        assert resp.headers["location"] == "/posts"
     group.assert_awaited_once_with(
         [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"]
     )
@@ -215,12 +216,10 @@ def test_handle_action_schedule(mocker):
         resp = client.post("/action", data=data, follow_redirects=False)
         assert resp.status_code == 401
 
-        data["key"] = "token"
-        resp = client.post(
-            "/action?key=token", data=data, follow_redirects=False
-        )
+        client.cookies.set("access_key", "token")
+        resp = client.post("/action", data=data, follow_redirects=False)
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/suggestions?key=token"
+        assert resp.headers["location"] == "/suggestions"
     assert sched.await_args_list == [
         call(f"{PHOTOS_PATH}/a.jpg"),
         call(f"{PHOTOS_PATH}/b.jpg"),
@@ -241,13 +240,10 @@ def test_handle_action_notok_background(mocker):
         )
         assert resp.status_code == 401
 
+        client.cookies.set("access_key", "token")
         resp = client.post(
-            "/action?key=token",
-            data={
-                "path": f"{PHOTOS_PATH}/a.jpg",
-                "action": "notok",
-                "key": "token",
-            },
+            "/action",
+            data={"path": f"{PHOTOS_PATH}/a.jpg", "action": "notok"},
             headers={"X-Background-Request": "true"},
         )
         assert resp.status_code == 200
@@ -277,13 +273,14 @@ def test_unschedule_removes_and_redirects(mocker):
         )
         assert resp.status_code == 401
 
+        client.cookies.set("access_key", "token")
         resp = client.post(
-            "/queue/unschedule?key=token",
-            data={"path": f"{PHOTOS_PATH}/a.jpg", "key": "token"},
+            "/queue/unschedule",
+            data={"path": f"{PHOTOS_PATH}/a.jpg"},
             follow_redirects=False,
         )
         assert resp.status_code == 303
-        assert resp.headers["location"] == "/queue?key=token"
+        assert resp.headers["location"] == "/queue"
     assert run_tp.awaited
     assert exists.await_args_list == [call(f"{PHOTOS_PATH}/a.jpg", BUCKET_MAIN)]
     assert delete.await_args_list == [call(f"{PHOTOS_PATH}/a.jpg", BUCKET_MAIN)]
@@ -311,9 +308,10 @@ def test_unschedule_background_returns_json(mocker):
         )
         assert resp.status_code == 401
 
+        client.cookies.set("access_key", "token")
         resp = client.post(
-            "/queue/unschedule?key=token",
-            data={"path": f"{PHOTOS_PATH}/a.jpg", "key": "token"},
+            "/queue/unschedule",
+            data={"path": f"{PHOTOS_PATH}/a.jpg"},
             headers={"X-Background-Request": "true"},
         )
         assert resp.status_code == 200
