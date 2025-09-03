@@ -167,7 +167,7 @@ class MinioStorage:
         """Store information about who submitted a particular media object.
 
         The metadata is kept in memory for quick feedback to users and also
-        mirrored in MinIO object metadata so it survives restarts.
+        mirrored in Valkey so it survives restarts.
 
         Args:
             object_name: Name of the object in MinIO.
@@ -213,63 +213,45 @@ class MinioStorage:
         Returns:
             dict | None: Metadata dictionary or ``None`` if not found.
         """
+        # Normalise object name to account for callers that pass only the basename
+        candidates = [object_name]
+        if "/" not in object_name:
+            candidates.extend(
+                [
+                    f"{PHOTOS_PATH}/{object_name}",
+                    f"{VIDEOS_PATH}/{object_name}",
+                    f"{DOWNLOADS_PATH}/{object_name}",
+                ]
+            )
+
         # Check in-memory metadata first
-        meta = self.submission_metadata.get(object_name)
-        if meta:
-            return meta
+        for name in candidates:
+            meta = self.submission_metadata.get(name)
+            if meta:
+                return meta
+
         # Try Redis (Valkey) next
         try:
             r = get_async_redis_client()
-            data = await r.hgetall(_redis_key("submissions", object_name))
-            if data:
-                meta = {
-                    "user_id": _to_int(data.get("user_id")),
-                    "chat_id": _to_int(data.get("chat_id")),
-                    "media_type": data.get("media_type"),
-                    "timestamp": data.get("timestamp"),
-                    "notified": data.get("notified") in {"True", "1"},
-                    "message_id": _to_int(data.get("message_id")),
-                    "hash": data.get("hash"),
-                    "review_chat_id": _to_int(data.get("review_chat_id")),
-                    "review_message_id": _to_int(data.get("review_message_id")),
-                    "group_id": data.get("group_id"),
-                }
-                self.submission_metadata[object_name] = meta
-                return meta
+            for name in candidates:
+                data = await r.hgetall(_redis_key("submissions", name))
+                if data:
+                    meta = {
+                        "user_id": _to_int(data.get("user_id")),
+                        "chat_id": _to_int(data.get("chat_id")),
+                        "media_type": data.get("media_type"),
+                        "timestamp": data.get("timestamp"),
+                        "notified": data.get("notified") in {"True", "1"},
+                        "message_id": _to_int(data.get("message_id")),
+                        "hash": data.get("hash"),
+                        "review_chat_id": _to_int(data.get("review_chat_id")),
+                        "review_message_id": _to_int(data.get("review_message_id")),
+                        "group_id": data.get("group_id"),
+                    }
+                    self.submission_metadata[name] = meta
+                    return meta
         except Exception as e:
             logger.error(f"Failed to get submission metadata from Redis: {e}")
-        # Try to fetch metadata from MinIO across known buckets
-        for prepath in [PHOTOS_PATH, VIDEOS_PATH, DOWNLOADS_PATH]:
-            try:
-                stat = await self.client.stat_object(
-                    bucket_name=BUCKET_MAIN, object_name=prepath + "/" + object_name
-                )
-                md = stat.metadata or {}
-
-                # Support both underscore and hyphenated metadata keys
-                def _mget(key: str, *alts: str):
-                    for k in (key, *alts):
-                        if md.get(k) is not None:
-                            return md.get(k)
-                    return None
-
-                user_id_val = _mget("user_id", "user-id")
-                chat_id_val = _mget("chat_id", "chat-id")
-                media_type_val = _mget("media_type", "media-type")
-                message_id_val = _mget("message_id", "message-id")
-                group_id_val = _mget("group_id", "group-id")
-                return {
-                    "user_id": _to_int(user_id_val),
-                    "chat_id": _to_int(chat_id_val),
-                    "media_type": media_type_val,
-                    "message_id": _to_int(message_id_val),
-                    "hash": _mget("hash"),
-                    "group_id": group_id_val,
-                    # notified state is managed in-memory
-                    "notified": False,
-                }
-            except Exception:
-                continue
         return None
 
     async def mark_notified(self, object_name):
@@ -336,8 +318,8 @@ class MinioStorage:
     ):
         """Upload a file to MinIO and record how long the operation took.
 
-        Additional metadata about the submitting user can be attached to the
-        object for later feedback or auditing.  The appropriate bucket and
+        Additional metadata about the submitting user is stored separately in
+        Valkey for later feedback or auditing. The appropriate bucket and
         object name are determined automatically when not supplied.
 
         Args:
@@ -384,33 +366,13 @@ class MinioStorage:
             if "/" not in object_name:
                 object_name = object_prefix + "/" + object_name
 
-            # Build MinIO object metadata
-            # Use hyphenated keys to avoid proxy/header issues with underscores
-            minio_metadata = {}
-            if user_id is not None:
-                minio_metadata["user-id"] = str(user_id)
-            if chat_id is not None:
-                minio_metadata["chat-id"] = str(chat_id)
-            minio_metadata["media-type"] = media_type
-            if message_id is not None:
-                minio_metadata["message-id"] = str(message_id)
-            if media_hash is not None:
-                minio_metadata["hash"] = str(media_hash)
-            if group_id is not None:
-                minio_metadata["group-id"] = str(group_id)
-            # Upload file with metadata
-            logger.debug(
-                f"Uploading {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
-            )
+            logger.debug(f"Uploading {file_path} to {bucket}/{object_name}")
             await self.client.fput_object(
                 bucket_name=bucket,
                 object_name=object_name,
                 file_path=file_path,
-                metadata=minio_metadata,
             )
-            logger.debug(
-                f"Uploaded {file_path} to {bucket}/{object_name} with metadata {minio_metadata}"
-            )
+            logger.debug(f"Uploaded {file_path} to {bucket}/{object_name}")
             # Store submission metadata in-memory as well
             if any(
                 x is not None
