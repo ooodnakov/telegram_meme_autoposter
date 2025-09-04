@@ -606,6 +606,7 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
         is_video = path.startswith("videos/") or (mime or "").startswith("video/")
         is_image = path.startswith("photos/") or (mime or "").startswith("image/")
 
+        meta = await storage.get_submission_metadata(path)
         posts.append(
             {
                 "path": path,
@@ -614,6 +615,7 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
                 "mime": mime or ("video/mp4" if is_video else None),
                 "is_video": is_video,
                 "is_image": is_image,
+                "caption": meta.get("caption") if meta else None,
             }
         )
 

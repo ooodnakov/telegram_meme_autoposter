@@ -17,11 +17,13 @@ from telegram.ext import ContextTypes
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
+    CONFIG,
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
+from telegram_auto_poster.utils.caption import generate_caption
 from telegram_auto_poster.utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
@@ -263,17 +265,6 @@ async def process_photo(
             media_hash=media_hash,
         )
 
-        # Copy user metadata to processed file if exists
-        if user_metadata:
-            await storage.store_submission_metadata(
-                processed_name,
-                user_metadata["user_id"],
-                user_metadata["chat_id"],
-                user_metadata["media_type"],
-                user_metadata["message_id"],
-                media_hash=media_hash,
-            )
-
         # Record processing time
         processing_time = time.time() - start_time
         await stats.record_processed("photo", processing_time)
@@ -318,6 +309,23 @@ async def process_photo(
             PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN, ".jpg"
         )
 
+        caption = ""
+        if CONFIG.caption.enabled:
+            caption = await asyncio.to_thread(
+                generate_caption, temp_path, CONFIG.caption.target_lang
+            )
+
+        if user_metadata:
+            await storage.store_submission_metadata(
+                processed_name,
+                user_metadata["user_id"],
+                user_metadata["chat_id"],
+                user_metadata["media_type"],
+                user_metadata["message_id"],
+                media_hash=media_hash,
+                caption=caption,
+            )
+
         try:
             # Send photo using bot and keep review message info
             with open(temp_path, "rb") as media_file:
@@ -326,7 +334,8 @@ async def process_photo(
                     media_file,
                     custom_text
                     + "\nNew post found\n"
-                    + f"{PHOTOS_PATH}/{processed_name}",
+                    + f"{PHOTOS_PATH}/{processed_name}"
+                    + (f"\nSuggested caption:\n{caption}" if caption else ""),
                     reply_markup=keyboard,
                     read_timeout=60,
                     write_timeout=60,
@@ -379,17 +388,6 @@ async def process_video(
             media_hash=media_hash,
         )
 
-        # Copy user metadata to processed file if exists
-        if user_metadata:
-            await storage.store_submission_metadata(
-                processed_name,
-                user_metadata["user_id"],
-                user_metadata["chat_id"],
-                user_metadata["media_type"],
-                user_metadata["message_id"],
-                media_hash=media_hash,
-            )
-
         # Record processing time
         processing_time = time.time() - start_time
         await stats.record_processed("video", processing_time)
@@ -434,6 +432,23 @@ async def process_video(
             VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN, ".mp4"
         )
 
+        caption = ""
+        if CONFIG.caption.enabled:
+            caption = await asyncio.to_thread(
+                generate_caption, temp_path, CONFIG.caption.target_lang
+            )
+
+        if user_metadata:
+            await storage.store_submission_metadata(
+                processed_name,
+                user_metadata["user_id"],
+                user_metadata["chat_id"],
+                user_metadata["media_type"],
+                user_metadata["message_id"],
+                media_hash=media_hash,
+                caption=caption,
+            )
+
         try:
             # Send video using bot and keep review message info
             with open(temp_path, "rb") as media_file:
@@ -442,7 +457,8 @@ async def process_video(
                     video=media_file,
                     caption=custom_text
                     + "\nNew post found\n"
-                    + f"{VIDEOS_PATH}/{processed_name}",
+                    + f"{VIDEOS_PATH}/{processed_name}"
+                    + (f"\nSuggested caption:\n{caption}" if caption else ""),
                     supports_streaming=True,
                     reply_markup=keyboard,
                     read_timeout=60,
