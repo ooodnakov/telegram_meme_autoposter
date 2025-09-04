@@ -245,6 +245,10 @@ VIDEOS_PATH = "videos"
 SCHEDULED_PATH = "scheduled"
 DOWNLOADS_PATH = "downloads"
 
+# Watermark animation speed range in pixels per second
+WATERMARK_MIN_SPEED = 80
+WATERMARK_MAX_SPEED = 120
+
 # Caption appended to posts originating from user suggestions
 SUGGESTION_CAPTION = "Пост из предложки @ooodnakov_memes_suggest_bot"
 
