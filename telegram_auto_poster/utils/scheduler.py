@@ -1,5 +1,8 @@
 import datetime
 
+from telegram_auto_poster.utils.db import get_scheduled_posts
+from telegram_auto_poster.utils.timezone import now_utc
+
 
 def _in_quiet_hours(hour: int, quiet_start: int, quiet_end: int) -> bool:
     """Return True if ``hour`` falls within quiet hours."""
@@ -47,3 +50,10 @@ def find_next_available_slot(
         break
 
     return next_slot
+
+
+def get_due_posts(now: datetime.datetime | None = None) -> list[tuple[str, float]]:
+    """Return scheduled posts that are due for publishing."""
+    current = now or now_utc()
+    ts = int(current.timestamp())
+    return get_scheduled_posts(max_score=ts)

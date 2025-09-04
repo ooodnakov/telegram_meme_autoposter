@@ -57,5 +57,7 @@ def test_schedule_roundtrip(mocker):
     mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
     db.add_scheduled_post(100, "foo")
     assert db.get_scheduled_posts() == [("foo", 100.0)]
+    assert db.get_scheduled_time("foo") == 100
     db.remove_scheduled_post("foo")
     assert db.get_scheduled_posts() == []
+    assert db.get_scheduled_time("foo") is None

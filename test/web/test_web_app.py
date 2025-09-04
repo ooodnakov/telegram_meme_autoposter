@@ -1,3 +1,4 @@
+import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -113,6 +114,27 @@ def test_queue_lists_posts(mocker):
         resp = client.get("/queue")
         assert resp.status_code == 200
         assert "http://example.com/photos/processed.jpg" in resp.text
+
+
+def test_reschedule_route_updates_timestamp(mocker):
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    mocker.patch(
+        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
+    )
+    add_post = mocker.patch("telegram_auto_poster.web.app.add_scheduled_post")
+    CONFIG.web.access_key = SecretStr("token")
+    with TestClient(app) as client:
+        client.cookies.set("access_key", "token")
+        resp = client.post(
+            "/queue/schedule",
+            data={"path": "foo.jpg", "scheduled_at": "2024-01-02 03:04"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+    expected_ts = int(datetime.datetime(2024, 1, 2, 0, 4, tzinfo=datetime.timezone.utc).timestamp())
+    add_post.assert_called_once_with(expected_ts, "foo.jpg")
 
 
 def test_stats_endpoint(mocker):
