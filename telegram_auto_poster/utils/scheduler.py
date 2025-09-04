@@ -52,7 +52,7 @@ def find_next_available_slot(
     return next_slot
 
 
-def get_due_posts(now: datetime.datetime | None = None):
+def get_due_posts(now: datetime.datetime | None = None) -> list[tuple[str, float]]:
     """Return scheduled posts that are due for publishing."""
     current = now or now_utc()
     ts = int(current.timestamp())

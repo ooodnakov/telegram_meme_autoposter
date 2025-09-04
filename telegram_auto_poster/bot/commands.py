@@ -32,7 +32,11 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.scheduler import get_due_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.timezone import DISPLAY_TZ, UTC, format_display
+from telegram_auto_poster.utils.timezone import (
+    UTC,
+    format_display,
+    parse_to_utc_timestamp,
+)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -457,14 +461,10 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     dt_str = " ".join(context.args)
     try:
-        dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M").replace(
-            tzinfo=DISPLAY_TZ
-        )
+        utc_ts = parse_to_utc_timestamp(dt_str)
     except ValueError:
         await message.reply_text("Invalid datetime format")
         return
-
-    utc_ts = int(dt.astimezone(UTC).timestamp())
 
     path = message.reply_to_message.caption
     if not path:
