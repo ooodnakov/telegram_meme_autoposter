@@ -47,7 +47,7 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.timezone import format_display, now_utc
+from telegram_auto_poster.utils.timezone import DISPLAY_TZ, UTC, format_display, now_utc
 
 app = FastAPI(title="Telegram Autoposter Admin")
 
@@ -606,10 +606,14 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
         is_video = path.startswith("videos/") or (mime or "").startswith("video/")
         is_image = path.startswith("photos/") or (mime or "").startswith("image/")
 
+        dt = datetime.datetime.fromtimestamp(ts, tz=UTC)
+        display = format_display(dt)
+
         posts.append(
             {
                 "path": path,
-                "ts": datetime.datetime.fromtimestamp(ts).isoformat(),
+                "ts": display,
+                "dt_input": display,
                 "url": url,
                 "mime": mime or ("video/mp4" if is_video else None),
                 "is_video": is_video,
@@ -624,6 +628,25 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
         "total_pages": total_pages,
     }
     return templates.TemplateResponse("queue.html", context)
+
+
+@app.post("/queue/schedule")
+async def reschedule(
+    request: Request, path: str = Form(...), scheduled_at: str = Form(...)
+) -> Response:
+    try:
+        dt = datetime.datetime.strptime(scheduled_at, "%Y-%m-%d %H:%M").replace(
+            tzinfo=DISPLAY_TZ
+        )
+    except ValueError:
+        return JSONResponse(
+            {"status": "error", "detail": "invalid datetime"}, status_code=400
+        )
+    ts = int(dt.astimezone(UTC).timestamp())
+    await run_in_threadpool(add_scheduled_post, ts, path)
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+    return RedirectResponse(url="/queue", status_code=303)
 
 
 @app.post("/queue/unschedule")

@@ -20,7 +20,13 @@
             {% for p in posts %}
             <tr>
                 <td>{{ p.path }}</td>
-                <td>{{ p.ts }}</td>
+                <td>
+                    <form method="post" action="/queue/schedule" data-bg="true" class="d-flex align-items-center gap-2 flex-wrap">
+                        <input type="hidden" name="path" value="{{ p.path }}" />
+                        <input type="text" name="scheduled_at" value="{{ p.dt_input }}" class="form-control form-control-sm datetime-picker" />
+                        <button class="btn btn-sm btn-success" type="submit">Save</button>
+                    </form>
+                </td>
                 <td>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
                         <button class="btn btn-sm btn-primary" type="button"
@@ -81,4 +87,12 @@
     </ul>
 </nav>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+flatpickr(".datetime-picker", {enableTime: true, dateFormat: "Y-m-d H:i"});
+</script>
 {% endblock %}

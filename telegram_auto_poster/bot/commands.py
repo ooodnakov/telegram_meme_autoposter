@@ -3,6 +3,7 @@ import datetime
 import os
 
 from loguru import logger
+from miniopy_async.commonconfig import CopySource
 from telegram import InputMediaDocument, InputMediaPhoto, InputMediaVideo, Update
 from telegram.ext import ContextTypes
 
@@ -18,6 +19,7 @@ from telegram_auto_poster.config import (
     BUCKET_MAIN,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
+    SCHEDULED_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.general import (
@@ -27,9 +29,10 @@ from telegram_auto_poster.utils.general import (
     download_from_minio,
     send_media_to_telegram,
 )
+from telegram_auto_poster.utils.scheduler import get_due_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.timezone import UTC, format_display, now_utc
+from telegram_auto_poster.utils.timezone import DISPLAY_TZ, UTC, format_display
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -381,9 +384,8 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Job to post scheduled media."""
     logger.info("Running scheduled media job...")
     try:
-        now_ts = int(now_utc().timestamp())
         # Get posts scheduled up to now
-        scheduled_posts = db.get_scheduled_posts(max_score=now_ts)
+        scheduled_posts = get_due_posts()
 
         if not scheduled_posts:
             logger.info("No scheduled posts to publish.")
@@ -435,6 +437,52 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
     except Exception as e:
         logger.error(f"Error in post_scheduled_media_job: {e}")
+
+
+async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Schedule or reschedule a post at an explicit time."""
+    logger.info(f"Received /schedule command from user {update.effective_user.id}")
+
+    if not await check_admin_rights(update, context):
+        return
+
+    message = update.message
+    if not message or not message.reply_to_message:
+        await message.reply_text("Reply to a post to schedule it")
+        return
+
+    if not context.args:
+        await message.reply_text("Usage: /schedule <YYYY-MM-DD HH:MM>")
+        return
+
+    dt_str = " ".join(context.args)
+    try:
+        dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d %H:%M").replace(
+            tzinfo=DISPLAY_TZ
+        )
+    except ValueError:
+        await message.reply_text("Invalid datetime format")
+        return
+
+    utc_ts = int(dt.astimezone(UTC).timestamp())
+
+    path = message.reply_to_message.caption
+    if not path:
+        await message.reply_text("Cannot determine file path")
+        return
+
+    file_name = os.path.basename(path)
+    if not path.startswith(f"{SCHEDULED_PATH}/"):
+        source = CopySource(BUCKET_MAIN, path)
+        new_path = f"{SCHEDULED_PATH}/{file_name}"
+        await storage.client.copy_object(BUCKET_MAIN, new_path, source)
+        await storage.delete_file(path, BUCKET_MAIN)
+        path = new_path
+
+    db.add_scheduled_post(utc_ts, path)
+    await message.reply_text(
+        f"Scheduled for {format_display(datetime.datetime.fromtimestamp(utc_ts, tz=UTC))}"
+    )
 
 
 async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
