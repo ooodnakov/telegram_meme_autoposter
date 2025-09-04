@@ -3,6 +3,9 @@ import datetime
 UTC = datetime.timezone.utc
 DISPLAY_TZ = datetime.timezone(datetime.timedelta(hours=3))
 
+DATETIME_FORMAT = "%Y-%m-%d %H:%M"
+FLATPICKR_FORMAT = "Y-m-d H:i"
+
 
 def now_utc() -> datetime.datetime:
     """Return current time in UTC with timezone information attached.
@@ -27,7 +30,7 @@ def to_display(dt: datetime.datetime) -> datetime.datetime:
     return dt.astimezone(DISPLAY_TZ)
 
 
-def format_display(dt: datetime.datetime, fmt: str = "%Y-%m-%d %H:%M") -> str:
+def format_display(dt: datetime.datetime, fmt: str = DATETIME_FORMAT) -> str:
     """Format ``dt`` for human display in the local timezone.
 
     Args:
@@ -38,3 +41,9 @@ def format_display(dt: datetime.datetime, fmt: str = "%Y-%m-%d %H:%M") -> str:
         str: Formatted date/time string.
     """
     return to_display(dt).strftime(fmt)
+
+
+def parse_to_utc_timestamp(dt_str: str, fmt: str = DATETIME_FORMAT) -> int:
+    """Parse a datetime string in display timezone and return UTC timestamp."""
+    dt = datetime.datetime.strptime(dt_str, fmt).replace(tzinfo=DISPLAY_TZ)
+    return int(dt.astimezone(UTC).timestamp())
