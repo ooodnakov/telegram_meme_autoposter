@@ -2,8 +2,8 @@
 {% block content %}
 <div class="p-5 mb-4 bg-light rounded-3">
     <div class="container-fluid py-5">
-        <h1 class="display-5 fw-bold">Admin Panel</h1>
-        <p class="col-md-8 fs-4">Welcome to the Telegram Autoposter admin panel. Here's a quick overview of the current status.</p>
+        <h1 class="display-5 fw-bold">{{ _('Admin Panel') }}</h1>
+        <p class="col-md-8 fs-4">{{ _("Welcome to the Telegram Autoposter admin panel. Here's a quick overview of the current status.") }}</p>
     </div>
 </div>
 
@@ -11,36 +11,36 @@
     <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
-                <h5 class="card-title">Pending Suggestions</h5>
+                <h5 class="card-title">{{ _('Pending Suggestions') }}</h5>
                 <p class="card-text fs-1">{{ suggestions_count }}</p>
-                <a href="/suggestions" class="btn btn-primary">Review Suggestions</a>
+                <a href="/suggestions" class="btn btn-primary">{{ _('Review Suggestions') }}</a>
             </div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
-                <h5 class="card-title">Items in Batch</h5>
+                <h5 class="card-title">{{ _('Items in Batch') }}</h5>
                 <p class="card-text fs-1">{{ batch_count }}</p>
-                <a href="/batch" class="btn btn-primary">View Batch</a>
+                <a href="/batch" class="btn btn-primary">{{ _('View Batch') }}</a>
             </div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
-                <h5 class="card-title">Scheduled Posts</h5>
+                <h5 class="card-title">{{ _('Scheduled Posts') }}</h5>
                 <p class="card-text fs-1">{{ scheduled_count }}</p>
-                <a href="/queue" class="btn btn-primary">View Queue</a>
+                <a href="/queue" class="btn btn-primary">{{ _('View Queue') }}</a>
             </div>
         </div>
     </div>
     <div class="col-md-3">
         <div class="card text-center mb-3">
             <div class="card-body">
-                <h5 class="card-title">Channel Posts</h5>
+                <h5 class="card-title">{{ _('Channel Posts') }}</h5>
                 <p class="card-text fs-1">{{ posts_count }}</p>
-                <a href="/posts" class="btn btn-primary">View Posts</a>
+                <a href="/posts" class="btn btn-primary">{{ _('View Posts') }}</a>
             </div>
         </div>
     </div>
@@ -48,18 +48,18 @@
 
 <div class="row mt-4">
     <div class="col-md-12">
-        <h2>Activity in the Last 24 Hours</h2>
+        <h2>{{ _('Activity in the Last 24 Hours') }}</h2>
         <ul class="list-group">
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                Media Received
+                {{ _('Media Received') }}
                 <span class="badge bg-primary rounded-pill">{{ daily.media_received }}</span>
             </li>
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                Media Approved
+                {{ _('Media Approved') }}
                 <span class="badge bg-success rounded-pill">{{ daily.photos_approved + daily.videos_approved }}</span>
             </li>
             <li class="list-group-item d-flex justify-content-between align-items-center">
-                Media Rejected
+                {{ _('Media Rejected') }}
                 <span class="badge bg-danger rounded-pill">{{ daily.photos_rejected + daily.videos_rejected }}</span>
             </li>
         </ul>

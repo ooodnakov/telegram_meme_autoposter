@@ -44,6 +44,7 @@ from telegram_auto_poster.utils.general import (
     send_group_media,
     send_media_to_telegram,
 )
+from telegram_auto_poster.utils.i18n import _, set_locale
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
@@ -53,6 +54,8 @@ app = FastAPI(title="Telegram Autoposter Admin")
 
 base_path = Path(__file__).parent
 templates = Jinja2Templates(directory=str(base_path / "templates"))
+templates.env.globals["_"] = _
+set_locale(CONFIG.i18n.default)
 app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
 
 bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())

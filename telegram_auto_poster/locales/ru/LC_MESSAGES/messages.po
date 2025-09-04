@@ -1,0 +1,118 @@
+
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2025-09-04 12:33+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: ru\n"
+"Language-Team: ru <LL@li.org>\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.17.0\n"
+
+#: telegram_auto_poster/bot/commands.py:40
+msgid "Привет! Присылай сюда свои мемы)"
+msgstr "Привет! Присылай сюда свои мемы)"
+
+#: telegram_auto_poster/bot/commands.py:56
+msgid ""
+"<b>Предложка для @ooodnakov_memes</b>\n"
+"\n"
+"<b>Команды пользователя:</b>\n"
+"• /start - Запустить бота\n"
+"• /help - Показать это сообщение помощи\n"
+"\n"
+"<b>Как использовать:</b>\n"
+"1. Отправьте фото или видео этому боту\n"
+"2. Администраторы проверят ваши отправления\n"
+"3. Вы получите уведомление, когда ваш контент будет одобрен или отклонен"
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:68
+msgid ""
+"\n"
+"<b>Команды администратора:</b>\n"
+"• /stats - Просмотр статистики обработки медиа\n"
+"• /reset_stats - Сбросить ежедневную статистику\n"
+"• /save_stats - Принудительно сохранить статистику\n"
+"• /sendall - Отправить все одобренные медиафайлы из пакета в целевой "
+"канал\n"
+"• /delete_batch - Удалить текущий пакет медиафайлов\n"
+"• /get - Получить текущий ID чата\n"
+"\n"
+"<b>Проверка контента администратором:</b>\n"
+"При проверке контента вы можете использовать кнопки для:\n"
+"• Send to batch - Добавить медиа в пакет для последующей отправки\n"
+"• Schedule - Добавляет медиа в очередь\n"
+"• Push - Немедленно опубликовать медиа в канале\n"
+"• No - Отклонить медиа"
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:94
+#, python-brace-format
+msgid "This chat ID is: {chat_id}"
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:110
+msgid "No statistics available."
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:115
+msgid "Sorry, there was an error generating the statistics report."
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:133
+msgid "Daily statistics have been reset."
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:138
+msgid "Sorry, there was an error resetting the statistics."
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:155
+msgid "Stats saved!"
+msgstr ""
+
+#: telegram_auto_poster/bot/commands.py:159
+msgid "Sorry, there was an error saving the statistics."
+msgstr ""
+
+#: telegram_auto_poster/bot/handlers.py:107
+#: telegram_auto_poster/bot/handlers.py:187
+msgid "Этот пост уже есть в канале."
+msgstr ""
+
+#: telegram_auto_poster/bot/handlers.py:133
+msgid ""
+"Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет"
+" одобрена."
+msgstr ""
+
+#: telegram_auto_poster/bot/handlers.py:142
+msgid "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже."
+msgstr ""
+
+#: telegram_auto_poster/bot/handlers.py:213
+msgid ""
+"Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет "
+"одобрено."
+msgstr ""
+
+#: telegram_auto_poster/bot/handlers.py:222
+msgid "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже."
+msgstr ""
+
+#: telegram_auto_poster/bot/handlers.py:617
+msgid ""
+"Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте "
+"позже."
+msgstr ""
+
+#~ msgid "Привет"
+#~ msgstr "Привет"
+

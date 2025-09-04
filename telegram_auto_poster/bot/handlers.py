@@ -34,6 +34,7 @@ from telegram_auto_poster.utils.general import (
     cleanup_temp_file,
     download_from_minio,
 )
+from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 
@@ -73,6 +74,7 @@ async def handle_photo(
     chat_id: int,
 ):
     """Handle photo uploads"""
+    set_locale(resolve_locale(update))
     file_id = update.message.photo[-1].file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
@@ -102,7 +104,7 @@ async def handle_photo(
             logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
             await stats.record_rejected("photo", file_name, "duplicate")
             await update.message.reply_text(
-                "Этот пост уже есть в канале.",
+                _("Этот пост уже есть в канале."),
                 do_quote=True,
             )
             return
@@ -127,14 +129,18 @@ async def handle_photo(
 
         # Send confirmation to user
         await update.message.reply_text(
-            "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена.",
+            _(
+                "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена."
+            ),
             do_quote=True,
         )
     except Exception as e:
         logger.error(f"Error handling photo: {e}")
         await stats.record_error("processing", f"Error handling photo: {str(e)}")
         await update.message.reply_text(
-            "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже.",
+            _(
+                "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже."
+            ),
             do_quote=True,
         )
     finally:
@@ -147,6 +153,7 @@ async def handle_video(
     chat_id: int,
 ):
     """Handle video uploads"""
+    set_locale(resolve_locale(update))
     logger.info(f"Video from chat {chat_id} has started downloading!")
     file_id = update.message.video.file_id
     message_id = update.message.message_id
@@ -177,7 +184,7 @@ async def handle_video(
             logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
             await stats.record_rejected("video", file_name, "duplicate")
             await update.message.reply_text(
-                "Этот пост уже есть в канале.",
+                _("Этот пост уже есть в канале."),
                 do_quote=True,
             )
             return
@@ -202,14 +209,18 @@ async def handle_video(
 
         # Send confirmation to user
         await update.message.reply_text(
-            "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет одобрено.",
+            _(
+                "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет одобрено."
+            ),
             do_quote=True,
         )
     except Exception as e:
         logger.error(f"Error handling video: {e}")
         await stats.record_error("processing", f"Error handling video: {str(e)}")
         await update.message.reply_text(
-            "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже.",
+            _(
+                "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже."
+            ),
             do_quote=True,
         )
     finally:
@@ -589,6 +600,7 @@ async def process_media_group(
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle media uploads from users"""
+    set_locale(resolve_locale(update))
     chat_id = update.effective_chat.id
     try:
         if update.message and update.message.photo:
@@ -601,6 +613,8 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.error(f"Error in handle_media: {e}")
         await stats.record_error("processing", f"Error handling media: {str(e)}")
         await update.message.reply_text(
-            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
+            _(
+                "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже."
+            ),
             do_quote=True,
         )
