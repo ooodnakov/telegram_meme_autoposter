@@ -119,6 +119,20 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
 }
 
 
+def _parse_i18n_users(value: str) -> dict[int, str]:
+    """Parse a comma-separated user:lang string into a dict."""
+    users: dict[int, str] = {}
+    for part in value.split(","):
+        if not part.strip():
+            continue
+        uid, _, lang = part.partition(":")
+        try:
+            users[int(uid.strip())] = lang.strip()
+        except ValueError:
+            continue
+    return users
+
+
 def _load_ini(path: str) -> dict[str, Any]:
     parser = configparser.ConfigParser()
     parser.read(path)
@@ -196,16 +210,7 @@ def _load_ini(path: str) -> dict[str, Any]:
             i18n_section["default"] = parser.get("I18n", "default")
         if parser.has_option("I18n", "users"):
             raw_users = parser.get("I18n", "users")
-            users: dict[int, str] = {}
-            for part in raw_users.split(","):
-                if not part.strip():
-                    continue
-                uid, _, lang = part.partition(":")
-                try:
-                    users[int(uid.strip())] = lang.strip()
-                except ValueError:
-                    continue
-            i18n_section["users"] = users
+            i18n_section["users"] = _parse_i18n_users(raw_users)
         if i18n_section:
             data["i18n"] = i18n_section
     return data
@@ -224,16 +229,7 @@ def _load_env() -> dict[str, Any]:
         if field in {"selected_chats", "admin_ids"}:
             env_section[field] = [x.strip() for x in value.split(",") if x.strip()]
         elif field == "users":
-            users: dict[int, str] = {}
-            for part in value.split(","):
-                if not part.strip():
-                    continue
-                uid, _, lang = part.partition(":")
-                try:
-                    users[int(uid.strip())] = lang.strip()
-                except ValueError:
-                    continue
-            env_section[field] = users
+            env_section[field] = _parse_i18n_users(value)
         else:
             env_section[field] = value
     return env_data
