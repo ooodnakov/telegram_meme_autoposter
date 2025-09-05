@@ -1,8 +1,12 @@
 import asyncio
 import os
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from telethon import TelegramClient, events, types
+
+if TYPE_CHECKING:
+    from loguru import Logger
 
 from telegram_auto_poster.bot.handlers import (
     process_media_group,
@@ -56,7 +60,7 @@ class TelegramMemeClient:
 
         logger.info("TelegramClient instance created")
 
-    async def _check_rate_limit(self, chat_id: int, log) -> bool:
+    async def _check_rate_limit(self, chat_id: int, log: "Logger") -> bool:
         """Acquire a token from the rate limiter for the given chat.
 
         Returns ``True`` if processing should continue, ``False`` otherwise."""
@@ -75,33 +79,32 @@ class TelegramMemeClient:
         return True
 
     async def _download_media(
-        self, message, log
-    ) -> tuple[object, tuple[str, str, str] | None]:
+        self, message: types.Message, log: "Logger"
+    ) -> tuple["Logger", tuple[str, str, str] | None]:
         """Download supported media from a message.
 
         Returns a tuple of ``(log, file_info)`` where ``file_info`` is
         ``(path, basename, media_type)``. ``file_info`` is ``None`` if the
         message doesn't contain photo or video media."""
+        media_info = None
         if isinstance(message.media, types.MessageMediaPhoto):
-            log = log.bind(media_type="photo")
-            file_path = f"photo_{message.id}.jpg"
-            if stats_module.stats:
-                await stats_module.stats.record_received("photo")
-            await self.client.download_media(message.media.photo, file=file_path)
-            return log, (file_path, os.path.basename(file_path), "photo")
-
-        if (
+            media_info = ("photo", message.media.photo, "jpg")
+        elif (
             isinstance(message.media, types.MessageMediaDocument)
             and message.media.document
         ):
-            log = log.bind(media_type="video")
-            file_path = f"video_{message.id}.mp4"
-            if stats_module.stats:
-                await stats_module.stats.record_received("video")
-            await self.client.download_media(message.media.document, file=file_path)
-            return log, (file_path, os.path.basename(file_path), "video")
+            media_info = ("video", message.media.document, "mp4")
 
-        return log, None
+        if not media_info:
+            return log, None
+
+        media_type, media_obj, ext = media_info
+        log = log.bind(media_type=media_type)
+        file_path = f"{media_type}_{message.id}.{ext}"
+        if stats_module.stats:
+            await stats_module.stats.record_received(media_type)
+        await self.client.download_media(media_obj, file=file_path)
+        return log, (file_path, os.path.basename(file_path), media_type)
 
     async def start(self) -> None:
         """Start the client and maintain the connection with retries."""
