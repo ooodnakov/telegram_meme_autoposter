@@ -106,6 +106,14 @@ class TelegramMemeClient:
         await self.client.download_media(media_obj, file=file_path)
         return log, (file_path, os.path.basename(file_path), media_type)
 
+    async def _get_source_name(self, event) -> str:
+        chat = event.chat if getattr(event, "chat", None) else await event.get_chat()
+        return (
+            getattr(chat, "username", None)
+            or getattr(chat, "title", None)
+            or str(event.chat_id)
+        )
+
     async def start(self) -> None:
         """Start the client and maintain the connection with retries."""
         self._running = True
@@ -117,17 +125,21 @@ class TelegramMemeClient:
                 return
 
             files: list[tuple[str, str, str]] = []
+            source_name = await self._get_source_name(event)
             try:
                 for message in event.messages:
                     log, file_info = await self._download_media(message, log)
                     if file_info:
                         files.append(file_info)
+                        if stats_module.stats:
+                            await stats_module.stats.record_submission(source_name)
                 if files:
                     await process_media_group(
                         "New post found with grouped media",
                         files,
                         self.bot_chat_id,
                         self.application,
+                        user_metadata={"source": source_name},
                     )
             except Exception:
                 log.exception("Failed to handle album")
@@ -149,9 +161,12 @@ class TelegramMemeClient:
 
             path = None
             try:
+                source_name = await self._get_source_name(event)
                 log, file_info = await self._download_media(event.message, log)
                 if file_info:
                     path, basename, media_type = file_info
+                    if stats_module.stats:
+                        await stats_module.stats.record_submission(source_name)
                     if media_type == "photo":
                         await process_photo(
                             "New post found with image",
@@ -159,6 +174,7 @@ class TelegramMemeClient:
                             basename,
                             self.bot_chat_id,
                             self.application,
+                            user_metadata={"source": source_name},
                         )
                     elif media_type == "video":
                         await process_video(
@@ -167,6 +183,7 @@ class TelegramMemeClient:
                             basename,
                             self.bot_chat_id,
                             self.application,
+                            user_metadata={"source": source_name},
                         )
             except Exception:
                 log.exception("Failed to handle message")

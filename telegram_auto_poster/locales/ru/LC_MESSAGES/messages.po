@@ -126,7 +126,39 @@ msgstr ""
 
 #: telegram_auto_poster/utils/ui.py:25
 msgid "No!"
-msgstr ""
+msgstr "Нет!"
+
+#: telegram_auto_poster/web/templates/base.html:??
+msgid "Leaderboard"
+msgstr "Таблица лидеров"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Most Submissions"
+msgstr "Больше всего предложений"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Most Approved"
+msgstr "Наибольше одобрено"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Most Rejected"
+msgstr "Наибольше отклонено"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Source"
+msgstr "Источник"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Submissions"
+msgstr "Предложения"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Approved"
+msgstr "Одобрено"
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Rejected"
+msgstr "Отклонено"
 
 #~ msgid "Привет"
 #~ msgstr "Привет"

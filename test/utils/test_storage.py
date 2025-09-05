@@ -91,12 +91,20 @@ def test_init_storage_bucket_creation(mock_minio_client, storage_factory):
 async def test_store_and_get_submission_metadata(storage):
     """Test storing and retrieving submission metadata."""
     await storage.store_submission_metadata(
-        "obj1", 123, 456, "photo", message_id=789, media_hash="hash1", group_id="g1"
+        "obj1",
+        123,
+        456,
+        "photo",
+        message_id=789,
+        media_hash="hash1",
+        group_id="g1",
+        source="src1",
     )
     meta = await storage.get_submission_metadata("obj1")
     assert meta["user_id"] == 123
     assert meta["chat_id"] == 456
     assert meta["group_id"] == "g1"
+    assert meta["source"] == "src1"
 
 
 @pytest.mark.asyncio
@@ -121,6 +129,7 @@ async def test_get_submission_metadata_from_redis(
         message_id=333,
         media_hash="hash2",
         group_id="g2",
+        source="src2",
     )
     # Clear in-memory cache to force Redis lookup
     storage.submission_metadata = {}
@@ -158,7 +167,9 @@ async def test_upload_file(storage, mock_minio_client, tmp_path):
     """Test uploading a file."""
     file = tmp_path / "test.jpg"
     file.write_text("content")
-    await storage.upload_file(str(file), user_id=123, chat_id=456, group_id="g3")
+    await storage.upload_file(
+        str(file), user_id=123, chat_id=456, group_id="g3", source="src3"
+    )
     mock_minio_client.fput_object.assert_awaited_once()
     kwargs = mock_minio_client.fput_object.await_args.kwargs
     assert kwargs["bucket_name"] == BUCKET_MAIN
@@ -167,6 +178,7 @@ async def test_upload_file(storage, mock_minio_client, tmp_path):
     meta = storage.submission_metadata[kwargs["object_name"]]
     assert meta["user_id"] == 123
     assert meta["group_id"] == "g3"
+    assert meta["source"] == "src3"
 
 
 @pytest.mark.asyncio

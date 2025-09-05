@@ -130,3 +130,35 @@ msgstr ""
 msgid "No!"
 msgstr ""
 
+#: telegram_auto_poster/web/templates/base.html:??
+msgid "Leaderboard"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Most Submissions"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Most Approved"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Most Rejected"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Source"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Submissions"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Approved"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/leaderboard.html:??
+msgid "Rejected"
+msgstr ""
+

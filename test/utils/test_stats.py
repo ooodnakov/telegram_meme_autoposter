@@ -1,24 +1,37 @@
-import fakeredis
+import fakeredis.aioredis
 import pytest
 import pytest_asyncio
 
-from telegram_auto_poster.config import CONFIG
-from telegram_auto_poster.utils import db
-from telegram_auto_poster.utils.stats import MediaStats
 from telegram_auto_poster.utils.db import _redis_key, _redis_meta_key
+from telegram_auto_poster.utils.stats import MediaStats
 
 
 @pytest_asyncio.fixture
 async def stats_instance(mocker):
-    mocker.patch("telegram_auto_poster.utils.db.AsyncValkey", fakeredis.aioredis.FakeRedis)
-    mocker.patch.object(CONFIG.valkey.password, "get_secret_value", return_value=None)
-    db._async_redis_client = None
+    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
+    mocker.patch(
+        "telegram_auto_poster.utils.stats.get_async_redis_client", return_value=fake
+    )
     MediaStats._instance = None
     inst = MediaStats()
     await inst.r.flushdb()
     yield inst
     await inst.r.flushdb()
     MediaStats._instance = None
+
+
+@pytest.mark.asyncio
+async def test_leaderboard(stats_instance):
+    await stats_instance.record_submission("alice")
+    await stats_instance.record_submission("alice")
+    await stats_instance.record_submission("bob")
+    await stats_instance.record_approved("photo", source="alice")
+    await stats_instance.record_rejected("video", source="bob")
+    lb = await stats_instance.get_leaderboard()
+    assert lb["submissions"][0]["source"] == "alice"
+    assert lb["submissions"][0]["submissions"] == 2
+    assert lb["approved"][0]["source"] == "alice"
+    assert lb["rejected"][0]["source"] == "bob"
 
 
 @pytest.mark.asyncio

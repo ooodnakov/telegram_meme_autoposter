@@ -164,6 +164,7 @@ class MinioStorage:
         media_hash: str | None = None,
         group_id: str | None = None,
         caption: str | None = None,
+        source: str | None = None,
     ):
         """Store information about who submitted a particular media object.
 
@@ -180,6 +181,7 @@ class MinioStorage:
             media_hash: Optional hash used for deduplication.
             group_id: Optional identifier for media groups/albums.
             caption: Optional caption suggestion.
+            source: Optional identifier of the originating channel or user.
         """
         meta = {
             "user_id": user_id,
@@ -191,6 +193,7 @@ class MinioStorage:
             "hash": media_hash,
             "group_id": group_id,
             "caption": caption,
+            "source": source,
         }
         self.submission_metadata[object_name] = meta
         try:
@@ -202,8 +205,14 @@ class MinioStorage:
         except Exception as e:
             logger.error(f"Failed to store submission metadata in Redis: {e}")
         logger.debug(
-            "Stored metadata for {}: user_id={}, chat_id={}, message_id={}, group_id={}, caption={}".format(
-                object_name, user_id, chat_id, message_id, group_id, caption
+            "Stored metadata for {}: user_id={}, chat_id={}, message_id={}, group_id={}, caption={}, source={}".format(
+                object_name,
+                user_id,
+                chat_id,
+                message_id,
+                group_id,
+                caption,
+                source,
             )
         )
 
@@ -318,6 +327,7 @@ class MinioStorage:
         message_id=None,
         media_hash: str | None = None,
         group_id: str | None = None,
+        source: str | None = None,
     ):
         """Upload a file to MinIO and record how long the operation took.
 
@@ -336,6 +346,8 @@ class MinioStorage:
             message_id: Optional Telegram ``message_id`` of the original
                 submission.
             media_hash: Optional hash of the file for deduplication purposes.
+            group_id: Optional identifier for media groups/albums.
+            source: Optional channel or username of the submitter.
 
         Returns:
             bool: ``True`` if upload was successful, ``False`` otherwise.
@@ -389,6 +401,7 @@ class MinioStorage:
                     message_id,
                     media_hash,
                     group_id,
+                    source=source,
                 )
 
             duration = time.time() - start_time

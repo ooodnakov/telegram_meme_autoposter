@@ -88,6 +88,9 @@ async def handle_media_type(
     message_id = update.message.message_id
     user_id = update.effective_user.id
     file_name = f"{media_type}_{chat_id}_{message_id}{file_extension}"
+    source_name = (
+        update.effective_user.username or update.effective_chat.username or str(user_id)
+    )
 
     await stats.record_received(media_type)
 
@@ -110,18 +113,22 @@ async def handle_media_type(
             logger.info(
                 f"Duplicate {media_type} detected, hash: {media_hash}. Skipping."
             )
-            await stats.record_rejected(media_type, file_name, "duplicate")
+            await stats.record_rejected(
+                media_type, file_name, "duplicate", source=source_name
+            )
             await update.message.reply_text(
                 _("Этот пост уже есть в канале."),
                 do_quote=True,
             )
             return
 
+        await stats.record_submission(source_name)
         user_metadata = {
             "user_id": user_id,
             "chat_id": chat_id,
             "message_id": message_id,
             "media_type": media_type,
+            "source": source_name,
         }
 
         await process_func(
@@ -241,12 +248,13 @@ async def _send_to_review(
     if user_metadata:
         await storage.store_submission_metadata(
             processed_name,
-            user_metadata["user_id"],
-            user_metadata["chat_id"],
-            user_metadata["media_type"],
-            user_metadata["message_id"],
+            user_metadata.get("user_id"),
+            user_metadata.get("chat_id"),
+            user_metadata.get("media_type"),
+            user_metadata.get("message_id"),
             media_hash=media_hash,
             caption=caption,
+            source=user_metadata.get("source"),
         )
 
     try:
@@ -454,6 +462,7 @@ async def process_media_group(
     media_files: list[tuple[str, str, str]],
     bot_chat_id: str,
     application,
+    user_metadata: dict | None = None,
 ):
     """Process a list of media files and send as a media group."""
     processed: list[tuple[str, str]] = []
@@ -469,7 +478,12 @@ async def process_media_group(
             processed_name = f"processed_{os.path.basename(original_name)}"
             watermark_func, _, _, _ = media_config[media_type]
             start_time = time.time()
-            await watermark_func(input_path, processed_name, group_id=group_id)
+            await watermark_func(
+                input_path,
+                processed_name,
+                user_metadata=user_metadata,
+                group_id=group_id,
+            )
             processing_time = time.time() - start_time
             await stats.record_processed(media_type, processing_time)
             processed.append((processed_name, media_type))

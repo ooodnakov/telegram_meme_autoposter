@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% macro render_table(title, items, columns) %}
+<h2>{{ _(title) }}</h2>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>{{ _('Source') }}</th>
+      {% for field, label in columns %}
+      <th>{{ _(label) }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in items %}
+    <tr>
+      <td>{{ item.source }}</td>
+      {% for field, label in columns %}
+      <td>
+        {{ attribute(item, field) }}
+        {% if field != 'submissions' %}
+        ({{ '%.1f'|format(attribute(item, field + '_pct')) }}%)
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+{% block content %}
+<h1>{{ _('Leaderboard') }}</h1>
+{{ render_table('Most Submissions', submissions, [('submissions','Submissions'), ('approved','Approved'), ('rejected','Rejected')]) }}
+{{ render_table('Most Approved', approved, [('approved','Approved'), ('submissions','Submissions'), ('rejected','Rejected')]) }}
+{{ render_table('Most Rejected', rejected, [('rejected','Rejected'), ('submissions','Submissions'), ('approved','Approved')]) }}
+{% endblock %}
