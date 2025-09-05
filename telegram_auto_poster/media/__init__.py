@@ -50,9 +50,9 @@ async def upload_processed_media(
         file_path,
         bucket,
         object_name,
-        user_id=meta.get("user_id") if meta else None,
-        chat_id=meta.get("chat_id") if meta else None,
-        message_id=meta.get("message_id") if meta else None,
+        user_id=(meta or {}).get("user_id"),
+        chat_id=(meta or {}).get("chat_id"),
+        message_id=(meta or {}).get("message_id"),
         media_hash=media_hash,
         group_id=group_id,
     )
