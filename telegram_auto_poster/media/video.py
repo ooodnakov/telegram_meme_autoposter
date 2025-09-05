@@ -13,8 +13,7 @@ from telegram_auto_poster.config import (
     WATERMARK_MAX_SPEED,
     WATERMARK_MIN_SPEED,
 )
-from telegram_auto_poster.utils.general import MinioError
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.media import upload_processed_media
 
 
 async def _probe_video_size(path: str) -> tuple[int, int]:
@@ -124,28 +123,16 @@ async def add_watermark_to_video(
         if proc.returncode != 0:
             raise RuntimeError(f"ffmpeg error:\n{err.decode()}")
 
-        # Upload the processed file to MinIO, preserving submission metadata
         output_object = os.path.basename(output_filename)
-        meta = user_metadata
-        if not meta:
-            original_name = os.path.basename(input_path)
-            meta = await storage.get_submission_metadata(original_name)
-        uploaded = await storage.upload_file(
+        await upload_processed_media(
             output_path,
-            BUCKET_MAIN,
-            VIDEOS_PATH + "/" + output_object,
-            user_id=meta.get("user_id") if meta else None,
-            chat_id=meta.get("chat_id") if meta else None,
-            message_id=meta.get("message_id") if meta else None,
+            bucket=BUCKET_MAIN,
+            object_name=f"{VIDEOS_PATH}/{output_object}",
+            user_metadata=user_metadata,
+            original_name=input_path,
             media_hash=media_hash,
             group_id=group_id,
-        )
-        if not uploaded:
-            raise MinioError(
-                f"Failed to upload processed video to MinIO: {output_object}"
-            )
-        logger.debug(
-            f"Uploaded processed video to MinIO: {BUCKET_MAIN}/{VIDEOS_PATH}/{output_object}"
+            media_label="video",
         )
 
         # The original local file is a temporary file and will be cleaned up

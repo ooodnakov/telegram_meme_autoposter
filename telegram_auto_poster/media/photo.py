@@ -8,8 +8,7 @@ from PIL import Image
 from PIL.ImageFile import ImageFile
 
 from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
-from telegram_auto_poster.utils.general import MinioError
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.media import upload_processed_media
 
 
 async def add_watermark_to_image(
@@ -58,29 +57,16 @@ async def add_watermark_to_image(
         exif_bytes = piexif.dump(exif_dict)
         base.save(output_path, exif=exif_bytes)
 
-        # Upload the processed file to MinIO, preserving submission metadata
         output_object = os.path.basename(output_filename)
-        # Prefer provided metadata; fallback to looking up by temp input name
-        meta = user_metadata
-        if not meta:
-            original_name = os.path.basename(input_path)
-            meta = await storage.get_submission_metadata(original_name)
-        uploaded = await storage.upload_file(
+        await upload_processed_media(
             output_path,
-            BUCKET_MAIN,
-            PHOTOS_PATH + "/" + output_object,
-            user_id=meta.get("user_id") if meta else None,
-            chat_id=meta.get("chat_id") if meta else None,
-            message_id=meta.get("message_id") if meta else None,
+            bucket=BUCKET_MAIN,
+            object_name=f"{PHOTOS_PATH}/{output_object}",
+            user_metadata=user_metadata,
+            original_name=input_path,
             media_hash=media_hash,
             group_id=group_id,
-        )
-        if not uploaded:
-            raise MinioError(
-                f"Failed to upload processed image to MinIO: {output_object}"
-            )
-        logger.debug(
-            f"Uploaded processed image to MinIO: {BUCKET_MAIN}/{PHOTOS_PATH}/{output_object}"
+            media_label="image",
         )
 
         # The original local file is a temporary file and will be cleaned up
