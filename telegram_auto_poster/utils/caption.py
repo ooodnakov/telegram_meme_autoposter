@@ -5,6 +5,20 @@ from __future__ import annotations
 from loguru import logger
 from telegram_auto_poster.config import CONFIG
 
+try:
+    import google.generativeai as genai
+except ImportError:  # pragma: no cover - optional dependency
+    genai = None
+
+
+def configure_gemini() -> None:
+    """Configure the Gemini client once at application startup."""
+    if not genai or not CONFIG.gemini.api_key:
+        return
+    api_key = CONFIG.gemini.api_key.get_secret_value()
+    if api_key:
+        genai.configure(api_key=api_key)
+
 
 def generate_caption(media_path: str, target_lang: str) -> str:
     """Extract text via OCR and ask Gemini for a caption.
@@ -20,7 +34,7 @@ def generate_caption(media_path: str, target_lang: str) -> str:
     try:
         import pytesseract
         from PIL import Image
-    except Exception as e:  # pragma: no cover - import failure
+    except ImportError as e:  # pragma: no cover - import failure
         logger.error(f"OCR dependencies missing: {e}")
         return ""
 
@@ -34,28 +48,18 @@ def generate_caption(media_path: str, target_lang: str) -> str:
     if not text:
         return ""
 
-    api_key = None
-    model_name = ""
-    try:
-        api_key = CONFIG.gemini.api_key.get_secret_value()
-        model_name = CONFIG.gemini.model
-    except Exception:  # pragma: no cover - config error
+    if not CONFIG.gemini.api_key:
         return ""
-    if not api_key:
+    api_key = CONFIG.gemini.api_key.get_secret_value()
+    if not api_key or not genai:
         return ""
-
-    try:
-        import google.generativeai as genai
-    except Exception as e:  # pragma: no cover - import failure
-        logger.error(f"Gemini client missing: {e}")
-        return ""
+    model_name = CONFIG.gemini.model
 
     prompt = f"Translate the following text to {target_lang} and suggest a concise caption:\n{text}"
     try:
-        genai.configure(api_key=api_key)
         model = genai.GenerativeModel(model_name)
         response = model.generate_content(prompt)
         return (getattr(response, "text", "") or "").strip()
-    except Exception as e:
-        logger.warning(f"Gemini caption generation failed: {e}")
+    except Exception:
+        logger.exception("Gemini caption generation failed")
         return ""
