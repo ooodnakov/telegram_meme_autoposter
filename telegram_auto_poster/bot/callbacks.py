@@ -59,22 +59,6 @@ def _is_streaming_video(file_path: str) -> bool:
     return os.path.splitext(file_path)[1].lower() in [".mp4", ".avi", ".mov"]
 
 
-
-async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle scheduling a post."""
-    logger.info(
-        f"Received /schedule callback from user {update.callback_query.from_user.id}"
-    )
-    query = update.callback_query
-    await query.answer()
-
-    paths = extract_paths_from_message(query.message)
-    if not paths:
-        await query.message.reply_text("Could not extract file path from the message")
-        return None
-    return paths
-
-
 def _translated_media_type(media_type: str) -> str:
     return "фото" if media_type == "photo" else "видео"
 
@@ -166,7 +150,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     await query.answer()
 
-    paths = await _extract_paths(query)
+    paths = extract_paths_from_message(query.message)
     if not paths:
         return
 
@@ -287,6 +271,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     chat_id=src_meta.get("chat_id") if src_meta else None,
                     message_id=src_meta.get("message_id") if src_meta else None,
                     media_hash=media_hash,
+                    source=src_meta.get("source") if src_meta else None,
                 )
 
                 user_metadata = await storage.get_submission_metadata(new_object_name)
@@ -369,7 +354,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
                 await stats.record_approved(
-                    media_type, filename=file_name, source="push_callback"
+                    media_type,
+                    filename=file_name,
+                    source=user_metadata.get("source") if user_metadata else None,
                 )
                 sent_counts[media_type] += 1
 
@@ -441,7 +428,9 @@ async def notok_callback(update, context) -> None:
                 )
 
             await stats.record_rejected(
-                media_type, filename=file_name, source="notok_callback"
+                media_type,
+                filename=file_name,
+                source=user_metadata.get("source") if user_metadata else None,
             )
 
             await _notify_submitter(

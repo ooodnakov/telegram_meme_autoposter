@@ -502,7 +502,11 @@ async def _finalize_post(item: dict[str, object]) -> None:
         )
         if media_hash:
             add_approved_hash(media_hash)
-    await stats.record_approved(media_type, filename=file_name, source="web_push")
+    await stats.record_approved(
+        media_type,
+        filename=file_name,
+        source=meta.get("source") if meta else None,
+    )
 
     review = await storage.get_review_message(file_name)
     if review:
@@ -555,6 +559,7 @@ async def _ok_post(path: str) -> None:
             chat_id=meta.get("chat_id") if meta else None,
             message_id=meta.get("message_id") if meta else None,
             group_id=meta.get("group_id") if meta else None,
+            source=meta.get("source") if meta else None,
         )
         await storage.delete_file(path, BUCKET_MAIN)
         count = await increment_batch_count()
@@ -576,8 +581,13 @@ async def _ok_post(path: str) -> None:
 async def _notok_post(path: str) -> None:
     file_name = os.path.basename(path)
     media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+    meta = await storage.get_submission_metadata(file_name)
     await storage.delete_file(path, BUCKET_MAIN)
-    await stats.record_rejected(media_type, file_name, "web_notok")
+    await stats.record_rejected(
+        media_type,
+        filename=file_name,
+        source=meta.get("source") if meta else None,
+    )
     review = await storage.get_review_message(file_name)
     if review:
         chat_id, message_id = review
@@ -711,3 +721,10 @@ async def stats_view(request: Request) -> HTMLResponse:
         "total_errors": total_errors,
     }
     return templates.TemplateResponse("stats.html", context)
+
+
+@app.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard(request: Request):
+    data = await stats.get_leaderboard()
+    context = {"request": request, **data}
+    return templates.TemplateResponse("leaderboard.html", context)

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ _('Leaderboard') }}</h1>
+<h2>{{ _('Most Submissions') }}</h2>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>{{ _('Source') }}</th>
+      <th>{{ _('Submissions') }}</th>
+      <th>{{ _('Approved') }}</th>
+      <th>{{ _('Rejected') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in submissions %}
+    <tr>
+      <td>{{ item.source }}</td>
+      <td>{{ item.submissions }}</td>
+      <td>{{ item.approved }} ({{ '%.1f'|format(item.approved_pct) }}%)</td>
+      <td>{{ item.rejected }} ({{ '%.1f'|format(item.rejected_pct) }}%)</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2>{{ _('Most Approved') }}</h2>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>{{ _('Source') }}</th>
+      <th>{{ _('Approved') }}</th>
+      <th>{{ _('Submissions') }}</th>
+      <th>{{ _('Rejected') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in approved %}
+    <tr>
+      <td>{{ item.source }}</td>
+      <td>{{ item.approved }} ({{ '%.1f'|format(item.approved_pct) }}%)</td>
+      <td>{{ item.submissions }}</td>
+      <td>{{ item.rejected }} ({{ '%.1f'|format(item.rejected_pct) }}%)</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2>{{ _('Most Rejected') }}</h2>
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>{{ _('Source') }}</th>
+      <th>{{ _('Rejected') }}</th>
+      <th>{{ _('Submissions') }}</th>
+      <th>{{ _('Approved') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for item in rejected %}
+    <tr>
+      <td>{{ item.source }}</td>
+      <td>{{ item.rejected }} ({{ '%.1f'|format(item.rejected_pct) }}%)</td>
+      <td>{{ item.submissions }}</td>
+      <td>{{ item.approved }} ({{ '%.1f'|format(item.approved_pct) }}%)</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

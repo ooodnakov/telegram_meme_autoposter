@@ -222,8 +222,11 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         # Record stats
         media_type = "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
+        meta = await storage.get_submission_metadata(object_name)
         await stats.record_approved(
-            media_type, filename=object_name, source="ok_command"
+            media_type,
+            filename=object_name,
+            source=meta.get("source") if meta else None,
         )
 
     except MinioError as e:
@@ -260,8 +263,11 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("Post disapproved!")
 
             # Record stats
+            meta = await storage.get_submission_metadata(object_name)
             await stats.record_rejected(
-                media_type, filename=object_name, source="notok_command"
+                media_type,
+                filename=object_name,
+                source=meta.get("source") if meta else None,
             )
         else:
             await update.message.reply_text("No post found to disapprove.")
@@ -590,13 +596,12 @@ async def send_batch_command(update, context):
                 base_name = item["base_name"]
                 file_obj.close()
 
+                user_metadata = await storage.get_submission_metadata(base_name)
                 await stats.record_approved(
                     media_type,
                     filename=base_name,
-                    source="send_batch_command",
+                    source=user_metadata.get("source") if user_metadata else None,
                 )
-
-                user_metadata = await storage.get_submission_metadata(base_name)
                 if user_metadata and not user_metadata.get("notified"):
                     user_id = user_metadata.get("user_id")
                     if user_id and user_id not in notified_users:

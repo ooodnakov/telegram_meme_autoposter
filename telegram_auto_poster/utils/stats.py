@@ -64,6 +64,10 @@ class MediaStats:
         await self.r.incrbyfloat(_redis_key("perf", f"{base}_total"), duration)
         await self.r.incrby(_redis_key("perf", f"{base}_count"), 1)
 
+    async def record_submission(self, source: str) -> None:
+        if source:
+            await self.r.zincrby(_redis_key("leaderboard", "submissions"), 1, source)
+
     async def record_received(self, media_type: str) -> None:
         await self._increment("media_received")
         await self._increment("media_received", scope="total")
@@ -93,6 +97,8 @@ class MediaStats:
         await self._increment(name, scope="total")
         hour_key = _redis_key("hourly", str(now_utc().hour))
         await self.r.incrby(hour_key, 1)
+        if source:
+            await self.r.zincrby(_redis_key("leaderboard", "approved"), 1, source)
 
     async def record_rejected(
         self, media_type: str, filename: str | None = None, source: str | None = None
@@ -102,6 +108,8 @@ class MediaStats:
         await self._increment(name, scope="total")
         hour_key = _redis_key("hourly", str(now_utc().hour))
         await self.r.incrby(hour_key, 1)
+        if source:
+            await self.r.zincrby(_redis_key("leaderboard", "rejected"), 1, source)
 
     async def record_added_to_batch(self, media_type: str) -> None:
         name = (
@@ -211,6 +219,40 @@ class MediaStats:
                 max_count = count
                 max_hour = hour
         return max_hour, max_count
+
+    async def get_leaderboard(self, limit: int = 10) -> dict:
+        subs_key = _redis_key("leaderboard", "submissions")
+        appr_key = _redis_key("leaderboard", "approved")
+        rej_key = _redis_key("leaderboard", "rejected")
+        subs_raw = dict(await self.r.zrevrange(subs_key, 0, -1, withscores=True))
+        appr_raw = dict(await self.r.zrevrange(appr_key, 0, -1, withscores=True))
+        rej_raw = dict(await self.r.zrevrange(rej_key, 0, -1, withscores=True))
+        all_sources = set(subs_raw) | set(appr_raw) | set(rej_raw)
+        entries: list[dict] = []
+        for src in all_sources:
+            s = int(float(subs_raw.get(src, 0)))
+            a = int(float(appr_raw.get(src, 0)))
+            r = int(float(rej_raw.get(src, 0)))
+            entries.append(
+                {
+                    "source": src,
+                    "submissions": s,
+                    "approved": a,
+                    "rejected": r,
+                    "approved_pct": (a / s * 100) if s else 0,
+                    "rejected_pct": (r / s * 100) if s else 0,
+                }
+            )
+        subs_sorted = sorted(entries, key=lambda x: x["submissions"], reverse=True)[
+            :limit
+        ]
+        appr_sorted = sorted(entries, key=lambda x: x["approved"], reverse=True)[:limit]
+        rej_sorted = sorted(entries, key=lambda x: x["rejected"], reverse=True)[:limit]
+        return {
+            "submissions": subs_sorted,
+            "approved": appr_sorted,
+            "rejected": rej_sorted,
+        }
 
     async def generate_stats_report(self, reset_daily: bool = True) -> str:
         daily = await self.get_daily_stats(reset_if_new_day=reset_daily)

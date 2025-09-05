@@ -55,6 +55,7 @@ async def upload_processed_media(
         message_id=(meta or {}).get("message_id"),
         media_hash=media_hash,
         group_id=group_id,
+        source=(meta or {}).get("source"),
     )
 
     if not uploaded:
