@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import IO
+from typing import IO, Callable
 
 from loguru import logger
 from telegram import (
@@ -76,20 +76,19 @@ async def handle_media_type(
     chat_id: int,
     media_type: str,
     file_extension: str,
-    hash_function,
+    hash_function: Callable[[str], str | None],
 ):
     """Generic handler for media uploads."""
     set_locale(resolve_locale(update))
-
-    if media_type == "photo":
-        file_id = update.message.photo[-1].file_id
-        process_func = process_photo
-    elif media_type == "video":
-        logger.info(f"Video from chat {chat_id} has started downloading!")
-        file_id = update.message.video.file_id
-        process_func = process_video
-    else:
+    config = MEDIA_TYPE_CONFIG.get(media_type)
+    if not config:
         raise ValueError("Unsupported media type")
+
+    if media_type == "video":
+        logger.info(f"Video from chat {chat_id} has started downloading!")
+
+    file_id = config["get_file_id"](update.message)
+    process_func = config["process_func"]
 
     message_id = update.message.message_id
     user_id = update.effective_user.id
@@ -452,6 +451,18 @@ async def process_video(
         logger.error(f"Unexpected error in process_video: {e}")
         await stats.record_error("processing", f"Unexpected error: {str(e)}")
     return False
+
+
+MEDIA_TYPE_CONFIG = {
+    "photo": {
+        "get_file_id": lambda msg: msg.photo[-1].file_id,
+        "process_func": process_photo,
+    },
+    "video": {
+        "get_file_id": lambda msg: msg.video.file_id,
+        "process_func": process_video,
+    },
+}
 
 
 async def process_media_group(
