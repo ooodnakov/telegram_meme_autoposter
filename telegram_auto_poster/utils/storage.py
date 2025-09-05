@@ -163,6 +163,7 @@ class MinioStorage:
         message_id=None,
         media_hash: str | None = None,
         group_id: str | None = None,
+        caption: str | None = None,
     ):
         """Store information about who submitted a particular media object.
 
@@ -178,6 +179,7 @@ class MinioStorage:
                 submission.
             media_hash: Optional hash used for deduplication.
             group_id: Optional identifier for media groups/albums.
+            caption: Optional caption suggestion.
         """
         meta = {
             "user_id": user_id,
@@ -188,6 +190,7 @@ class MinioStorage:
             "message_id": message_id,
             "hash": media_hash,
             "group_id": group_id,
+            "caption": caption,
         }
         self.submission_metadata[object_name] = meta
         try:
@@ -199,8 +202,8 @@ class MinioStorage:
         except Exception as e:
             logger.error(f"Failed to store submission metadata in Redis: {e}")
         logger.debug(
-            "Stored metadata for {}: user_id={}, chat_id={}, message_id={}, group_id={}".format(
-                object_name, user_id, chat_id, message_id, group_id
+            "Stored metadata for {}: user_id={}, chat_id={}, message_id={}, group_id={}, caption={}".format(
+                object_name, user_id, chat_id, message_id, group_id, caption
             )
         )
 

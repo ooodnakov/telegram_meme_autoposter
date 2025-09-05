@@ -17,11 +17,13 @@ from telegram.ext import ContextTypes
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
+    CONFIG,
     PHOTOS_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
+from telegram_auto_poster.utils.caption import generate_caption
 from telegram_auto_poster.utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
@@ -241,6 +243,65 @@ async def notify_user(
         await stats.record_error("telegram", f"Failed to notify user: {str(e)}")
 
 
+async def _send_to_review(
+    processed_name: str,
+    path_prefix: str,
+    extension: str,
+    send_func,
+    user_metadata: dict | None,
+    media_hash: str | None,
+    media_type: str,
+):
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Send to batch!", callback_data="/ok"),
+                InlineKeyboardButton("Schedule", callback_data="/schedule"),
+            ],
+            [
+                InlineKeyboardButton("Push!", callback_data="/push"),
+                InlineKeyboardButton("No!", callback_data="/notok"),
+            ],
+        ]
+    )
+
+    temp_path, _ = await download_from_minio(
+        f"{path_prefix}/{processed_name}", BUCKET_MAIN, extension
+    )
+
+    caption = ""
+    if CONFIG.caption.enabled:
+        caption = await asyncio.to_thread(
+            generate_caption, temp_path, CONFIG.caption.target_lang
+        )
+
+    if user_metadata:
+        await storage.store_submission_metadata(
+            processed_name,
+            user_metadata["user_id"],
+            user_metadata["chat_id"],
+            user_metadata["media_type"],
+            user_metadata["message_id"],
+            media_hash=media_hash,
+            caption=caption,
+        )
+
+    try:
+        with open(temp_path, "rb") as media_file:
+            msg = await send_func(media_file, caption, keyboard)
+        await storage.store_review_message(processed_name, msg.chat_id, msg.message_id)
+        logger.info(f"New {media_type} {processed_name} in channel!")
+    except Exception as e:
+        logger.error(f"Failed to send {media_type} to review channel: {e}")
+        await stats.record_error(
+            "telegram", f"Failed to send {media_type} to review: {str(e)}"
+        )
+        raise TelegramMediaError(f"Failed to send {media_type} to review: {str(e)}")
+    finally:
+        cleanup_temp_file(temp_path)
+    return True
+
+
 async def process_photo(
     custom_text: str,
     input_path: str,
@@ -262,17 +323,6 @@ async def process_photo(
             user_metadata=user_metadata,
             media_hash=media_hash,
         )
-
-        # Copy user metadata to processed file if exists
-        if user_metadata:
-            await storage.store_submission_metadata(
-                processed_name,
-                user_metadata["user_id"],
-                user_metadata["chat_id"],
-                user_metadata["media_type"],
-                user_metadata["message_id"],
-                media_hash=media_hash,
-            )
 
         # Record processing time
         processing_time = time.time() - start_time
@@ -300,49 +350,30 @@ async def process_photo(
             )
             raise MinioError(f"Processed photo not found in MinIO: {processed_name}")
 
-        keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("Send to batch!", callback_data="/ok"),
-                    InlineKeyboardButton("Schedule", callback_data="/schedule"),
-                ],
-                [
-                    InlineKeyboardButton("Push!", callback_data="/push"),
-                    InlineKeyboardButton("No!", callback_data="/notok"),
-                ],
-            ]
-        )
-
-        # Download to temp file for bot with correct extension
-        temp_path, _ = await download_from_minio(
-            PHOTOS_PATH + "/" + processed_name, BUCKET_MAIN, ".jpg"
-        )
-
-        try:
-            # Send photo using bot and keep review message info
-            with open(temp_path, "rb") as media_file:
-                msg = await application.bot.send_photo(
-                    bot_chat_id,
-                    media_file,
-                    custom_text
-                    + "\nNew post found\n"
-                    + f"{PHOTOS_PATH}/{processed_name}",
-                    reply_markup=keyboard,
-                    read_timeout=60,
-                    write_timeout=60,
-                    connect_timeout=60,
-                    pool_timeout=60,
-                )
-            await storage.store_review_message(
-                processed_name, msg.chat_id, msg.message_id
+        async def _send(media_file, caption, keyboard):
+            return await application.bot.send_photo(
+                bot_chat_id,
+                media_file,
+                custom_text
+                + "\nNew post found\n"
+                + f"{PHOTOS_PATH}/{processed_name}"
+                + (f"\nSuggested caption:\n{caption}" if caption else ""),
+                reply_markup=keyboard,
+                read_timeout=60,
+                write_timeout=60,
+                connect_timeout=60,
+                pool_timeout=60,
             )
-            logger.info(f"New photo {processed_name} in channel!")
-        except Exception as e:
-            logger.error(f"Failed to send photo to review channel: {e}")
-            await stats.record_error("telegram", f"Failed to send to review: {str(e)}")
-            raise TelegramMediaError(f"Failed to send photo to review: {str(e)}")
-        finally:
-            cleanup_temp_file(temp_path)
+
+        await _send_to_review(
+            processed_name,
+            PHOTOS_PATH,
+            ".jpg",
+            _send,
+            user_metadata,
+            media_hash,
+            "photo",
+        )
         return True
     except MinioError as e:
         logger.error(f"MinIO error in process_photo: {e}")
@@ -379,17 +410,6 @@ async def process_video(
             media_hash=media_hash,
         )
 
-        # Copy user metadata to processed file if exists
-        if user_metadata:
-            await storage.store_submission_metadata(
-                processed_name,
-                user_metadata["user_id"],
-                user_metadata["chat_id"],
-                user_metadata["media_type"],
-                user_metadata["message_id"],
-                media_hash=media_hash,
-            )
-
         # Record processing time
         processing_time = time.time() - start_time
         await stats.record_processed("video", processing_time)
@@ -416,52 +436,31 @@ async def process_video(
             )
             raise MinioError(f"Processed video not found in MinIO: {processed_name}")
 
-        keyboard = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton("Send to batch!", callback_data="/ok"),
-                    InlineKeyboardButton("Schedule", callback_data="/schedule"),
-                ],
-                [
-                    InlineKeyboardButton("Push!", callback_data="/push"),
-                    InlineKeyboardButton("No!", callback_data="/notok"),
-                ],
-            ]
-        )
-
-        # Download to temp file for bot with correct extension
-        temp_path, _ = await download_from_minio(
-            VIDEOS_PATH + "/" + processed_name, BUCKET_MAIN, ".mp4"
-        )
-
-        try:
-            # Send video using bot and keep review message info
-            with open(temp_path, "rb") as media_file:
-                msg = await application.bot.send_video(
-                    chat_id=bot_chat_id,
-                    video=media_file,
-                    caption=custom_text
-                    + "\nNew post found\n"
-                    + f"{VIDEOS_PATH}/{processed_name}",
-                    supports_streaming=True,
-                    reply_markup=keyboard,
-                    read_timeout=60,
-                    write_timeout=60,
-                    connect_timeout=60,
-                    pool_timeout=60,
-                )
-            await storage.store_review_message(
-                processed_name, msg.chat_id, msg.message_id
+        async def _send(media_file, caption, keyboard):
+            return await application.bot.send_video(
+                chat_id=bot_chat_id,
+                video=media_file,
+                caption=custom_text
+                + "\nNew post found\n"
+                + f"{VIDEOS_PATH}/{processed_name}"
+                + (f"\nSuggested caption:\n{caption}" if caption else ""),
+                supports_streaming=True,
+                reply_markup=keyboard,
+                read_timeout=60,
+                write_timeout=60,
+                connect_timeout=60,
+                pool_timeout=60,
             )
-            logger.info(f"New video {processed_name} in channel!")
-        except Exception as e:
-            logger.error(f"Failed to send video to review channel: {e}")
-            await stats.record_error(
-                "telegram", f"Failed to send video to review: {str(e)}"
-            )
-            raise TelegramMediaError(f"Failed to send video to review: {str(e)}")
-        finally:
-            cleanup_temp_file(temp_path)
+
+        await _send_to_review(
+            processed_name,
+            VIDEOS_PATH,
+            ".mp4",
+            _send,
+            user_metadata,
+            media_hash,
+            "video",
+        )
         return True
     except MinioError as e:
         logger.error(f"MinIO error in process_video: {e}")

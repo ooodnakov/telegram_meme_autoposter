@@ -12,6 +12,7 @@
         <thead>
             <tr>
                 <th scope="col">File Path</th>
+                <th scope="col">Caption</th>
                 <th scope="col">Scheduled Time</th>
                 <th scope="col">Preview</th>
             </tr>
@@ -20,6 +21,8 @@
             {% for p in posts %}
             <tr>
                 <td>{{ p.path }}</td>
+                <td>{{ p.caption or '' }}</td>
+                <td>{{ p.ts }}</td>
                 <td>
                     <form method="post" action="/queue/schedule" data-bg="true" class="d-flex align-items-center gap-2 flex-wrap">
                         <input type="hidden" name="path" value="{{ p.path }}" />

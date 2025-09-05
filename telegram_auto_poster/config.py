@@ -67,6 +67,16 @@ class RateLimitConfig(BaseModel):
     capacity: int = 5
 
 
+class GeminiConfig(BaseModel):
+    api_key: SecretStr | None = None
+    model: str = "gemini-1.5-flash"
+
+
+class CaptionConfig(BaseModel):
+    enabled: bool = False
+    target_lang: str = "en"
+
+
 class Config(BaseModel):
     telegram: TelegramConfig
     bot: BotConfig
@@ -76,6 +86,8 @@ class Config(BaseModel):
     valkey: ValkeyConfig = ValkeyConfig()
     web: WebConfig = WebConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
+    gemini: GeminiConfig = GeminiConfig()
+    caption: CaptionConfig = CaptionConfig()
     timezone: str = "UTC"
 
 
@@ -105,6 +117,10 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "WEB_ACCESS_KEY": ("web", "access_key"),
     "RATE_LIMIT_RATE": ("rate_limit", "rate"),
     "RATE_LIMIT_CAPACITY": ("rate_limit", "capacity"),
+    "GEMINI_API_KEY": ("gemini", "api_key"),
+    "GEMINI_MODEL": ("gemini", "model"),
+    "CAPTION_ENABLED": ("caption", "enabled"),
+    "CAPTION_TARGET_LANG": ("caption", "target_lang"),
     "TZ": ("timezone", None),
 }
 
@@ -121,6 +137,8 @@ def _load_ini(path: str) -> dict[str, Any]:
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),
         "RateLimit": ("rate_limit", RateLimitConfig),
+        "Gemini": ("gemini", GeminiConfig),
+        "Caption": ("caption", CaptionConfig),
     }
 
     for section_name, (key, model) in section_map.items():
