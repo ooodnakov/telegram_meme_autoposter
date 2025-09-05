@@ -72,7 +72,7 @@ def _translated_media_type(media_type: str) -> str:
 
 
 async def _notify_submitter(
-    context,
+    context: ContextTypes.DEFAULT_TYPE,
     user_metadata: dict | None,
     media_type: str,
     template: str,
@@ -132,9 +132,13 @@ async def _add_media_hash(
                     cleanup_temp_file(temp_path)
         if media_hash:
             add_approved_hash(media_hash)
+    except MinioError as _e:
+        logger.warning(
+            f"MinIO error while adding approved hash for {file_name} in {context_name}: {_e}"
+        )
     except Exception as _e:
         logger.warning(
-            f"Failed to add approved hash for {file_name} in {context_name}: {_e}"
+            f"Unexpected error when adding approved hash for {file_name} in {context_name}: {_e}"
         )
     return media_hash
 
