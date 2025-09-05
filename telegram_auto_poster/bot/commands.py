@@ -29,6 +29,7 @@ from telegram_auto_poster.utils.general import (
     download_from_minio,
     send_media_to_telegram,
 )
+from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.scheduler import get_due_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
@@ -42,60 +43,55 @@ from telegram_auto_poster.utils.timezone import (
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start the bot and provide welcome message"""
     logger.info(f"Received /start command from user {update.effective_user.id}")
-    await update.message.reply_text("Привет! Присылай сюда свои мемы)")
+    set_locale(resolve_locale(update))
+    await update.message.reply_text(_("Привет! Присылай сюда свои мемы)"))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display help information about the bot"""
     logger.info(f"Received /help command from user {update.effective_user.id}")
+    set_locale(resolve_locale(update))
 
-    # Check if the user is an admin to customize the help message
     is_admin = False
     user_id = update.effective_user.id
-
     if hasattr(context, "bot_data") and "admin_ids" in context.bot_data:
         admin_ids = context.bot_data["admin_ids"]
         if user_id in admin_ids:
             is_admin = True
-
-    # Base help message for all users
-    help_text = [
-        "<b>Предложка для @ooodnakov_memes</b>",
-        "",
-        "<b>Команды пользователя:</b>",
-        "• /start - Запустить бота",
-        "• /help - Показать это сообщение помощи",
-        "",
-        "<b>Как использовать:</b>",
-        "1. Отправьте фото или видео этому боту",
-        "2. Администраторы проверят ваши отправления",
-        "3. Вы получите уведомление, когда ваш контент будет одобрен или отклонен",
+    help_text_parts = [
+        _(
+            "<b>Предложка для @ooodnakov_memes</b>\n\n"
+            "<b>Команды пользователя:</b>\n"
+            "• /start - Запустить бота\n"
+            "• /help - Показать это сообщение помощи\n\n"
+            "<b>Как использовать:</b>\n"
+            "1. Отправьте фото или видео этому боту\n"
+            "2. Администраторы проверят ваши отправления\n"
+            "3. Вы получите уведомление, когда ваш контент будет одобрен или отклонен"
+        )
     ]
 
-    # Add admin commands if the user is an admin
     if is_admin:
-        help_text.extend(
-            [
-                "",
-                "<b>Команды администратора:</b>",
-                "• /stats - Просмотр статистики обработки медиа",
-                "• /reset_stats - Сбросить ежедневную статистику",
-                "• /save_stats - Принудительно сохранить статистику",
-                "• /sendall - Отправить все одобренные медиафайлы из пакета в целевой канал",
-                "• /delete_batch - Удалить текущий пакет медиафайлов",
-                "• /get - Получить текущий ID чата",
-                "",
-                "<b>Проверка контента администратором:</b>",
-                "При проверке контента вы можете использовать кнопки для:",
-                "• Send to batch - Добавить медиа в пакет для последующей отправки",
-                "• Schedule - Добавляет медиа в очередь"
-                "• Push - Немедленно опубликовать медиа в канале",
-                "• No - Отклонить медиа",
-            ]
+        help_text_parts.append(
+            _(
+                "<b>Команды администратора:</b>\n"
+                "• /stats - Просмотр статистики обработки медиа\n"
+                "• /reset_stats - Сбросить ежедневную статистику\n"
+                "• /save_stats - Принудительно сохранить статистику\n"
+                "• /sendall - Отправить все одобренные медиафайлы из пакета в целевой канал\n"
+                "• /delete_batch - Удалить текущий пакет медиафайлов\n"
+                "• /get - Получить текущий ID чата\n\n"
+                "<b>Проверка контента администратором:</b>\n"
+                "При проверке контента вы можете использовать кнопки для:\n"
+                "• Send to batch - Добавить медиа в пакет для последующей отправки\n"
+                "• Schedule - Добавляет медиа в очередь\n"
+                "• Push - Немедленно опубликовать медиа в канале\n"
+                "• No - Отклонить медиа"
+            )
         )
 
-    # Send the help message
-    help_text = "\n".join(help_text)
+    help_text = "\n\n".join(help_text_parts)
+
     logger.info(help_text)
     await update.message.reply_text(help_text, parse_mode="HTML")
 
@@ -106,7 +102,9 @@ async def get_chat_id_command(
     """Get the current chat ID"""
     chat_id = update.effective_chat.id
     logger.info(f"Received /get chat_id command, returning ID: {chat_id}")
-    await update.message.reply_text(f"This chat ID is: {chat_id}")
+    await update.message.reply_text(
+        _("This chat ID is: {chat_id}").format(chat_id=chat_id)
+    )
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -121,12 +119,12 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Generate statistics report
         report = await stats.generate_stats_report()
         if not report or not report.strip():
-            report = "No statistics available."
+            report = _("No statistics available.")
         await update.message.reply_text(report, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error generating stats report: {e}")
         await update.message.reply_text(
-            "Sorry, there was an error generating the statistics report."
+            _("Sorry, there was an error generating the statistics report.")
         )
 
 
@@ -144,12 +142,12 @@ async def reset_stats_command(
         # Reset daily statistics
         result = await stats.reset_daily_stats()
         if not result or not result.strip():
-            result = "Daily statistics have been reset."
+            result = _("Daily statistics have been reset.")
         await update.message.reply_text(result)
     except Exception as e:
         logger.error(f"Error resetting stats: {e}")
         await update.message.reply_text(
-            "Sorry, there was an error resetting the statistics."
+            _("Sorry, there was an error resetting the statistics.")
         )
 
 
@@ -166,11 +164,11 @@ async def save_stats_command(
     try:
         # Save statistics
         await stats.force_save()
-        await update.message.reply_text("Stats saved!")
+        await update.message.reply_text(_("Stats saved!"))
     except Exception as e:
         logger.error(f"Error saving stats: {e}")
         await update.message.reply_text(
-            "Sorry, there was an error saving the statistics."
+            _("Sorry, there was an error saving the statistics.")
         )
 
 

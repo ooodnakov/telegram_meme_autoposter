@@ -96,6 +96,18 @@ These instructions will get you a copy of the project up and running on your loc
     uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
     ```
 
+### Translations
+
+Localization files live in `telegram_auto_poster/locales`.  To extract new
+messages and compile `.mo` files after updating translations run:
+
+```bash
+./scripts/i18n.sh
+```
+
+The default language and per-user overrides can be configured in `config.ini`
+under the `[I18n]` section.
+
 ## Running with Docker
 
 You can also run the application using Docker and Docker Compose.

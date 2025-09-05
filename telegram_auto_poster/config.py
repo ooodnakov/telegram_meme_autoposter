@@ -67,6 +67,13 @@ class RateLimitConfig(BaseModel):
     capacity: int = 5
 
 
+class I18nConfig(BaseModel):
+    """Internationalization settings."""
+
+    default: str = "ru"
+    users: dict[int, str] = {}
+
+
 class GeminiConfig(BaseModel):
     api_key: SecretStr | None = None
     model: str = "gemini-1.5-flash"
@@ -89,6 +96,7 @@ class Config(BaseModel):
     gemini: GeminiConfig = GeminiConfig()
     caption: CaptionConfig = CaptionConfig()
     timezone: str = "UTC"
+    i18n: I18nConfig = I18nConfig()
 
 
 ENV_MAP: dict[str, tuple[str, str | None]] = {
@@ -122,7 +130,23 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "CAPTION_ENABLED": ("caption", "enabled"),
     "CAPTION_TARGET_LANG": ("caption", "target_lang"),
     "TZ": ("timezone", None),
+    "I18N_DEFAULT": ("i18n", "default"),
+    "I18N_USERS": ("i18n", "users"),
 }
+
+
+def _parse_i18n_users(value: str) -> dict[int, str]:
+    """Parse a comma-separated user:lang string into a dict."""
+    users: dict[int, str] = {}
+    for part in value.split(","):
+        if not part.strip():
+            continue
+        uid, _, lang = part.partition(":")
+        try:
+            users[int(uid.strip())] = lang.strip()
+        except ValueError:
+            continue
+    return users
 
 
 def _load_ini(path: str) -> dict[str, Any]:
@@ -198,6 +222,15 @@ def _load_ini(path: str) -> dict[str, Any]:
             for k in RateLimitConfig.model_fields
             if parser.has_option("RateLimit", k)
         }
+    if parser.has_section("I18n"):
+        i18n_section: dict[str, Any] = {}
+        if parser.has_option("I18n", "default"):
+            i18n_section["default"] = parser.get("I18n", "default")
+        if parser.has_option("I18n", "users"):
+            raw_users = parser.get("I18n", "users")
+            i18n_section["users"] = _parse_i18n_users(raw_users)
+        if i18n_section:
+            data["i18n"] = i18n_section
     return data
 
 
@@ -213,6 +246,8 @@ def _load_env() -> dict[str, Any]:
         env_section = env_data.setdefault(section, {})
         if field in {"selected_chats", "admin_ids"}:
             env_section[field] = [x.strip() for x in value.split(",") if x.strip()]
+        elif field == "users":
+            env_section[field] = _parse_i18n_users(value)
         else:
             env_section[field] = value
     return env_data
