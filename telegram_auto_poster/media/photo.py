@@ -74,6 +74,7 @@ async def add_watermark_to_image(
             message_id=meta.get("message_id") if meta else None,
             media_hash=media_hash,
             group_id=group_id,
+            source_name=meta.get("source") if meta else None,
         )
         if not uploaded:
             raise MinioError(

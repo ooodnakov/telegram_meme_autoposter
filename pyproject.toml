@@ -41,6 +41,7 @@ dependencies = [
     "python-multipart>=0.0.20",
     "Babel>=2.15.0",
     "pytesseract>=0.3.13",
+    "polib>=1.2.0",
 ]
 
 [dependency-groups]

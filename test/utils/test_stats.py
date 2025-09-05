@@ -95,3 +95,19 @@ async def test_force_save_swallows_errors(stats_instance, mocker):
     await stats_instance.force_save()
 
     mock_save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_leaderboard(stats_instance):
+    await stats_instance.record_submission_by("alice")
+    await stats_instance.record_submission_by("alice")
+    await stats_instance.record_submission_by("bob")
+    await stats_instance.record_approved("photo", source="alice")
+    await stats_instance.record_rejected("video", source="bob")
+    submitted = await stats_instance.get_leaderboard("submitted")
+    assert submitted[0]["source"] == "alice"
+    assert submitted[0]["count"] == 2
+    approved = await stats_instance.get_leaderboard("approved")
+    assert approved[0]["source"] == "alice"
+    rejected = await stats_instance.get_leaderboard("rejected")
+    assert rejected[0]["source"] == "bob"

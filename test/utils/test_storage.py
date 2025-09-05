@@ -47,6 +47,12 @@ def patch_redis_client(mocker: MockerFixture, mock_redis_client: FakeRedis):
         "telegram_auto_poster.utils.storage.get_async_redis_client",
         return_value=mock_redis_client,
     )
+    stats_mock = mocker.MagicMock()
+    stats_mock.record_submission_by = mocker.AsyncMock()
+    mocker.patch(
+        "telegram_auto_poster.utils.storage.stats_module.stats",
+        stats_mock,
+    )
 
 
 @pytest.fixture

@@ -64,6 +64,12 @@ class MediaStats:
         await self.r.incrbyfloat(_redis_key("perf", f"{base}_total"), duration)
         await self.r.incrby(_redis_key("perf", f"{base}_count"), 1)
 
+    async def record_submission_by(self, source: str) -> None:
+        key = _redis_key("submitters", source)
+        await self.r.hincrby(key, "submitted", 1)
+        await self.r.zincrby(_redis_key("leaderboard", "submitted"), 1, source)
+        await self.r.incrby(_redis_key("leaderboard_total", "submitted"), 1)
+
     async def record_received(self, media_type: str) -> None:
         await self._increment("media_received")
         await self._increment("media_received", scope="total")
@@ -93,6 +99,11 @@ class MediaStats:
         await self._increment(name, scope="total")
         hour_key = _redis_key("hourly", str(now_utc().hour))
         await self.r.incrby(hour_key, 1)
+        if source:
+            key = _redis_key("submitters", source)
+            await self.r.hincrby(key, "approved", 1)
+            await self.r.zincrby(_redis_key("leaderboard", "approved"), 1, source)
+            await self.r.incrby(_redis_key("leaderboard_total", "approved"), 1)
 
     async def record_rejected(
         self, media_type: str, filename: str | None = None, source: str | None = None
@@ -102,6 +113,11 @@ class MediaStats:
         await self._increment(name, scope="total")
         hour_key = _redis_key("hourly", str(now_utc().hour))
         await self.r.incrby(hour_key, 1)
+        if source:
+            key = _redis_key("submitters", source)
+            await self.r.hincrby(key, "rejected", 1)
+            await self.r.zincrby(_redis_key("leaderboard", "rejected"), 1, source)
+            await self.r.incrby(_redis_key("leaderboard_total", "rejected"), 1)
 
     async def record_added_to_batch(self, media_type: str) -> None:
         name = (
@@ -143,6 +159,16 @@ class MediaStats:
         if operation_type == "list":
             await self._increment("list_operations")
             await self._increment("list_operations", scope="total")
+
+    async def get_leaderboard(self, metric: str, limit: int = 10) -> list[dict]:
+        zkey = _redis_key("leaderboard", metric)
+        total = int(await self.r.get(_redis_key("leaderboard_total", metric)) or 0)
+        entries = await self.r.zrevrange(zkey, 0, limit - 1, withscores=True)
+        result = []
+        for source, count in entries:
+            percent = (count / total * 100) if total else 0.0
+            result.append({"source": source, "count": int(count), "percent": percent})
+        return result
 
     async def get_daily_stats(self, reset_if_new_day: bool = True) -> dict:
         last_reset_raw = await self.r.get(_redis_meta_key())

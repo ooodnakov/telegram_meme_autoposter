@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Leaderboard</h1>
+<div class="row">
+  <div class="col-md-4">
+    <h2>Top Submitters</h2>
+    <table class="table table-striped">
+      <thead><tr><th>Source</th><th>Count</th><th>%</th></tr></thead>
+      <tbody>
+        {% for item in submitted %}
+        <tr><td>{{ item.source }}</td><td>{{ item.count }}</td><td>{{ '%.1f'|format(item.percent) }}%</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-4">
+    <h2>Top Approved</h2>
+    <table class="table table-striped">
+      <thead><tr><th>Source</th><th>Count</th><th>%</th></tr></thead>
+      <tbody>
+        {% for item in approved %}
+        <tr><td>{{ item.source }}</td><td>{{ item.count }}</td><td>{{ '%.1f'|format(item.percent) }}%</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="col-md-4">
+    <h2>Top Rejected</h2>
+    <table class="table table-striped">
+      <thead><tr><th>Source</th><th>Count</th><th>%</th></tr></thead>
+      <tbody>
+        {% for item in rejected %}
+        <tr><td>{{ item.source }}</td><td>{{ item.count }}</td><td>{{ '%.1f'|format(item.percent) }}%</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -47,7 +47,7 @@ async def test_process_media_group(mocker, tmp_path):
         ("video1.mp4", "video1.mp4", "video"),
     ]
 
-    await process_media_group("caption", files, "chat", application)
+    await process_media_group("caption", files, "chat", application, "src")
 
     send_media_group_mock.assert_awaited_once()
     args, kwargs = send_media_group_mock.await_args

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import gettext as _gettext
 from contextvars import ContextVar
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
+import polib
 from telegram import Update
 from telegram_auto_poster.config import CONFIG, Config
 
@@ -12,21 +14,33 @@ from telegram_auto_poster.config import CONFIG, Config
 _LOCALE_DIR = Path(__file__).resolve().parent.parent / "locales"
 
 # Context variable storing the current translator
+
+
+def _load_translation(lang: Optional[str]) -> _gettext.NullTranslations:
+    """Load translation for a given language, compiling ``.po`` if needed."""
+    if lang is None:
+        return _gettext.translation("messages", localedir=_LOCALE_DIR, fallback=True)
+    mo_path = _LOCALE_DIR / lang / "LC_MESSAGES" / "messages.mo"
+    if mo_path.exists():
+        with mo_path.open("rb") as fh:
+            return _gettext.GNUTranslations(fh)
+    po_path = mo_path.with_suffix(".po")
+    if po_path.exists():
+        po = polib.pofile(str(po_path))
+        mo_data = BytesIO(po.to_binary())
+        return _gettext.GNUTranslations(mo_data)
+    return _gettext.NullTranslations()
+
+
 _translator: ContextVar[_gettext.NullTranslations] = ContextVar(
     "translator",
-    default=_gettext.translation("messages", localedir=_LOCALE_DIR, fallback=True),
+    default=_load_translation(None),
 )
 
 
 def set_locale(lang: Optional[str]) -> None:
     """Set the active locale for the current context."""
-    translation = _gettext.translation(
-        "messages",
-        localedir=_LOCALE_DIR,
-        languages=[lang] if lang else None,
-        fallback=True,
-    )
-    _translator.set(translation)
+    _translator.set(_load_translation(lang))
 
 
 def gettext(message: str) -> str:

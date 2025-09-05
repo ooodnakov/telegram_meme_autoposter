@@ -502,7 +502,9 @@ async def _finalize_post(item: dict[str, object]) -> None:
         )
         if media_hash:
             add_approved_hash(media_hash)
-    await stats.record_approved(media_type, filename=file_name, source="web_push")
+    meta = await storage.get_submission_metadata(file_name)
+    source_name = meta.get("source") if meta else None
+    await stats.record_approved(media_type, filename=file_name, source=source_name)
 
     review = await storage.get_review_message(file_name)
     if review:
@@ -555,6 +557,7 @@ async def _ok_post(path: str) -> None:
             chat_id=meta.get("chat_id") if meta else None,
             message_id=meta.get("message_id") if meta else None,
             group_id=meta.get("group_id") if meta else None,
+            source_name=meta.get("source") if meta else None,
         )
         await storage.delete_file(path, BUCKET_MAIN)
         count = await increment_batch_count()
@@ -577,7 +580,9 @@ async def _notok_post(path: str) -> None:
     file_name = os.path.basename(path)
     media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
     await storage.delete_file(path, BUCKET_MAIN)
-    await stats.record_rejected(media_type, file_name, "web_notok")
+    meta = await storage.get_submission_metadata(file_name)
+    source_name = meta.get("source") if meta else None
+    await stats.record_rejected(media_type, file_name, source_name)
     review = await storage.get_review_message(file_name)
     if review:
         chat_id, message_id = review
@@ -711,3 +716,19 @@ async def stats_view(request: Request) -> HTMLResponse:
         "total_errors": total_errors,
     }
     return templates.TemplateResponse("stats.html", context)
+
+
+@app.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard_view(request: Request) -> HTMLResponse:
+    submitted, approved, rejected = await asyncio.gather(
+        stats.get_leaderboard("submitted"),
+        stats.get_leaderboard("approved"),
+        stats.get_leaderboard("rejected"),
+    )
+    context = {
+        "request": request,
+        "submitted": submitted,
+        "approved": approved,
+        "rejected": rejected,
+    }
+    return templates.TemplateResponse("leaderboard.html", context)

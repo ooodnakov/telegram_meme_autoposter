@@ -211,6 +211,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     chat_id=src_meta.get("chat_id") if src_meta else None,
                     message_id=src_meta.get("message_id") if src_meta else None,
                     media_hash=media_hash,
+                    source_name=src_meta.get("source") if src_meta else None,
                 )
 
                 try:
@@ -324,7 +325,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
 
                 await stats.record_approved(
-                    media_type, filename=file_name, source="push_callback"
+                    media_type,
+                    filename=file_name,
+                    source=user_metadata.get("source") if user_metadata else None,
                 )
                 sent_counts[media_type] += 1
 
@@ -413,7 +416,9 @@ async def notok_callback(update, context) -> None:
                 )
 
             await stats.record_rejected(
-                media_type, filename=file_name, source="notok_callback"
+                media_type,
+                filename=file_name,
+                source=user_metadata.get("source") if user_metadata else None,
             )
 
             if (

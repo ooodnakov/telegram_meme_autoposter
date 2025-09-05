@@ -80,6 +80,7 @@ async def handle_photo(
     file_id = update.message.photo[-1].file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
+    username = update.effective_user.username or str(user_id)
     file_name = f"photo_{chat_id}_{message_id}.jpg"
     logger.info(f"file_name {file_name}, message_id {message_id}")
     # Record received media
@@ -104,7 +105,7 @@ async def handle_photo(
         image_hash = calculate_image_hash(temp_path)
         if is_duplicate_hash(image_hash):
             logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
-            await stats.record_rejected("photo", file_name, "duplicate")
+            await stats.record_rejected("photo", file_name, username)
             await update.message.reply_text(
                 _("Этот пост уже есть в канале."),
                 do_quote=True,
@@ -116,6 +117,7 @@ async def handle_photo(
             "chat_id": chat_id,
             "message_id": message_id,
             "media_type": "photo",
+            "source": username,
         }
 
         # Process the photo
@@ -160,6 +162,7 @@ async def handle_video(
     file_id = update.message.video.file_id
     message_id = update.message.message_id
     user_id = update.effective_user.id
+    username = update.effective_user.username or str(user_id)
     file_name = f"video_{chat_id}_{message_id}.mp4"
 
     # Record received media
@@ -184,7 +187,7 @@ async def handle_video(
         video_hash = calculate_video_hash(temp_path)
         if is_duplicate_hash(video_hash):
             logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
-            await stats.record_rejected("video", file_name, "duplicate")
+            await stats.record_rejected("video", file_name, username)
             await update.message.reply_text(
                 _("Этот пост уже есть в канале."),
                 do_quote=True,
@@ -196,6 +199,7 @@ async def handle_video(
             "chat_id": chat_id,
             "message_id": message_id,
             "media_type": "video",
+            "source": username,
         }
 
         # Process the video
@@ -289,12 +293,15 @@ async def _send_to_review(
     if user_metadata:
         await storage.store_submission_metadata(
             processed_name,
-            user_metadata["user_id"],
-            user_metadata["chat_id"],
-            user_metadata["media_type"],
-            user_metadata["message_id"],
+            user_id=user_metadata.get("user_id"),
+            chat_id=user_metadata.get("chat_id"),
+            media_type=user_metadata.get("media_type"),
+            message_id=user_metadata.get("message_id"),
             media_hash=media_hash,
             caption=caption,
+            group_id=user_metadata.get("group_id"),
+            source_name=user_metadata.get("source"),
+            record_submission=False,
         )
 
     try:
@@ -490,6 +497,7 @@ async def process_media_group(
     media_files: list[tuple[str, str, str]],
     bot_chat_id: str,
     application,
+    source: str | None = None,
 ):
     """Process a list of media files and send as a media group."""
     processed: list[tuple[str, str]] = []
@@ -505,7 +513,12 @@ async def process_media_group(
             processed_name = f"processed_{os.path.basename(original_name)}"
             watermark_func, _, _, _ = media_config[media_type]
             start_time = time.time()
-            await watermark_func(input_path, processed_name, group_id=group_id)
+            await watermark_func(
+                input_path,
+                processed_name,
+                user_metadata={"source": source, "media_type": media_type},
+                group_id=group_id,
+            )
             processing_time = time.time() - start_time
             await stats.record_processed(media_type, processing_time)
             processed.append((processed_name, media_type))

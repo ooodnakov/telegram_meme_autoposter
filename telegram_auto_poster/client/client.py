@@ -77,6 +77,11 @@ class TelegramMemeClient:
                 return
 
             files: list[tuple[str, str, str]] = []
+            source_name = (
+                getattr(event.chat, "username", None)
+                or getattr(event.chat, "title", None)
+                or str(event.chat_id)
+            )
             try:
                 for message in event.messages:
                     file_path = None
@@ -107,6 +112,7 @@ class TelegramMemeClient:
                         files,
                         self.bot_chat_id,
                         self.application,
+                        source_name,
                     )
             except Exception:
                 log.exception("Failed to handle album")
@@ -137,6 +143,11 @@ class TelegramMemeClient:
                 return
 
             file_path = None
+            source_name = (
+                getattr(event.chat, "username", None)
+                or getattr(event.chat, "title", None)
+                or str(event.chat_id)
+            )
             try:
                 if isinstance(event.media, types.MessageMediaPhoto):
                     log = log.bind(media_type="photo")
@@ -151,6 +162,7 @@ class TelegramMemeClient:
                         os.path.basename(file_path),
                         self.bot_chat_id,
                         self.application,
+                        user_metadata={"media_type": "photo", "source": source_name},
                     )
                 elif isinstance(event.media, types.MessageMediaDocument):
                     if event.media.document:
@@ -166,6 +178,10 @@ class TelegramMemeClient:
                             os.path.basename(file_path),
                             self.bot_chat_id,
                             self.application,
+                            user_metadata={
+                                "media_type": "video",
+                                "source": source_name,
+                            },
                         )
             except Exception:
                 log.exception("Failed to handle message")

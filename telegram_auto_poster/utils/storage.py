@@ -164,6 +164,8 @@ class MinioStorage:
         media_hash: str | None = None,
         group_id: str | None = None,
         caption: str | None = None,
+        source_name: str | None = None,
+        record_submission: bool = True,
     ):
         """Store information about who submitted a particular media object.
 
@@ -180,6 +182,7 @@ class MinioStorage:
             media_hash: Optional hash used for deduplication.
             group_id: Optional identifier for media groups/albums.
             caption: Optional caption suggestion.
+            source_name: Optional channel/user identifier for leaderboards.
         """
         meta = {
             "user_id": user_id,
@@ -191,6 +194,7 @@ class MinioStorage:
             "hash": media_hash,
             "group_id": group_id,
             "caption": caption,
+            "source": source_name,
         }
         self.submission_metadata[object_name] = meta
         try:
@@ -199,6 +203,13 @@ class MinioStorage:
                 _redis_key("submissions", object_name),
                 mapping={k: str(v) for k, v in meta.items() if v is not None},
             )
+            if (
+                record_submission
+                and source_name
+                and stats_module.stats
+                and not isinstance(stats_module.stats, MagicMock)
+            ):
+                await stats_module.stats.record_submission_by(source_name)
         except Exception as e:
             logger.error(f"Failed to store submission metadata in Redis: {e}")
         logger.debug(
@@ -250,6 +261,8 @@ class MinioStorage:
                         "review_chat_id": _to_int(data.get("review_chat_id")),
                         "review_message_id": _to_int(data.get("review_message_id")),
                         "group_id": data.get("group_id"),
+                        "caption": data.get("caption"),
+                        "source": data.get("source"),
                     }
                     self.submission_metadata[name] = meta
                     return meta
@@ -318,6 +331,7 @@ class MinioStorage:
         message_id=None,
         media_hash: str | None = None,
         group_id: str | None = None,
+        source_name: str | None = None,
     ):
         """Upload a file to MinIO and record how long the operation took.
 
@@ -383,12 +397,13 @@ class MinioStorage:
             ):
                 await self.store_submission_metadata(
                     object_name,
-                    user_id,
-                    chat_id,
-                    media_type,
-                    message_id,
-                    media_hash,
-                    group_id,
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    media_type=media_type,
+                    message_id=message_id,
+                    media_hash=media_hash,
+                    group_id=group_id,
+                    source_name=source_name,
                 )
 
             duration = time.time() - start_time
