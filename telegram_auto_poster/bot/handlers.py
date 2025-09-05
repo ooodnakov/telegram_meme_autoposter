@@ -6,13 +6,7 @@ import uuid
 from typing import IO
 
 from loguru import logger
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    InputMediaPhoto,
-    InputMediaVideo,
-    Update,
-)
+from telegram import InputMediaPhoto, InputMediaVideo, Update
 from telegram.ext import ContextTypes
 
 from telegram_auto_poster.config import (
@@ -39,6 +33,7 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.ui import approval_keyboard
 
 # Define error constants
 ERROR_MINIO_FILE_NOT_FOUND = "File not found in MinIO storage"
@@ -263,18 +258,7 @@ async def _send_to_review(
     media_hash: str | None,
     media_type: str,
 ):
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("Send to batch!", callback_data="/ok"),
-                InlineKeyboardButton("Schedule", callback_data="/schedule"),
-            ],
-            [
-                InlineKeyboardButton("Push!", callback_data="/push"),
-                InlineKeyboardButton("No!", callback_data="/notok"),
-            ],
-        ]
-    )
+    keyboard = approval_keyboard()
 
     temp_path, _ = await download_from_minio(
         f"{path_prefix}/{processed_name}", BUCKET_MAIN, extension
@@ -557,18 +541,7 @@ async def process_media_group(
                     sent_paths.append(object_path)
 
             # Send the summary message with keyboard for approval actions
-            keyboard = InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton("Send to batch!", callback_data="/ok"),
-                        InlineKeyboardButton("Schedule", callback_data="/schedule"),
-                    ],
-                    [
-                        InlineKeyboardButton("Push!", callback_data="/push"),
-                        InlineKeyboardButton("No!", callback_data="/notok"),
-                    ],
-                ]
-            )
+            keyboard = approval_keyboard()
             summary_text = custom_text + "\nNew grouped post:\n" + "\n".join(sent_paths)
             await application.bot.send_message(
                 chat_id=bot_chat_id,

@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-09-04 12:33+0000\n"
+"POT-Creation-Date: 2025-09-05 09:12+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: ru\n"
@@ -15,11 +15,11 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Generated-By: Babel 2.17.0\n"
 
-#: telegram_auto_poster/bot/commands.py:40
+#: telegram_auto_poster/bot/commands.py:47
 msgid "Привет! Присылай сюда свои мемы)"
 msgstr "Привет! Присылай сюда свои мемы)"
 
-#: telegram_auto_poster/bot/commands.py:56
+#: telegram_auto_poster/bot/commands.py:63
 msgid ""
 "<b>Предложка для @ooodnakov_memes</b>\n"
 "\n"
@@ -33,9 +33,8 @@ msgid ""
 "3. Вы получите уведомление, когда ваш контент будет одобрен или отклонен"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:68
+#: telegram_auto_poster/bot/commands.py:77
 msgid ""
-"\n"
 "<b>Команды администратора:</b>\n"
 "• /stats - Просмотр статистики обработки медиа\n"
 "• /reset_stats - Сбросить ежедневную статистику\n"
@@ -53,66 +52,102 @@ msgid ""
 "• No - Отклонить медиа"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:94
+#: telegram_auto_poster/bot/commands.py:106
 #, python-brace-format
 msgid "This chat ID is: {chat_id}"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:110
+#: telegram_auto_poster/bot/commands.py:122
 msgid "No statistics available."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:115
+#: telegram_auto_poster/bot/commands.py:127
 msgid "Sorry, there was an error generating the statistics report."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:133
+#: telegram_auto_poster/bot/commands.py:145
 msgid "Daily statistics have been reset."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:138
+#: telegram_auto_poster/bot/commands.py:150
 msgid "Sorry, there was an error resetting the statistics."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:155
+#: telegram_auto_poster/bot/commands.py:167
 msgid "Stats saved!"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:159
+#: telegram_auto_poster/bot/commands.py:171
 msgid "Sorry, there was an error saving the statistics."
 msgstr ""
 
-#: telegram_auto_poster/bot/handlers.py:107
-#: telegram_auto_poster/bot/handlers.py:187
+#: telegram_auto_poster/bot/handlers.py:104
+#: telegram_auto_poster/bot/handlers.py:184
 msgid "Этот пост уже есть в канале."
 msgstr ""
 
-#: telegram_auto_poster/bot/handlers.py:133
+#: telegram_auto_poster/bot/handlers.py:130
 msgid ""
 "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет"
 " одобрена."
 msgstr ""
 
-#: telegram_auto_poster/bot/handlers.py:142
+#: telegram_auto_poster/bot/handlers.py:139
 msgid "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже."
 msgstr ""
 
-#: telegram_auto_poster/bot/handlers.py:213
+#: telegram_auto_poster/bot/handlers.py:210
 msgid ""
 "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет "
 "одобрено."
 msgstr ""
 
-#: telegram_auto_poster/bot/handlers.py:222
+#: telegram_auto_poster/bot/handlers.py:219
 msgid "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже."
 msgstr ""
 
-#: telegram_auto_poster/bot/handlers.py:617
+#: telegram_auto_poster/bot/handlers.py:589
 msgid ""
 "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте "
 "позже."
 msgstr ""
 
+#: telegram_auto_poster/utils/ui.py:20
+msgid "Send to batch!"
+msgstr ""
+
+#: telegram_auto_poster/utils/ui.py:21
+msgid "Schedule"
+msgstr ""
+
+#: telegram_auto_poster/utils/ui.py:24
+msgid "Push!"
+msgstr ""
+
+#: telegram_auto_poster/utils/ui.py:25
+msgid "No!"
+msgstr ""
+
 #~ msgid "Привет"
 #~ msgstr "Привет"
+
+#~ msgid ""
+#~ "\n"
+#~ "<b>Команды администратора:</b>\n"
+#~ "• /stats - Просмотр статистики обработки медиа\n"
+#~ "• /reset_stats - Сбросить ежедневную статистику\n"
+#~ "• /save_stats - Принудительно сохранить статистику\n"
+#~ "• /sendall - Отправить все одобренные"
+#~ " медиафайлы из пакета в целевой канал"
+#~ "\n"
+#~ "• /delete_batch - Удалить текущий пакет медиафайлов\n"
+#~ "• /get - Получить текущий ID чата\n"
+#~ "\n"
+#~ "<b>Проверка контента администратором:</b>\n"
+#~ "При проверке контента вы можете использовать кнопки для:\n"
+#~ "• Send to batch - Добавить медиа в пакет для последующей отправки\n"
+#~ "• Schedule - Добавляет медиа в очередь\n"
+#~ "• Push - Немедленно опубликовать медиа в канале\n"
+#~ "• No - Отклонить медиа"
+#~ msgstr ""
 
