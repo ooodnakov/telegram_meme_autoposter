@@ -70,41 +70,53 @@ def get_file_name(caption):
     return caption.split("\n")[-1]
 
 
-async def handle_photo(
+async def handle_media_type(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
+    media_type: str,
+    file_extension: str,
+    hash_function,
 ):
-    """Handle photo uploads"""
+    """Generic handler for media uploads."""
     set_locale(resolve_locale(update))
-    file_id = update.message.photo[-1].file_id
+
+    if media_type == "photo":
+        file_id = update.message.photo[-1].file_id
+        process_func = process_photo
+    elif media_type == "video":
+        logger.info(f"Video from chat {chat_id} has started downloading!")
+        file_id = update.message.video.file_id
+        process_func = process_video
+    else:
+        raise ValueError("Unsupported media type")
+
     message_id = update.message.message_id
     user_id = update.effective_user.id
-    file_name = f"photo_{chat_id}_{message_id}.jpg"
-    logger.info(f"file_name {file_name}, message_id {message_id}")
-    # Record received media
-    await stats.record_received("photo")
+    file_name = f"{media_type}_{chat_id}_{message_id}{file_extension}"
+
+    await stats.record_received(media_type)
 
     temp_path = None
     try:
-        # Download to temp file with correct extension
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
         temp_path = temp_file.name
         temp_file.close()
 
-        # Download from Telegram
         start_time = time.time()
         f = await context.bot.get_file(file_id)
         await f.download_to_drive(temp_path)
         download_time = time.time() - start_time
+        logger.info(
+            f"{media_type.capitalize()} from chat {chat_id} has downloaded in {download_time:.2f}s"
+        )
 
-        download_time = time.time() - start_time
-        logger.info(f"Photo from chat {chat_id} has downloaded in {download_time:.2f}s")
-
-        image_hash = calculate_image_hash(temp_path)
-        if is_duplicate_hash(image_hash):
-            logger.info(f"Duplicate photo detected, hash: {image_hash}. Skipping.")
-            await stats.record_rejected("photo", file_name, "duplicate")
+        media_hash = hash_function(temp_path)
+        if is_duplicate_hash(media_hash):
+            logger.info(
+                f"Duplicate {media_type} detected, hash: {media_hash}. Skipping."
+            )
+            await stats.record_rejected(media_type, file_name, "duplicate")
             await update.message.reply_text(
                 _("Этот пост уже есть в канале."),
                 do_quote=True,
@@ -115,38 +127,60 @@ async def handle_photo(
             "user_id": user_id,
             "chat_id": chat_id,
             "message_id": message_id,
-            "media_type": "photo",
+            "media_type": media_type,
         }
 
-        # Process the photo
-        await process_photo(
+        await process_func(
             "New suggestion in bot",
             temp_path,
             file_name,
             context.bot_data["chat_id"],
             context.application,
             user_metadata=user_metadata,
-            media_hash=image_hash,
+            media_hash=media_hash,
         )
 
-        # Send confirmation to user
-        await update.message.reply_text(
+        success_message = (
             _(
                 "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена."
-            ),
-            do_quote=True,
+            )
+            if media_type == "photo"
+            else _(
+                "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет одобрено."
+            )
         )
+
+        await update.message.reply_text(success_message, do_quote=True)
     except Exception as e:
-        logger.error(f"Error handling photo: {e}")
-        await stats.record_error("processing", f"Error handling photo: {str(e)}")
-        await update.message.reply_text(
+        logger.error(f"Error handling {media_type}: {e}")
+        await stats.record_error("processing", f"Error handling {media_type}: {str(e)}")
+        error_message = (
             _(
                 "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже."
-            ),
-            do_quote=True,
+            )
+            if media_type == "photo"
+            else _(
+                "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже."
+            )
         )
+        await update.message.reply_text(error_message, do_quote=True)
     finally:
         cleanup_temp_file(temp_path)
+
+
+async def handle_photo(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+):
+    await handle_media_type(
+        update,
+        context,
+        chat_id,
+        "photo",
+        ".jpg",
+        calculate_image_hash,
+    )
 
 
 async def handle_video(
@@ -154,79 +188,14 @@ async def handle_video(
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
 ):
-    """Handle video uploads"""
-    set_locale(resolve_locale(update))
-    logger.info(f"Video from chat {chat_id} has started downloading!")
-    file_id = update.message.video.file_id
-    message_id = update.message.message_id
-    user_id = update.effective_user.id
-    file_name = f"video_{chat_id}_{message_id}.mp4"
-
-    # Record received media
-    await stats.record_received("video")
-
-    temp_path = None
-    try:
-        # Download to temp file with correct extension
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        temp_path = temp_file.name
-        temp_file.close()
-
-        # Download from Telegram
-        start_time = time.time()
-        f = await context.bot.get_file(file_id)
-        await f.download_to_drive(temp_path)
-        download_time = time.time() - start_time
-
-        download_time = time.time() - start_time
-        logger.info(f"Video from chat {chat_id} has downloaded in {download_time:.2f}s")
-
-        video_hash = calculate_video_hash(temp_path)
-        if is_duplicate_hash(video_hash):
-            logger.info(f"Duplicate video detected, hash: {video_hash}. Skipping.")
-            await stats.record_rejected("video", file_name, "duplicate")
-            await update.message.reply_text(
-                _("Этот пост уже есть в канале."),
-                do_quote=True,
-            )
-            return
-
-        user_metadata = {
-            "user_id": user_id,
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "media_type": "video",
-        }
-
-        # Process the video
-        await process_video(
-            "New suggestion in bot",
-            temp_path,
-            file_name,
-            context.bot_data["chat_id"],
-            context.application,
-            user_metadata=user_metadata,
-            media_hash=video_hash,
-        )
-
-        # Send confirmation to user
-        await update.message.reply_text(
-            _(
-                "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет одобрено."
-            ),
-            do_quote=True,
-        )
-    except Exception as e:
-        logger.error(f"Error handling video: {e}")
-        await stats.record_error("processing", f"Error handling video: {str(e)}")
-        await update.message.reply_text(
-            _(
-                "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже."
-            ),
-            do_quote=True,
-        )
-    finally:
-        cleanup_temp_file(temp_path)
+    await handle_media_type(
+        update,
+        context,
+        chat_id,
+        "video",
+        ".mp4",
+        calculate_video_hash,
+    )
 
 
 async def notify_user(
