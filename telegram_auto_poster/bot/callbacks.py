@@ -32,8 +32,7 @@ from telegram_auto_poster.utils.general import (
     TelegramMediaError,
     cleanup_temp_file,
     download_from_minio,
-    extract_file_paths,
-    extract_filename,
+    extract_paths_from_message,
     prepare_group_items,
     send_group_media,
     send_media_to_telegram,
@@ -62,13 +61,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     await query.answer()
 
-    message_text = query.message.caption or query.message.text
-    paths = extract_file_paths(message_text)
-    # Backward-compatible fallback to single path extraction
-    if not paths:
-        single = extract_filename(message_text)
-        if single:
-            paths = [single]
+    paths = extract_paths_from_message(query.message)
     if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return
@@ -157,12 +150,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
-    message_text = query.message.caption or query.message.text
-    paths = extract_file_paths(message_text)
-    if not paths:
-        single = extract_filename(message_text)
-        if single:
-            paths = [single]
+    paths = extract_paths_from_message(query.message)
     if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return
@@ -277,12 +265,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     target_channel = context.bot_data.get("target_channel_id")
 
-    message_text = query.message.caption or query.message.text
-    paths = extract_file_paths(message_text)
-    if not paths:
-        single = extract_filename(message_text)
-        if single:
-            paths = [single]
+    paths = extract_paths_from_message(query.message)
     if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return
@@ -376,12 +359,7 @@ async def notok_callback(update, context) -> None:
     await query.answer()
 
     try:
-        message_text = query.message.caption or query.message.text
-        paths = extract_file_paths(message_text)
-        if not paths:
-            single = extract_filename(message_text)
-            if single:
-                paths = [single]
+        paths = extract_paths_from_message(query.message)
         if not paths:
             await query.message.reply_text(
                 "Could not extract file path from the message"

@@ -95,6 +95,34 @@ def extract_file_paths(text: str) -> List[str]:
     return results
 
 
+def extract_paths_from_message(message) -> List[str]:
+    """Extract media paths from a Telegram message.
+
+    Looks at ``message.caption`` and ``message.text`` to gather all file paths
+    using :func:`extract_file_paths`.  If no explicit paths are found, falls
+    back to :func:`extract_filename` for backward compatibility.
+
+    Args:
+        message: Telegram message object or any object with ``caption`` and
+            ``text`` attributes.
+
+    Returns:
+        A list of extracted file paths. The list may be empty if nothing could
+        be determined.
+    """
+
+    if not message:
+        return []
+
+    message_text = getattr(message, "caption", None) or getattr(message, "text", None)
+    paths = extract_file_paths(message_text)
+    if paths:
+        return paths
+
+    single = extract_filename(message_text)
+    return [single] if single else []
+
+
 def cleanup_temp_file(file_path: str | None) -> None:
     """Safely remove a temporary file if it exists.
 
