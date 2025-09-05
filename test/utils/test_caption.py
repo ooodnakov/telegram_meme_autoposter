@@ -40,46 +40,30 @@ def _patch_gemini(monkeypatch, response_text: str):
         holder["model"] = m
         return m
 
-    fake_genai = types.SimpleNamespace(
-        configure=lambda api_key: None,
-        GenerativeModel=factory,
-    )
-    google_pkg = types.ModuleType("google")
-    google_pkg.generativeai = fake_genai
-    monkeypatch.setitem(sys.modules, "google", google_pkg)
-    monkeypatch.setitem(sys.modules, "google.generativeai", fake_genai)
+    fake_genai = types.SimpleNamespace(GenerativeModel=factory)
+    import telegram_auto_poster.utils.caption as caption_module
+
+    monkeypatch.setattr(caption_module, "genai", fake_genai)
     return holder
 
 
 def test_generate_caption_ocr_failure(monkeypatch):
     _patch_ocr(monkeypatch, text=None, raise_err=True)
-    orig = CONFIG.gemini.api_key
-    CONFIG.gemini.api_key = SecretStr("k")
-    try:
-        assert generate_caption("dummy.jpg", "en") == ""
-    finally:
-        CONFIG.gemini.api_key = orig
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+    assert generate_caption("dummy.jpg", "en") == ""
 
 
 def test_generate_caption_with_stub(monkeypatch):
     _patch_ocr(monkeypatch, text="Привет")
     _patch_gemini(monkeypatch, "Hello")
-    orig = CONFIG.gemini.api_key
-    CONFIG.gemini.api_key = SecretStr("k")
-    try:
-        result = generate_caption("dummy.jpg", "en")
-        assert result == "Hello"
-    finally:
-        CONFIG.gemini.api_key = orig
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+    result = generate_caption("dummy.jpg", "en")
+    assert result == "Hello"
 
 
 def test_generate_caption_translation_prompt(monkeypatch):
     _patch_ocr(monkeypatch, text="hola")
     holder = _patch_gemini(monkeypatch, "hola")
-    orig = CONFIG.gemini.api_key
-    CONFIG.gemini.api_key = SecretStr("k")
-    try:
-        generate_caption("dummy.jpg", "fr")
-        assert "fr" in holder["model"].prompt
-    finally:
-        CONFIG.gemini.api_key = orig
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+    generate_caption("dummy.jpg", "fr")
+    assert "fr" in holder["model"].prompt
