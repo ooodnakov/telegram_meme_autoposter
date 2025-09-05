@@ -32,8 +32,7 @@ from telegram_auto_poster.utils.general import (
     TelegramMediaError,
     cleanup_temp_file,
     download_from_minio,
-    extract_file_paths,
-    extract_filename,
+    extract_paths_from_message,
     prepare_group_items,
     send_group_media,
     send_media_to_telegram,
@@ -60,13 +59,16 @@ def _is_streaming_video(file_path: str) -> bool:
     return os.path.splitext(file_path)[1].lower() in [".mp4", ".avi", ".mov"]
 
 
-async def _extract_paths(query: CallbackQuery) -> list[str] | None:
-    message_text = query.message.caption or query.message.text
-    paths = extract_file_paths(message_text)
-    if not paths:
-        single = extract_filename(message_text)
-        if single:
-            paths = [single]
+
+async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle scheduling a post."""
+    logger.info(
+        f"Received /schedule callback from user {update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    await query.answer()
+
+    paths = extract_paths_from_message(query.message)
     if not paths:
         await query.message.reply_text("Could not extract file path from the message")
         return None
@@ -238,7 +240,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     query = update.callback_query
     await query.answer()
 
-    paths = await _extract_paths(query)
+    paths = extract_paths_from_message(query.message)
     if not paths:
         return
 
@@ -333,7 +335,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     target_channel = context.bot_data.get("target_channel_id")
 
-    paths = await _extract_paths(query)
+    paths = extract_paths_from_message(query.message)
     if not paths:
         return
 
@@ -413,7 +415,7 @@ async def notok_callback(update, context) -> None:
     await query.answer()
 
     try:
-        paths = await _extract_paths(query)
+        paths = extract_paths_from_message(query.message)
         if not paths:
             return
 

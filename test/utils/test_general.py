@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -8,6 +9,7 @@ from telegram_auto_poster.utils.general import (
     download_from_minio,
     extract_file_paths,
     extract_filename,
+    extract_paths_from_message,
     get_file_extension,
 )
 from telegram_auto_poster.utils.stats import stats
@@ -42,6 +44,39 @@ def test_extract_filename(text, expected):
 )
 def test_extract_file_paths(text, expected):
     assert extract_file_paths(text) == expected
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        (
+            SimpleNamespace(caption="photos/a.jpg\nvideos/b.mp4", text=None),
+            ["photos/a.jpg", "videos/b.mp4"],
+        ),
+        (
+            SimpleNamespace(text="intro\nline2", caption=None),
+            ["line2"],
+        ),
+        (
+            SimpleNamespace(text="", caption=None),
+            [],
+        ),
+        (
+            SimpleNamespace(text=None, caption=None),
+            [],
+        ),
+        (
+            None,
+            [],
+        ),
+        (
+            SimpleNamespace(),
+            [],
+        ),
+    ],
+)
+def test_extract_paths_from_message(message, expected):
+    assert extract_paths_from_message(message) == expected
 
 
 def test_cleanup_temp_file_removes_file(tmp_path):
