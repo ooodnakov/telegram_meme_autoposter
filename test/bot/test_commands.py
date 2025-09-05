@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 from pytest_mock import MockerFixture
+import datetime
 from telegram_auto_poster.config import SCHEDULED_PATH
 
 
@@ -297,7 +298,7 @@ async def test_post_scheduled_media_job_uses_correct_path(
     """Ensure scheduled media job uses full stored paths without re-prefixing."""
     scheduled_path = f"{SCHEDULED_PATH}/foo.jpg"
     mocker.patch.object(
-        commands.db, "get_scheduled_posts", return_value=[(scheduled_path, 0)]
+        commands, "get_due_posts", return_value=[(scheduled_path, 0)]
     )
     mocker.patch.object(
         commands,
@@ -319,6 +320,26 @@ async def test_post_scheduled_media_job_uses_correct_path(
         scheduled_path, commands.BUCKET_MAIN
     )
     commands.db.remove_scheduled_post.assert_called_once_with(scheduled_path)
+
+
+@pytest.mark.asyncio
+async def test_schedule_command_converts_timezone(mocker: MockerFixture, commands):
+    reply = SimpleNamespace(caption=f"{SCHEDULED_PATH}/foo.jpg")
+    message = SimpleNamespace(
+        text="/schedule 2024-01-02 03:04",
+        reply_to_message=reply,
+        reply_text=mocker.AsyncMock(),
+    )
+    update = SimpleNamespace(effective_user=SimpleNamespace(id=1), message=message)
+    context = SimpleNamespace(args=["2024-01-02", "03:04"])
+    mocker.patch.object(commands, "check_admin_rights", return_value=True)
+    add_post = mocker.patch.object(commands.db, "add_scheduled_post")
+
+    await commands.schedule_command(update, context)
+
+    expected_ts = int(datetime.datetime(2024, 1, 2, 0, 4, tzinfo=commands.UTC).timestamp())
+    add_post.assert_called_once_with(expected_ts, f"{SCHEDULED_PATH}/foo.jpg")
+    message.reply_text.assert_awaited()
 
 
 @pytest.mark.asyncio

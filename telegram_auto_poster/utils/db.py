@@ -94,15 +94,23 @@ def _redis_meta_key() -> str:
 
 
 def add_scheduled_post(scheduled_time: int, file_path: str) -> None:
-    """Add a post to the sorted set of scheduled posts.
+    """Store or update a post's explicit scheduled timestamp.
+
+    The timestamp is stored both as the score of a sorted set (for range
+    queries) and in a hash for quick lookup of an individual post's
+    ``scheduled_at`` value.
 
     Args:
         scheduled_time: Unix timestamp when the post should be published.
         file_path: Path identifier for the media item.
     """
     client = get_redis_client()
-    key = _redis_key("scheduled_posts", "schedule")
-    client.zadd(key, {file_path: scheduled_time})
+    zset_key = _redis_key("scheduled_posts", "schedule")
+    hash_key = _redis_key("scheduled_posts", "scheduled_at")
+    pipe = client.pipeline()
+    pipe.zadd(zset_key, {file_path: scheduled_time})
+    pipe.hset(hash_key, file_path, scheduled_time)
+    pipe.execute()
 
 
 def get_scheduled_posts(
@@ -152,8 +160,27 @@ def remove_scheduled_post(file_path: str) -> None:
         file_path: Path identifier of the media to remove.
     """
     client = get_redis_client()
-    key = _redis_key("scheduled_posts", "schedule")
-    client.zrem(key, file_path)
+    zset_key = _redis_key("scheduled_posts", "schedule")
+    hash_key = _redis_key("scheduled_posts", "scheduled_at")
+    pipe = client.pipeline()
+    pipe.zrem(zset_key, file_path)
+    pipe.hdel(hash_key, file_path)
+    pipe.execute()
+
+
+def get_scheduled_time(file_path: str) -> int | None:
+    """Return the stored ``scheduled_at`` timestamp for ``file_path``.
+
+    Args:
+        file_path: Path of the media item.
+
+    Returns:
+        Optional[int]: Unix timestamp or ``None`` if not scheduled.
+    """
+    client = get_redis_client()
+    key = _redis_key("scheduled_posts", "scheduled_at")
+    value = client.hget(key, file_path)
+    return int(value) if value is not None else None
 
 
 async def increment_batch_count(amount: int = 1) -> int:

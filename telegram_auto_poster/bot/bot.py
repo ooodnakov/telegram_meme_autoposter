@@ -35,6 +35,7 @@ from telegram_auto_poster.bot.commands import (
     reset_stats_command,
     save_stats_command,
     sch_command,
+    schedule_command,
     send_batch_command,
     send_luba_command,
     start_command,
@@ -110,6 +111,7 @@ class TelegramMemeBot:
         self.application.add_handler(CommandHandler("stats", stats_command))
         self.application.add_handler(CommandHandler("reset_stats", reset_stats_command))
         self.application.add_handler(CommandHandler("save_stats", save_stats_command))
+        self.application.add_handler(CommandHandler("schedule", schedule_command))
         self.application.add_handler(CommandHandler("sch", sch_command))
         self.application.add_handler(CommandHandler("batch", batch_command))
 
