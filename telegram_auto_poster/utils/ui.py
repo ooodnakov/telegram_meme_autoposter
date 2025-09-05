@@ -1,4 +1,11 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram_auto_poster.utils.i18n import _
+
+# Callback data constants
+CALLBACK_OK = "/ok"
+CALLBACK_SCHEDULE = "/schedule"
+CALLBACK_PUSH = "/push"
+CALLBACK_NOTOK = "/notok"
 
 
 def approval_keyboard() -> InlineKeyboardMarkup:
@@ -10,12 +17,12 @@ def approval_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                InlineKeyboardButton("Send to batch!", callback_data="/ok"),
-                InlineKeyboardButton("Schedule", callback_data="/schedule"),
+                InlineKeyboardButton(_("Send to batch!"), callback_data=CALLBACK_OK),
+                InlineKeyboardButton(_("Schedule"), callback_data=CALLBACK_SCHEDULE),
             ],
             [
-                InlineKeyboardButton("Push!", callback_data="/push"),
-                InlineKeyboardButton("No!", callback_data="/notok"),
+                InlineKeyboardButton(_("Push!"), callback_data=CALLBACK_PUSH),
+                InlineKeyboardButton(_("No!"), callback_data=CALLBACK_NOTOK),
             ],
         ]
     )
