@@ -46,6 +46,12 @@ from telegram_auto_poster.bot.commands import (
 from telegram_auto_poster.bot.handlers import handle_media
 from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils.timezone import now_utc
+from telegram_auto_poster.utils.ui import (
+    CALLBACK_NOTOK,
+    CALLBACK_OK,
+    CALLBACK_PUSH,
+    CALLBACK_SCHEDULE,
+)
 
 
 class TelegramMemeBot:
@@ -118,16 +124,16 @@ class TelegramMemeBot:
         # Register callback handlers - fixed to use exact pattern matching with regex
         logger.info("Registering callback handlers...")
         self.application.add_handler(
-            CallbackQueryHandler(ok_callback, pattern=r"^/ok$")
+            CallbackQueryHandler(ok_callback, pattern=rf"^{CALLBACK_OK}$")
         )
         self.application.add_handler(
-            CallbackQueryHandler(push_callback, pattern=r"^/push$")
+            CallbackQueryHandler(push_callback, pattern=rf"^{CALLBACK_PUSH}$")
         )
         self.application.add_handler(
-            CallbackQueryHandler(notok_callback, pattern=r"^/notok$")
+            CallbackQueryHandler(notok_callback, pattern=rf"^{CALLBACK_NOTOK}$")
         )
         self.application.add_handler(
-            CallbackQueryHandler(schedule_callback, pattern=r"^/schedule$")
+            CallbackQueryHandler(schedule_callback, pattern=rf"^{CALLBACK_SCHEDULE}$")
         )
         self.application.add_handler(
             CallbackQueryHandler(unschedule_callback, pattern=r"^/unschedule:")
