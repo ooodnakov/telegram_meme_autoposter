@@ -95,7 +95,7 @@ def extract_file_paths(text: str) -> List[str]:
     return results
 
 
-def extract_paths_from_message(message) -> List[str]:
+def extract_paths_from_message(message: Any) -> List[str]:
     """Extract media paths from a Telegram message.
 
     Looks at ``message.caption`` and ``message.text`` to gather all file paths

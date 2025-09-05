@@ -65,6 +65,14 @@ def test_extract_file_paths(text, expected):
             SimpleNamespace(text=None, caption=None),
             [],
         ),
+        (
+            None,
+            [],
+        ),
+        (
+            SimpleNamespace(),
+            [],
+        ),
     ],
 )
 def test_extract_paths_from_message(message, expected):
