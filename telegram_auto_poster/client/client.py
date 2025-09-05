@@ -1,8 +1,12 @@
 import asyncio
 import os
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from telethon import TelegramClient, events, types
+
+if TYPE_CHECKING:
+    from loguru import Logger
 
 from telegram_auto_poster.bot.handlers import (
     process_media_group,
@@ -56,6 +60,52 @@ class TelegramMemeClient:
 
         logger.info("TelegramClient instance created")
 
+    async def _check_rate_limit(self, chat_id: int, log: "Logger") -> bool:
+        """Acquire a token from the rate limiter for the given chat.
+
+        Returns ``True`` if processing should continue, ``False`` otherwise."""
+        limiter = self.rate_limiters.setdefault(
+            chat_id,
+            RateLimiter(
+                rate=self.rate_limit_config.rate,
+                capacity=self.rate_limit_config.capacity,
+            ),
+        )
+        if not await limiter.acquire(drop=True):
+            log.warning("Rate limit exceeded")
+            if stats_module.stats:
+                await stats_module.stats.record_rate_limit_drop()
+            return False
+        return True
+
+    async def _download_media(
+        self, message: types.Message, log: "Logger"
+    ) -> tuple["Logger", tuple[str, str, str] | None]:
+        """Download supported media from a message.
+
+        Returns a tuple of ``(log, file_info)`` where ``file_info`` is
+        ``(path, basename, media_type)``. ``file_info`` is ``None`` if the
+        message doesn't contain photo or video media."""
+        media_info = None
+        if isinstance(message.media, types.MessageMediaPhoto):
+            media_info = ("photo", message.media.photo, "jpg")
+        elif (
+            isinstance(message.media, types.MessageMediaDocument)
+            and message.media.document
+        ):
+            media_info = ("video", message.media.document, "mp4")
+
+        if not media_info:
+            return log, None
+
+        media_type, media_obj, ext = media_info
+        log = log.bind(media_type=media_type)
+        file_path = f"{media_type}_{message.id}.{ext}"
+        if stats_module.stats:
+            await stats_module.stats.record_received(media_type)
+        await self.client.download_media(media_obj, file=file_path)
+        return log, (file_path, os.path.basename(file_path), media_type)
+
     async def start(self) -> None:
         """Start the client and maintain the connection with retries."""
         self._running = True
@@ -63,44 +113,15 @@ class TelegramMemeClient:
         @self.client.on(events.Album(chats=self.selected_chats))
         async def handle_album(event):  # pragma: no cover - telemetry
             log = logger.bind(chat_id=event.chat_id, grouped_id=event.grouped_id)
-            limiter = self.rate_limiters.setdefault(
-                event.chat_id,
-                RateLimiter(
-                    rate=self.rate_limit_config.rate,
-                    capacity=self.rate_limit_config.capacity,
-                ),
-            )
-            if not await limiter.acquire(drop=True):
-                log.warning("Rate limit exceeded")
-                if stats_module.stats:
-                    await stats_module.stats.record_rate_limit_drop()
+            if not await self._check_rate_limit(event.chat_id, log):
                 return
 
             files: list[tuple[str, str, str]] = []
             try:
                 for message in event.messages:
-                    file_path = None
-                    if isinstance(message.media, types.MessageMediaPhoto):
-                        log = log.bind(media_type="photo")
-                        file_path = f"photo_{message.id}.jpg"
-                        if stats_module.stats:
-                            await stats_module.stats.record_received("photo")
-                        await self.client.download_media(
-                            message.media.photo, file=file_path
-                        )
-                        files.append((file_path, os.path.basename(file_path), "photo"))
-                    elif isinstance(message.media, types.MessageMediaDocument):
-                        if message.media.document:
-                            log = log.bind(media_type="video")
-                            file_path = f"video_{message.id}.mp4"
-                            if stats_module.stats:
-                                await stats_module.stats.record_received("video")
-                            await self.client.download_media(
-                                message.media.document, file=file_path
-                            )
-                            files.append(
-                                (file_path, os.path.basename(file_path), "video")
-                            )
+                    log, file_info = await self._download_media(message, log)
+                    if file_info:
+                        files.append(file_info)
                 if files:
                     await process_media_group(
                         "New post found with grouped media",
@@ -120,58 +141,38 @@ class TelegramMemeClient:
         @self.client.on(events.NewMessage(chats=self.selected_chats))
         async def handle_new_message(event):  # pragma: no cover - telemetry
             log = logger.bind(chat_id=event.chat_id, message_id=event.id)
-            limiter = self.rate_limiters.setdefault(
-                event.chat_id,
-                RateLimiter(
-                    rate=self.rate_limit_config.rate,
-                    capacity=self.rate_limit_config.capacity,
-                ),
-            )
-            if not await limiter.acquire(drop=True):
-                log.warning("Rate limit exceeded")
-                if stats_module.stats:
-                    await stats_module.stats.record_rate_limit_drop()
+            if not await self._check_rate_limit(event.chat_id, log):
                 return
 
             if getattr(event.message, "grouped_id", None):
                 return
 
-            file_path = None
+            path = None
             try:
-                if isinstance(event.media, types.MessageMediaPhoto):
-                    log = log.bind(media_type="photo")
-                    photo = event.media.photo
-                    file_path = f"photo_{event.id}.jpg"
-                    if stats_module.stats:
-                        await stats_module.stats.record_received("photo")
-                    await self.client.download_media(photo, file=file_path)
-                    await process_photo(
-                        "New post found with image",
-                        file_path,
-                        os.path.basename(file_path),
-                        self.bot_chat_id,
-                        self.application,
-                    )
-                elif isinstance(event.media, types.MessageMediaDocument):
-                    if event.media.document:
-                        log = log.bind(media_type="video")
-                        if stats_module.stats:
-                            await stats_module.stats.record_received("video")
-                        video = event.media.document
-                        file_path = f"video_{event.id}.mp4"
-                        await self.client.download_media(video, file=file_path)
+                log, file_info = await self._download_media(event.message, log)
+                if file_info:
+                    path, basename, media_type = file_info
+                    if media_type == "photo":
+                        await process_photo(
+                            "New post found with image",
+                            path,
+                            basename,
+                            self.bot_chat_id,
+                            self.application,
+                        )
+                    elif media_type == "video":
                         await process_video(
                             "New post found with video",
-                            file_path,
-                            os.path.basename(file_path),
+                            path,
+                            basename,
                             self.bot_chat_id,
                             self.application,
                         )
             except Exception:
                 log.exception("Failed to handle message")
             finally:
-                if file_path and os.path.exists(file_path):
-                    os.remove(file_path)
+                if path and os.path.exists(path):
+                    os.remove(path)
                 else:
                     log.info("New non photo/video in channel")
 
