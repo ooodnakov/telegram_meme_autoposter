@@ -248,10 +248,10 @@ async def _send_to_review(
     if user_metadata:
         await storage.store_submission_metadata(
             processed_name,
-            user_metadata["user_id"],
-            user_metadata["chat_id"],
-            user_metadata["media_type"],
-            user_metadata["message_id"],
+            user_metadata.get("user_id"),
+            user_metadata.get("chat_id"),
+            user_metadata.get("media_type"),
+            user_metadata.get("message_id"),
             media_hash=media_hash,
             caption=caption,
             source=user_metadata.get("source"),
