@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import heapq
 from typing import Optional
 
 from telegram_auto_poster.utils.db import (
@@ -243,11 +244,9 @@ class MediaStats:
                     "rejected_pct": (r / s * 100) if s else 0,
                 }
             )
-        subs_sorted = sorted(entries, key=lambda x: x["submissions"], reverse=True)[
-            :limit
-        ]
-        appr_sorted = sorted(entries, key=lambda x: x["approved"], reverse=True)[:limit]
-        rej_sorted = sorted(entries, key=lambda x: x["rejected"], reverse=True)[:limit]
+        subs_sorted = heapq.nlargest(limit, entries, key=lambda x: x["submissions"])
+        appr_sorted = heapq.nlargest(limit, entries, key=lambda x: x["approved"])
+        rej_sorted = heapq.nlargest(limit, entries, key=lambda x: x["rejected"])
         return {
             "submissions": subs_sorted,
             "approved": appr_sorted,

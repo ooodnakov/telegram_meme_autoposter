@@ -106,6 +106,14 @@ class TelegramMemeClient:
         await self.client.download_media(media_obj, file=file_path)
         return log, (file_path, os.path.basename(file_path), media_type)
 
+    async def _get_source_name(self, event) -> str:
+        chat = event.chat if getattr(event, "chat", None) else await event.get_chat()
+        return (
+            getattr(chat, "username", None)
+            or getattr(chat, "title", None)
+            or str(event.chat_id)
+        )
+
     async def start(self) -> None:
         """Start the client and maintain the connection with retries."""
         self._running = True
@@ -117,14 +125,7 @@ class TelegramMemeClient:
                 return
 
             files: list[tuple[str, str, str]] = []
-            chat = (
-                event.chat if getattr(event, "chat", None) else await event.get_chat()
-            )
-            source_name = (
-                getattr(chat, "username", None)
-                or getattr(chat, "title", None)
-                or str(event.chat_id)
-            )
+            source_name = await self._get_source_name(event)
             try:
                 for message in event.messages:
                     log, file_info = await self._download_media(message, log)
@@ -160,16 +161,7 @@ class TelegramMemeClient:
 
             path = None
             try:
-                chat = (
-                    event.chat
-                    if getattr(event, "chat", None)
-                    else await event.get_chat()
-                )
-                source_name = (
-                    getattr(chat, "username", None)
-                    or getattr(chat, "title", None)
-                    or str(event.chat_id)
-                )
+                source_name = await self._get_source_name(event)
                 log, file_info = await self._download_media(event.message, log)
                 if file_info:
                     path, basename, media_type = file_info
