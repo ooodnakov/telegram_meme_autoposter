@@ -22,6 +22,10 @@ mkdir -p /workspace/videos
 echo "Starting web dashboard..."
 uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port ${WEB_PORT:-8000} &
 
+# Pydoc is now served by the web dashboard
+# echo "Starting pydoc server..."
+# uv run python -m pydoc -p ${PYDOC_PORT:-8765} &
+
 # Start the bot application
 echo "Starting application..."
 uv run python -m telegram_auto_poster.main

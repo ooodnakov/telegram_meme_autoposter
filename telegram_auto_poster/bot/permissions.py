@@ -1,3 +1,5 @@
+"""Utilities for checking administrative permissions for bot commands."""
+
 from loguru import logger
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -8,15 +10,15 @@ from telegram_auto_poster.config import load_config
 async def check_admin_rights(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> bool:
-    """
-    Check if the user has admin rights to execute a command.
+    """Check whether the user has administrative privileges.
 
     Args:
-        update: The update object from Telegram
-        context: The context object from Telegram
+        update: Incoming update from Telegram.
+        context: Handler context providing bot data.
 
     Returns:
-        bool: True if the user has admin rights, False otherwise
+        ``True`` if the user is an administrator, ``False`` otherwise.
+
     """
     try:
         # Get user ID

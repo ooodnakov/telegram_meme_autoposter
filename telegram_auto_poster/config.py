@@ -11,6 +11,8 @@ from pydantic import BaseModel, SecretStr, model_validator
 
 
 class TelegramConfig(BaseModel):
+    """Telegram API credentials and target channel settings."""
+
     api_id: int
     api_hash: str
     username: str
@@ -18,6 +20,8 @@ class TelegramConfig(BaseModel):
 
 
 class BotConfig(BaseModel):
+    """Bot credentials and administrative settings."""
+
     bot_token: SecretStr
     bot_username: str
     bot_chat_id: int
@@ -26,23 +30,28 @@ class BotConfig(BaseModel):
     @model_validator(mode="after")
     def default_admins(self) -> "BotConfig":
         """Populate ``admin_ids`` with ``bot_chat_id`` when not provided."""
-
         if self.admin_ids is None:
             self.admin_ids = [self.bot_chat_id]
         return self
 
 
 class ChatsConfig(BaseModel):
+    """Source chat identifiers."""
+
     selected_chats: list[str]
     luba_chat: str
 
 
 class ScheduleConfig(BaseModel):
+    """Posting schedule configuration."""
+
     quiet_hours_start: int = 22
     quiet_hours_end: int = 10
 
 
 class MinioConfig(BaseModel):
+    """MinIO object storage connection settings."""
+
     host: str = "localhost"
     port: int = 9000
     url: str | None = None
@@ -52,6 +61,8 @@ class MinioConfig(BaseModel):
 
 
 class ValkeyConfig(BaseModel):
+    """Valkey (Redis) connection settings."""
+
     host: str = "127.0.0.1"
     port: int = 6379
     password: SecretStr = SecretStr("redis")
@@ -59,10 +70,14 @@ class ValkeyConfig(BaseModel):
 
 
 class WebConfig(BaseModel):
+    """Web dashboard access configuration."""
+
     access_key: SecretStr | None = None
 
 
 class RateLimitConfig(BaseModel):
+    """Token bucket rate limiting parameters."""
+
     rate: float = 1.0
     capacity: int = 5
 
@@ -75,16 +90,22 @@ class I18nConfig(BaseModel):
 
 
 class GeminiConfig(BaseModel):
+    """Google Gemini API settings."""
+
     api_key: SecretStr | None = None
     model: str = "gemini-1.5-flash"
 
 
 class CaptionConfig(BaseModel):
+    """Caption generation settings."""
+
     enabled: bool = False
     target_lang: str = "en"
 
 
 class Config(BaseModel):
+    """Aggregate application configuration."""
+
     telegram: TelegramConfig
     bot: BotConfig
     chats: ChatsConfig
@@ -150,6 +171,7 @@ def _parse_i18n_users(value: str) -> dict[int, str]:
 
 
 def _load_ini(path: str) -> dict[str, Any]:
+    """Parse an INI configuration file into a nested dictionary."""
     parser = configparser.ConfigParser()
     parser.read(path)
 
@@ -235,6 +257,7 @@ def _load_ini(path: str) -> dict[str, Any]:
 
 
 def _load_env() -> dict[str, Any]:
+    """Collect configuration overrides from environment variables."""
     env_data: dict[str, Any] = {}
     for env_name, (section, field) in ENV_MAP.items():
         if env_name not in os.environ:
@@ -254,6 +277,7 @@ def _load_env() -> dict[str, Any]:
 
 
 def _deep_update(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge ``overrides`` into ``base`` and return ``base``."""
     for key, value in overrides.items():
         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
             _deep_update(base[key], value)
@@ -264,7 +288,6 @@ def _deep_update(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, A
 
 def load_config() -> Config:
     """Read configuration and return a typed ``Config`` instance."""
-
     config_path = os.getenv("CONFIG_PATH", "config.ini")
     data = _load_ini(config_path)
     env_overrides = _load_env()

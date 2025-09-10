@@ -1,13 +1,15 @@
+"""Handlers for user-submitted media."""
+
 import asyncio
 import os
 import tempfile
 import time
 import uuid
-from typing import IO, Callable
+from typing import IO, Any, Awaitable, Callable, Protocol, TypedDict
 
 from loguru import logger
-from telegram import InputMediaPhoto, InputMediaVideo, Update
-from telegram.ext import ContextTypes
+from telegram import InputMediaPhoto, InputMediaVideo, Message, Update
+from telegram.ext import Application, ContextTypes
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
@@ -45,9 +47,32 @@ MAX_RETRIES = 5
 RETRY_DELAY = 1
 
 
+class MediaProcessor(Protocol):
+    """Protocol for processing a single media file."""
+
+    async def __call__(
+        self,
+        custom_text: str,
+        input_path: str,
+        original_name: str,
+        bot_chat_id: str,
+        application: Application,
+        user_metadata: dict[str, Any] | None = ...,
+        media_hash: str | None = ...,
+    ) -> bool:  # pragma: no cover - signature only
+        """Process the media file and send it for review."""
+
+
+class MediaConfig(TypedDict):
+    """Functions required to process a supported media type."""
+
+    get_file_id: Callable[[Message], str]
+    process_func: MediaProcessor
+
+
 # Helper function to handle common errors and return appropriate user messages
-def get_user_friendly_error_message(error):
-    """Convert system errors to user-friendly messages"""
+def get_user_friendly_error_message(error: Exception) -> str:
+    """Convert system errors to user-friendly messages."""
     if isinstance(error, MinioError):
         if ERROR_MINIO_FILE_NOT_FOUND in str(error):
             return "The requested media file could not be found. It might have been deleted or moved."
@@ -61,7 +86,8 @@ def get_user_friendly_error_message(error):
         return f"An error occurred: {str(error)}"
 
 
-def get_file_name(caption):
+def get_file_name(caption: str) -> str:
+    """Extract the file name from a caption string."""
     return caption.split("\n")[-1]
 
 
@@ -72,8 +98,8 @@ async def handle_media_type(
     media_type: str,
     file_extension: str,
     hash_function: Callable[[str], str | None],
-):
-    """Generic handler for media uploads."""
+) -> None:
+    """Handle media uploads generically."""
     set_locale(resolve_locale(update))
     config = MEDIA_TYPE_CONFIG.get(media_type)
     if not config:
@@ -173,7 +199,8 @@ async def handle_photo(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
-):
+) -> None:
+    """Handle an incoming photo message."""
     await handle_media_type(
         update,
         context,
@@ -188,7 +215,8 @@ async def handle_video(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
-):
+) -> None:
+    """Handle an incoming video message."""
     await handle_media_type(
         update,
         context,
@@ -200,16 +228,21 @@ async def handle_video(
 
 
 async def notify_user(
-    context, user_id, message, reply_to_message_id=None, media_type=None
-):
-    """Send a notification to a user about their submission status
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    message: str,
+    reply_to_message_id: int | None = None,
+    media_type: str | None = None,
+) -> None:
+    """Send a notification to a user about their submission status.
 
     Args:
-        context: The bot context
-        user_id: The user's Telegram ID
-        message: The message to send
-        reply_to_message_id: Optional message_id to reply to
-        media_type: Optional media type for stats tracking
+        context: The bot context.
+        user_id: The user's Telegram ID.
+        message: The message to send.
+        reply_to_message_id: Optional message ID to reply to.
+        media_type: Optional media type for stats tracking.
+
     """
     try:
         params = {"chat_id": user_id, "text": message}
@@ -228,11 +261,26 @@ async def _send_to_review(
     processed_name: str,
     path_prefix: str,
     extension: str,
-    send_func,
-    user_metadata: dict | None,
+    send_func: Callable[[IO[bytes], str, object], Awaitable[Message]],
+    user_metadata: dict[str, Any] | None,
     media_hash: str | None,
     media_type: str,
-):
+) -> bool:
+    """Send processed media to the review channel.
+
+    Args:
+        processed_name: Name of the processed object in storage.
+        path_prefix: MinIO path prefix for the media type.
+        extension: File extension of the processed media.
+        send_func: Coroutine used to send the media to Telegram.
+        user_metadata: Optional metadata about the original submitter.
+        media_hash: Optional deduplication hash.
+        media_type: Type of media being handled.
+
+    Returns:
+        ``True`` if the media was sent successfully.
+
+    """
     keyboard = approval_keyboard()
 
     temp_path, _ = await download_from_minio(
@@ -278,11 +326,11 @@ async def process_photo(
     input_path: str,
     original_name: str,
     bot_chat_id: str,
-    application,
-    user_metadata: dict = None,
-    media_hash: str = None,
-):
-    """Process a photo by adding watermark and sending to review bot"""
+    application: Application,
+    user_metadata: dict[str, Any] | None = None,
+    media_hash: str | None = None,
+) -> bool:
+    """Process a photo by adding watermark and sending to review bot."""
     start_time = time.time()
     try:
         # Add watermark and upload to MinIO
@@ -321,7 +369,9 @@ async def process_photo(
             )
             raise MinioError(f"Processed photo not found in MinIO: {processed_name}")
 
-        async def _send(media_file, caption, keyboard):
+        async def _send(
+            media_file: IO[bytes], caption: str, keyboard: object
+        ) -> Message:
             return await application.bot.send_photo(
                 bot_chat_id,
                 media_file,
@@ -363,11 +413,11 @@ async def process_video(
     input_path: str,
     original_name: str,
     bot_chat_id: str,
-    application,
-    user_metadata: dict = None,
-    media_hash: str = None,
-):
-    """Process a video and send to review bot"""
+    application: Application,
+    user_metadata: dict[str, Any] | None = None,
+    media_hash: str | None = None,
+) -> bool:
+    """Process a video and send to review bot."""
     start_time = time.time()
     try:
         # Add watermark and upload to MinIO
@@ -407,7 +457,9 @@ async def process_video(
             )
             raise MinioError(f"Processed video not found in MinIO: {processed_name}")
 
-        async def _send(media_file, caption, keyboard):
+        async def _send(
+            media_file: IO[bytes], caption: str, keyboard: object
+        ) -> Message:
             return await application.bot.send_video(
                 chat_id=bot_chat_id,
                 video=media_file,
@@ -445,7 +497,7 @@ async def process_video(
     return False
 
 
-MEDIA_TYPE_CONFIG = {
+MEDIA_TYPE_CONFIG: dict[str, MediaConfig] = {
     "photo": {
         "get_file_id": lambda msg: msg.photo[-1].file_id,
         "process_func": process_photo,
@@ -461,9 +513,9 @@ async def process_media_group(
     custom_text: str,
     media_files: list[tuple[str, str, str]],
     bot_chat_id: str,
-    application,
-    user_metadata: dict | None = None,
-):
+    application: Application,
+    user_metadata: dict[str, Any] | None = None,
+) -> bool:
     """Process a list of media files and send as a media group."""
     processed: list[tuple[str, str]] = []
     group_id = uuid.uuid4().hex
@@ -565,7 +617,7 @@ async def process_media_group(
 
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle media uploads from users"""
+    """Handle media uploads from users."""
     set_locale(resolve_locale(update))
     chat_id = update.effective_chat.id
     try:

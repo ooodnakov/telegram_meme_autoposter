@@ -1,10 +1,12 @@
-"""Helpers for configuring logging with :mod:`loguru`."""
+"""Loguru-based logger configuration utilities."""
+
+from __future__ import annotations
 
 import logging
-import os
 import sys
+from typing import Any, Mapping
 
-from loguru import logger
+from loguru import Logger, logger
 
 
 class PropagateHandler(logging.Handler):
@@ -15,21 +17,23 @@ class PropagateHandler(logging.Handler):
 
         Args:
             record: Log record produced by :mod:`loguru`.
+
         """
         logging.getLogger(record.name).handle(record)
 
 
-def custom_format(record) -> str:
+def custom_format(record: Mapping[str, Any]) -> str:
     """Return formatted log message for loguru.
 
     Args:
-        record (dict): Loguru record dictionary.
+        record: Loguru record dictionary.
 
     Returns:
         str: Formatted log line with relative path and metadata.
+
     """
     # Make path relative
-    path = str(record["file"].path.replace(os.getcwd(), ""))[1:]
+    path = str(getattr(record.get("file"), "path", ""))[1:]
     return (
         "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
         "<level>{level: <8}</level> | "
@@ -39,7 +43,7 @@ def custom_format(record) -> str:
     )
 
 
-def setup_logger() -> logger.__class__:
+def setup_logger() -> Logger:
     """Configure a :mod:`loguru` logger that also propagates to ``logging``.
 
     The returned logger prints colourful timestamped messages to stderr and
@@ -48,10 +52,10 @@ def setup_logger() -> logger.__class__:
 
     Returns:
         loguru.Logger: Configured logger instance.
-    """
 
+    """
     logger.remove()
-    logger.add(sys.stderr, format=custom_format, colorize=True)
+    logger.add(sys.stderr, format=custom_format, colorize=True)  # type: ignore[arg-type]
     logger.add(PropagateHandler(), format="{message}")
 
     return logger

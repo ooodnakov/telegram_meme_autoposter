@@ -1,11 +1,13 @@
+"""General helper utilities for media processing and Telegram interactions."""
+
 import asyncio
 import os
 import random
 import tempfile
-from typing import Any, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from loguru import logger
-from telegram import InputMediaPhoto, InputMediaVideo
+from telegram import Bot, InputMediaPhoto, InputMediaVideo, Message
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
@@ -36,7 +38,7 @@ class TelegramMediaError(Exception):
 
 
 def extract_filename(text: str) -> Optional[str]:
-    """Pull a file name from an arbitrary text message.
+    r"""Pull a file name from an arbitrary text message.
 
     The bot often receives captions that contain the original file name on the
     last line.  This helper tries to extract such a name by scanning the text
@@ -48,6 +50,7 @@ def extract_filename(text: str) -> Optional[str]:
 
     Returns:
         Extracted filename or ``None`` if no filename could be determined.
+
     """
     if not text or not text.strip():
         return None
@@ -78,6 +81,7 @@ def extract_file_paths(text: str) -> List[str]:
 
     Returns:
         List[str]: All detected media paths.
+
     """
     if not text:
         return []
@@ -95,7 +99,7 @@ def extract_file_paths(text: str) -> List[str]:
     return results
 
 
-def extract_paths_from_message(message: Any) -> List[str]:
+def extract_paths_from_message(message: object) -> List[str]:
     """Extract media paths from a Telegram message.
 
     Looks at ``message.caption`` and ``message.text`` to gather all file paths
@@ -109,18 +113,20 @@ def extract_paths_from_message(message: Any) -> List[str]:
     Returns:
         A list of extracted file paths. The list may be empty if nothing could
         be determined.
-    """
 
+    """
     if not message:
         return []
 
     message_text = getattr(message, "caption", None) or getattr(message, "text", None)
-    paths = extract_file_paths(message_text)
-    if paths:
-        return paths
+    if isinstance(message_text, str):
+        paths = extract_file_paths(message_text)
+        if paths:
+            return paths
 
-    single = extract_filename(message_text)
-    return [single] if single else []
+        single = extract_filename(message_text)
+        return [single] if single else []
+    return []
 
 
 def cleanup_temp_file(file_path: str | None) -> None:
@@ -128,6 +134,7 @@ def cleanup_temp_file(file_path: str | None) -> None:
 
     Args:
         file_path: Path to the temporary file.
+
     """
     if file_path and os.path.exists(file_path):
         try:
@@ -149,8 +156,8 @@ def backoff_delay(
 
     Returns:
         float: Delay in seconds bounded by ``cap``.
-    """
 
+    """
     delay = min(cap, base * 2 ** (retry - 1))
     if jitter:
         jitter_range = delay * jitter
@@ -167,11 +174,11 @@ class RateLimiter:
         Args:
             rate: Tokens added per second.
             capacity: Maximum number of tokens.
-        """
 
+        """
         self.rate = rate
         self.capacity = capacity
-        self.tokens = capacity
+        self.tokens: float = float(capacity)
         self.updated = asyncio.get_running_loop().time()
         self.lock = asyncio.Lock()
 
@@ -184,8 +191,8 @@ class RateLimiter:
 
         Returns:
             ``True`` if a token was consumed, otherwise ``False``.
-        """
 
+        """
         while True:
             async with self.lock:
                 now = asyncio.get_running_loop().time()
@@ -202,7 +209,9 @@ class RateLimiter:
 
 
 async def download_from_minio(
-    object_name, bucket, extension=None
+    object_name: str,
+    bucket: str,
+    extension: str | None = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Fetch an object from MinIO into a temporary file on disk.
 
@@ -214,6 +223,7 @@ async def download_from_minio(
     Returns:
         Tuple of ``(temp_file_path, mime_type)`` or ``(None, None)`` if the
         download fails.
+
     """
     if not object_name or not bucket:
         logger.error(f"Invalid parameters: object_name={object_name}, bucket={bucket}")
@@ -280,6 +290,7 @@ def get_file_extension(filename: str) -> str:
 
     Returns:
         str: Extension including the leading dot.
+
     """
     _, ext = os.path.splitext(filename)
     if ext:
@@ -291,8 +302,12 @@ def get_file_extension(filename: str) -> str:
 
 # Helper function to send media to Telegram
 async def send_media_to_telegram(
-    bot, chat_id, file_path, caption=None, supports_streaming=True
-) -> Any:
+    bot: Bot,
+    chat_id: int | str,
+    file_path: str,
+    caption: str | None = None,
+    supports_streaming: bool = True,
+) -> Message | None:
     """Send media to Telegram based on file extension.
 
     Args:
@@ -308,8 +323,8 @@ async def send_media_to_telegram(
     Raises:
         TelegramMediaError: If there's an issue sending media to Telegram.
         FileNotFoundError: If the file does not exist.
-    """
 
+    """
     # Define error constants
     ERROR_TELEGRAM_SEND_FAILED = "Failed to send media to Telegram"
     ERROR_FILE_NOT_SUPPORTED = "File type not supported"
@@ -415,6 +430,8 @@ async def send_media_to_telegram(
         await stats.record_error("telegram", f"Unexpected error: {str(e)}")
         raise TelegramMediaError(f"Unexpected error: {str(e)}")
 
+    return None
+
 
 async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
     """Prepare media items for grouped sending.
@@ -424,7 +441,6 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
     for sending and ``caption`` is applied to the first element of the group if
     any item originates from user suggestions.
     """
-
     items: List[dict] = []
     caption = ""
 
@@ -438,6 +454,8 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
             caption = SUGGESTION_CAPTION
 
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+        if temp_path is None:
+            continue
 
         # Ensure file is not empty; retry once if necessary
         try:
@@ -448,6 +466,8 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
             logger.warning(f"Downloaded file appears empty, retrying: {path}")
             cleanup_temp_file(temp_path)
             temp_path, _ = await download_from_minio(path, BUCKET_MAIN)
+            if temp_path is None:
+                continue
             try:
                 size = os.path.getsize(temp_path)
             except OSError:
@@ -473,9 +493,10 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
     return items, caption
 
 
-async def send_group_media(bot, chat_id, items: List[dict], caption: str) -> None:
+async def send_group_media(
+    bot: Bot, chat_id: int, items: List[dict], caption: str
+) -> None:
     """Send a list of prepared items to Telegram as a group or single message."""
-
     if len(items) >= 2:
         for i in range(0, len(items), 10):
             chunk = items[i : i + 10]

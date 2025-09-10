@@ -1,3 +1,5 @@
+"""Application entry point for running the bot and client together."""
+
 import asyncio
 import signal
 from pathlib import Path
@@ -16,8 +18,8 @@ Path("photos").mkdir(exist_ok=True)
 Path("videos").mkdir(exist_ok=True)
 
 
-async def main():
-    """Main entry point for the Telegram Meme Autoposter."""
+async def main() -> None:
+    """Run the Telegram Meme Autoposter."""
     # init_stats()
     # init_storage()
     config = load_config()
@@ -27,7 +29,8 @@ async def main():
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
-    def signal_handler():
+    def signal_handler() -> None:
+        """Trigger shutdown of background tasks on termination signals."""
         logger.info("Received shutdown signal, stopping...")
         stop_event.set()
 
