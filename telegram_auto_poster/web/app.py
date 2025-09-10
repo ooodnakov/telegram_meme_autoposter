@@ -771,6 +771,12 @@ async def render_pydoc(module: str = "") -> HTMLResponse:
         the module cannot be located.
 
     """
+    if module and not module.startswith("telegram_auto_poster"):
+        return HTMLResponse(
+            content="Access to this module is restricted.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     obj = locate(module) if module else None
     if obj is None:
         html = (
