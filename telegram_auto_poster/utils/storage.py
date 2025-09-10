@@ -1,3 +1,5 @@
+"""Asynchronous MinIO storage helpers with submission metadata support."""
+
 import asyncio
 import os
 import tempfile
@@ -44,7 +46,6 @@ else:
 
 def _to_int(value: str | None) -> int | None:
     """Convert a string to ``int`` if not ``None``."""
-
     return int(value) if value is not None else None
 
 
@@ -58,24 +59,26 @@ class MinioStorage:
     Attributes:
         client (Minio): Underlying MinIO client instance.
         submission_metadata (dict): In-memory metadata indexed by object name.
+
     """
 
-    _instance = None
+    _instance: "MinioStorage | None" = None
+    _initialized: bool
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: object, **kwargs: object) -> "MinioStorage":
         """Implement the singleton pattern for the storage client."""
         if cls._instance is None:
             cls._instance = super(MinioStorage, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self, client=None):
+    def __init__(self, client: Minio | None = None) -> None:
         """Connect to MinIO and prepare buckets on first instantiation."""
         if self._initialized:
             return
 
         try:
-            if client:
+            if client is not None:
                 self.client = client
             else:
                 logger.info(
@@ -89,7 +92,7 @@ class MinioStorage:
                 )
 
             # Store metadata about submissions
-            self.submission_metadata = {}
+            self.submission_metadata: dict[str, dict[str, object]] = {}
 
             logger.info("MinIO client initialized")
 
@@ -118,6 +121,7 @@ class MinioStorage:
 
         Returns:
             str | None: Time-limited URL or ``None`` if unavailable.
+
         """
         try:
             # Generate a presigned URL that expires in 7 days
@@ -142,6 +146,7 @@ class MinioStorage:
 
         Args:
             bucket_name: Bucket to verify or create.
+
         """
         try:
             if not await self.client.bucket_exists(bucket_name):
@@ -156,16 +161,16 @@ class MinioStorage:
 
     async def store_submission_metadata(
         self,
-        object_name,
-        user_id=None,
-        chat_id=None,
-        media_type=None,
-        message_id=None,
+        object_name: str,
+        user_id: int | None = None,
+        chat_id: int | None = None,
+        media_type: str | None = None,
+        message_id: int | None = None,
         media_hash: str | None = None,
         group_id: str | None = None,
         caption: str | None = None,
         source: str | None = None,
-    ):
+    ) -> None:
         """Store information about who submitted a particular media object.
 
         The metadata is kept in memory for quick feedback to users and also
@@ -182,8 +187,9 @@ class MinioStorage:
             group_id: Optional identifier for media groups/albums.
             caption: Optional caption suggestion.
             source: Optional identifier of the originating channel or user.
+
         """
-        meta = {
+        meta: dict[str, object] = {
             "user_id": user_id,
             "chat_id": chat_id,
             "media_type": media_type,
@@ -216,7 +222,9 @@ class MinioStorage:
             )
         )
 
-    async def get_submission_metadata(self, object_name: str) -> dict | None:
+    async def get_submission_metadata(
+        self, object_name: str
+    ) -> dict[str, object] | None:
         """Return metadata for a stored object if available.
 
         Args:
@@ -224,6 +232,7 @@ class MinioStorage:
 
         Returns:
             dict | None: Metadata dictionary or ``None`` if not found.
+
         """
         # Normalise object name to account for callers that pass only the basename
         candidates = [object_name]
@@ -266,7 +275,7 @@ class MinioStorage:
             logger.error(f"Failed to get submission metadata from Redis: {e}")
         return None
 
-    async def mark_notified(self, object_name):
+    async def mark_notified(self, object_name: str) -> bool:
         """Mark that the user has been notified about their submission.
 
         Args:
@@ -275,6 +284,7 @@ class MinioStorage:
         Returns:
             bool: ``True`` if metadata exists and was updated, ``False``
             otherwise.
+
         """
         meta = await self.get_submission_metadata(object_name)
         if not meta:
@@ -288,9 +298,11 @@ class MinioStorage:
             logger.error(f"Failed to mark notified in Redis: {e}")
         return True
 
-    async def store_review_message(self, object_name, chat_id, message_id):
+    async def store_review_message(
+        self, object_name: str, chat_id: int, message_id: int
+    ) -> None:
         """Store Telegram review message identifiers for later editing."""
-        meta = self.submission_metadata.setdefault(object_name, {})
+        meta: dict[str, object] = self.submission_metadata.setdefault(object_name, {})
         meta["review_chat_id"] = chat_id
         meta["review_message_id"] = message_id
         try:
@@ -306,29 +318,31 @@ class MinioStorage:
             logger.error(f"Failed to store review message in Redis: {e}")
         logger.debug(f"Stored review message for {object_name}: {chat_id}/{message_id}")
 
-    async def get_review_message(self, object_name):
+    async def get_review_message(self, object_name: str) -> tuple[int, int] | None:
         """Return stored review message identifiers if available."""
         meta = await self.get_submission_metadata(object_name)
         if not meta:
             return None
-        chat_id = meta.get("review_chat_id")
-        message_id = meta.get("review_message_id")
-        if chat_id is not None and message_id is not None:
-            return int(chat_id), int(message_id)
+        chat_id_val = meta.get("review_chat_id")
+        message_id_val = meta.get("review_message_id")
+        if isinstance(chat_id_val, (int, str)) and isinstance(
+            message_id_val, (int, str)
+        ):
+            return int(chat_id_val), int(message_id_val)
         return None
 
     async def upload_file(
         self,
-        file_path,
-        bucket=None,
-        object_name=None,
-        user_id=None,
-        chat_id=None,
-        message_id=None,
+        file_path: str,
+        bucket: str | None = None,
+        object_name: str | None = None,
+        user_id: int | None = None,
+        chat_id: int | None = None,
+        message_id: int | None = None,
         media_hash: str | None = None,
         group_id: str | None = None,
         source: str | None = None,
-    ):
+    ) -> bool:
         """Upload a file to MinIO and record how long the operation took.
 
         Additional metadata about the submitting user is stored separately in
@@ -351,6 +365,7 @@ class MinioStorage:
 
         Returns:
             bool: ``True`` if upload was successful, ``False`` otherwise.
+
         """
         start_time = time.time()
         try:
@@ -418,7 +433,9 @@ class MinioStorage:
             )
             return False
 
-    async def download_file(self, object_name, bucket, file_path=None):
+    async def download_file(
+        self, object_name: str, bucket: str, file_path: str | None = None
+    ) -> bool:
         """Download an object from MinIO and measure the duration.
 
         Args:
@@ -428,22 +445,24 @@ class MinioStorage:
 
         Returns:
             bool: ``True`` if download was successful, ``False`` otherwise.
+
         """
         start_time = time.time()
-        try:
-            # Create a temporary file if file_path not provided
-            temp_file = None
-            if file_path is None:
-                temp_file = tempfile.NamedTemporaryFile(delete=False)
-                file_path = temp_file.name
-                temp_file.close()
+        temp_file = None
+        if file_path is None:
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            file_path_str = temp_file.name
+            temp_file.close()
+        else:
+            file_path_str = file_path
 
+        try:
             # Download the object
             await self.client.fget_object(
-                bucket_name=bucket, object_name=object_name, file_path=file_path
+                bucket_name=bucket, object_name=object_name, file_path=file_path_str
             )
 
-            logger.debug(f"Downloaded {bucket}/{object_name} to {file_path}")
+            logger.debug(f"Downloaded {bucket}/{object_name} to {file_path_str}")
 
             duration = time.time() - start_time
             await _stats_record_operation("download", duration)
@@ -453,19 +472,19 @@ class MinioStorage:
             await _stats_record_error(
                 "storage", f"Failed to download {bucket}/{object_name}: {e}"
             )
-            if temp_file and os.path.exists(file_path):
-                os.unlink(file_path)
+            if temp_file and os.path.exists(file_path_str):
+                os.unlink(file_path_str)
             return False
         except Exception as e:
             logger.error(f"Error downloading {bucket}/{object_name}: {e}")
-            if temp_file and os.path.exists(file_path):
-                os.unlink(file_path)
+            if temp_file and os.path.exists(file_path_str):
+                os.unlink(file_path_str)
             await _stats_record_error(
                 "storage", f"Unexpected error downloading {bucket}/{object_name}: {e}"
             )
             return False
 
-    async def get_object_data(self, object_name, bucket):
+    async def get_object_data(self, object_name: str, bucket: str) -> bytes:
         """Return raw object data as bytes.
 
         Args:
@@ -474,6 +493,7 @@ class MinioStorage:
 
         Returns:
             bytes: The object's contents.
+
         """
         try:
             response = await self.client.get_object(
@@ -497,7 +517,7 @@ class MinioStorage:
             logger.error(f"Error getting object {bucket}/{object_name}: {err}")
             raise
 
-    async def delete_file(self, object_name, bucket):
+    async def delete_file(self, object_name: str, bucket: str) -> bool:
         """Remove an object from MinIO and record the operation time.
 
         Args:
@@ -506,6 +526,7 @@ class MinioStorage:
 
         Returns:
             bool: ``True`` if deletion was successful, ``False`` otherwise.
+
         """
         try:
             await self.client.remove_object(bucket_name=bucket, object_name=object_name)
@@ -524,7 +545,14 @@ class MinioStorage:
             )
             return False
 
-    async def list_files(self, bucket, prefix=None, *, offset=0, limit=None):
+    async def list_files(
+        self,
+        bucket: str,
+        prefix: str | None = None,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[str]:
         """List objects in a bucket and record how long the listing took.
 
         Args:
@@ -535,6 +563,7 @@ class MinioStorage:
 
         Returns:
             list: List of object names.
+
         """
         start_time = time.time()
         try:
@@ -573,9 +602,8 @@ class MinioStorage:
             )
             return []
 
-    async def count_files(self, bucket, prefix=None):
+    async def count_files(self, bucket: str, prefix: str | None = None) -> int:
         """Return the number of objects matching ``prefix`` in ``bucket``."""
-
         start_time = time.time()
         try:
             count = 0
@@ -604,7 +632,7 @@ class MinioStorage:
             )
             return 0
 
-    async def file_exists(self, object_name, bucket):
+    async def file_exists(self, object_name: str, bucket: str) -> bool:
         """Check if a file exists in MinIO by attempting to stat it.
 
         Args:
@@ -613,6 +641,7 @@ class MinioStorage:
 
         Returns:
             bool: ``True`` if file exists, ``False`` otherwise.
+
         """
         try:
             await self.client.stat_object(bucket_name=bucket, object_name=object_name)
@@ -628,14 +657,16 @@ class MinioStorage:
             return False
 
 
-async def _stats_record_error(*args, **kwargs):
+async def _stats_record_error(scope: str, message: str) -> None:
+    """Forward storage errors to the statistics collector if available."""
     if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
-        await stats_module.stats.record_error(*args, **kwargs)
+        await stats_module.stats.record_error(scope, message)
 
 
-async def _stats_record_operation(*args, **kwargs):
+async def _stats_record_operation(name: str, duration: float) -> None:
+    """Forward storage operation timings to the statistics collector."""
     if stats_module.stats and not isinstance(stats_module.stats, MagicMock):
-        await stats_module.stats.record_storage_operation(*args, **kwargs)
+        await stats_module.stats.record_storage_operation(name, duration)
 
 
 storage = MinioStorage()

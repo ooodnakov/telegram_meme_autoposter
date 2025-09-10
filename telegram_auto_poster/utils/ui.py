@@ -1,3 +1,5 @@
+"""Utilities for constructing Telegram UI elements."""
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram_auto_poster.utils.i18n import _
 

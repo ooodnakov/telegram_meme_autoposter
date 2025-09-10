@@ -1,3 +1,5 @@
+"""Runtime internationalization utilities."""
+
 from __future__ import annotations
 
 import gettext as _gettext
@@ -28,7 +30,6 @@ def set_locale(lang: Optional[str]) -> None:
     unavailable. This allows translations to work even if message catalogs have
     not been precompiled.
     """
-
     if lang:
         mo_path = _LOCALE_DIR / lang / "LC_MESSAGES" / "messages.mo"
         if mo_path.exists():
@@ -75,7 +76,6 @@ def resolve_locale(update: Optional[Update], config: Config = CONFIG) -> str:
     2. Telegram's ``language_code`` from the update.
     3. Configured default language.
     """
-
     user = getattr(update, "effective_user", None)
     user_id = getattr(user, "id", None)
     if user_id is not None:

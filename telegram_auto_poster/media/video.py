@@ -1,3 +1,5 @@
+"""Video processing utilities for watermarking and uploading."""
+
 import asyncio
 import json
 import os
@@ -17,7 +19,7 @@ from telegram_auto_poster.media import upload_processed_media
 
 
 async def _probe_video_size(path: str) -> tuple[int, int]:
-    """Returns (width, height) of the first video stream."""
+    """Return the width and height of the first video stream."""
     cmd = [
         "ffprobe",
         "-v",
@@ -50,11 +52,15 @@ async def add_watermark_to_video(
     """Add watermark to a video with bouncing animation.
 
     Args:
-        input_path: Path to the local file
-        output_filename: Name for the output file in MinIO
+        input_path: Path to the local file.
+        output_filename: Name for the output file in MinIO.
+        user_metadata: Optional submission metadata.
+        media_hash: Optional hash used for deduplication.
+        group_id: Optional identifier for media groups/albums.
 
     Returns:
-        output_filename: Name of the processed video in MinIO
+        output_filename: Name of the processed video in MinIO.
+
     """
     # Create temporary file for the output
     temp_output = None

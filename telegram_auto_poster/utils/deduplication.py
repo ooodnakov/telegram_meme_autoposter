@@ -1,9 +1,13 @@
+"""Media deduplication helpers using perceptual and MD5 hashes."""
+
+from __future__ import annotations
+
 import hashlib
 
 import imagehash
 from loguru import logger
 from PIL import Image
-from telegram_auto_poster.utils.db import get_redis_client
+from telegram_auto_poster.utils.db import ValkeyClient, get_redis_client
 
 DEDUPLICATION_SET_KEY = (
     "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
@@ -19,6 +23,7 @@ def calculate_image_hash(file_path: str) -> str | None:
     Returns:
         The perceptual hash as a string, or ``None`` if the hash
         calculation fails.
+
     """
     try:
         hash_value = imagehash.phash(Image.open(file_path))
@@ -37,6 +42,7 @@ def calculate_video_hash(file_path: str) -> str | None:
     Returns:
         The MD5 hash of the file as a hexadecimal string, or ``None``
         if the hash calculation fails.
+
     """
     hash_md5 = hashlib.md5()
     try:
@@ -49,7 +55,9 @@ def calculate_video_hash(file_path: str) -> str | None:
         return None
 
 
-def check_and_add_hash(media_hash: str, redis_client=None) -> bool:
+def check_and_add_hash(
+    media_hash: str, redis_client: ValkeyClient | None = None
+) -> bool:
     """Add a hash to the approved corpus if it is not already present.
 
     This is a compatibility wrapper around :func:`add_approved_hash`.
@@ -66,7 +74,9 @@ def check_and_add_hash(media_hash: str, redis_client=None) -> bool:
     return add_approved_hash(media_hash, redis_client=redis_client)
 
 
-def is_duplicate_hash(media_hash: str, redis_client=None) -> bool:
+def is_duplicate_hash(
+    media_hash: str, redis_client: ValkeyClient | None = None
+) -> bool:
     """Check if a media hash exists in the approved corpus.
 
     Args:
@@ -76,6 +86,7 @@ def is_duplicate_hash(media_hash: str, redis_client=None) -> bool:
     Returns:
         ``True`` if the hash is already stored, ``False`` otherwise. If
         the redis operation fails, ``False`` is returned.
+
     """
     if not media_hash:
         return False
@@ -89,7 +100,9 @@ def is_duplicate_hash(media_hash: str, redis_client=None) -> bool:
         return False
 
 
-def add_approved_hash(media_hash: str, redis_client=None) -> bool:
+def add_approved_hash(
+    media_hash: str, redis_client: ValkeyClient | None = None
+) -> bool:
     """Store a media hash in the approved corpus.
 
     Args:
@@ -99,6 +112,7 @@ def add_approved_hash(media_hash: str, redis_client=None) -> bool:
     Returns:
         ``True`` if the hash was newly added or if `media_hash` is empty,
         ``False`` if the hash already existed or if storing fails.
+
     """
     if not media_hash:
         return True

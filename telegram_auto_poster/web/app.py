@@ -1,11 +1,16 @@
+"""Administrative web dashboard for reviewing and scheduling posts."""
+
 from __future__ import annotations
 
 import asyncio
 import datetime
 import mimetypes
 import os
+import pydoc
 import secrets
 from pathlib import Path
+from pydoc import locate
+from typing import Awaitable, Callable
 
 from fastapi import FastAPI, Form, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
@@ -75,7 +80,6 @@ def _paginate(
     total: int, page: int, per_page: int = ITEMS_PER_PAGE
 ) -> tuple[int, int, int]:
     """Return sanitized page number, total pages and offset."""
-
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = max(1, min(page, total_pages))
     offset = (page - 1) * per_page
@@ -83,7 +87,10 @@ def _paginate(
 
 
 @app.middleware("http")
-async def require_access_key(request: Request, call_next):
+async def require_access_key(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Ensure that incoming requests include a valid access key."""
     access_key = CONFIG.web.access_key
     if access_key is None:
         return await call_next(request)
@@ -111,6 +118,7 @@ async def require_access_key(request: Request, call_next):
 async def _list_media(
     prefix_type: str, *, offset: int = 0, limit: int | None = None
 ) -> list[str]:
+    """Return a combined list of photo and video object paths."""
     photos_count = await storage.count_files(
         BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/{prefix_type}_"
     )
@@ -144,6 +152,7 @@ async def _gather_posts(
     offset: int = 0,
     limit: int | None = None,
 ) -> list[dict]:
+    """Collect processed posts for rendering in the dashboard."""
     objects = await _list_media("processed", offset=offset, limit=limit)
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
@@ -181,6 +190,7 @@ async def _gather_posts(
 
 
 async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[dict]:
+    """Collect batch items for display or processing."""
     objects = await _list_media("batch", offset=offset, limit=limit)
     posts: list[dict] = []
     grouped: dict[str, list[dict]] = {}
@@ -208,12 +218,14 @@ async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[di
 
 
 async def _get_batch_count() -> int:
+    """Return the total number of files currently in the batch."""
     photos = await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
     videos = await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
     return len(photos) + len(videos)
 
 
 async def _get_suggestions_count() -> int:
+    """Count queued suggestions awaiting review."""
     photo_files, video_files = await asyncio.gather(
         storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_"),
         storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_"),
@@ -232,6 +244,7 @@ async def _get_suggestions_count() -> int:
 
 
 async def _get_posts_count() -> int:
+    """Count processed posts ready for publishing."""
     photo_files, video_files = await asyncio.gather(
         storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/processed_"),
         storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_"),
@@ -266,6 +279,7 @@ async def _render_posts_page(
     page: int = 1,
     per_page: int = ITEMS_PER_PAGE,
 ) -> HTMLResponse:
+    """Render a page listing either suggestions or processed posts."""
     count = (
         await _get_suggestions_count() if only_suggestions else await _get_posts_count()
     )
@@ -290,6 +304,7 @@ async def _render_posts_page(
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
+    """Display the dashboard overview with counts and daily stats."""
     (
         suggestions_count,
         batch_count,
@@ -319,6 +334,7 @@ async def index(request: Request) -> HTMLResponse:
     response_class=HTMLResponse,
 )
 async def suggestions_view(request: Request, page: int = 1) -> HTMLResponse:
+    """Render the suggestions review page."""
     return await _render_posts_page(
         request,
         only_suggestions=True,
@@ -335,6 +351,7 @@ async def suggestions_view(request: Request, page: int = 1) -> HTMLResponse:
     response_class=HTMLResponse,
 )
 async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
+    """Render the processed posts page."""
     return await _render_posts_page(
         request,
         only_suggestions=False,
@@ -351,6 +368,7 @@ async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
     response_class=HTMLResponse,
 )
 async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
+    """Render the batch management page."""
     count = await _get_batch_count()
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
     posts_page = await _gather_batch(offset=offset, limit=ITEMS_PER_PAGE)
@@ -373,6 +391,7 @@ async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
 
 @app.post("/batch/send")
 async def send_batch() -> Response:
+    """Send all items currently in the batch to the target channel."""
     posts = await _gather_batch()
     if not posts:
         return RedirectResponse(url="/batch", status_code=303)
@@ -397,6 +416,7 @@ async def handle_action(
     action: str = Form(...),
     origin: str = Form("suggestions"),
 ) -> Response:
+    """Handle form actions for approving, rejecting, or moving posts."""
     all_paths = paths or []
     if path:
         all_paths.append(path)
@@ -425,6 +445,7 @@ async def handle_action(
 
 
 async def _push_post(path: str) -> None:
+    """Publish a single media item and clean up storage."""
     file_name = os.path.basename(path)
     media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
     caption = ""
@@ -471,6 +492,7 @@ async def _push_post(path: str) -> None:
 
 
 async def _push_post_group(paths: list[str]) -> None:
+    """Publish a group of media items in a single post."""
     items, caption = await prepare_group_items(paths)
     try:
         await send_group_media(bot, TARGET_CHANNEL, items, caption)
@@ -485,6 +507,7 @@ async def _push_post_group(paths: list[str]) -> None:
 
 
 async def _finalize_post(item: dict[str, object]) -> None:
+    """Remove temporary files and update statistics after publishing."""
     file_name = item["file_name"]
     media_type = item["media_type"]
     temp_path = item["temp_path"]
@@ -520,6 +543,7 @@ async def _finalize_post(item: dict[str, object]) -> None:
 
 
 async def _schedule_post(path: str) -> None:
+    """Move a processed post into the scheduled queue."""
     file_name = os.path.basename(path)
     scheduled_posts = await run_in_threadpool(get_scheduled_posts)
     next_slot = find_next_available_slot(
@@ -609,6 +633,7 @@ async def _remove_batch(path: str) -> None:
     response_class=HTMLResponse,
 )
 async def queue(request: Request, page: int = 1) -> HTMLResponse:
+    """Show scheduled posts awaiting publication."""
     count = await run_in_threadpool(get_scheduled_posts_count)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
     raw_posts = await run_in_threadpool(
@@ -656,6 +681,7 @@ async def queue(request: Request, page: int = 1) -> HTMLResponse:
 async def reschedule(
     request: Request, path: str = Form(...), scheduled_at: str = Form(...)
 ) -> Response:
+    """Update the scheduled time for a queued post."""
     try:
         ts = parse_to_utc_timestamp(scheduled_at)
     except ValueError:
@@ -670,6 +696,7 @@ async def reschedule(
 
 @app.post("/queue/unschedule")
 async def unschedule(request: Request, path: str = Form(...)) -> Response:
+    """Remove a post from the scheduled queue."""
     await run_in_threadpool(remove_scheduled_post, path)
     try:
         if await storage.file_exists(path, BUCKET_MAIN):
@@ -689,6 +716,7 @@ async def unschedule(request: Request, path: str = Form(...)) -> Response:
     response_class=HTMLResponse,
 )
 async def stats_view(request: Request) -> HTMLResponse:
+    """Render statistics about bot usage and performance."""
     daily, total, perf, busiest = await asyncio.gather(
         stats.get_daily_stats(reset_if_new_day=False),
         stats.get_total_stats(),
@@ -724,7 +752,31 @@ async def stats_view(request: Request) -> HTMLResponse:
 
 
 @app.get("/leaderboard", response_class=HTMLResponse)
-async def leaderboard(request: Request):
+async def leaderboard(request: Request) -> HTMLResponse:
+    """Display the leaderboard of top submitters."""
     data = await stats.get_leaderboard()
     context = {"request": request, **data}
     return templates.TemplateResponse("leaderboard.html", context)
+
+
+@app.get("/pydoc/{module:path}", response_class=HTMLResponse)
+async def render_pydoc(module: str = "") -> HTMLResponse:
+    """Serve pydoc-generated documentation for the given module.
+
+    Args:
+        module: Dotted path of the module or object to document.
+
+    Returns:
+        HTML page containing the generated documentation or a landing page if
+        the module cannot be located.
+
+    """
+    obj = locate(module) if module else None
+    if obj is None:
+        html = (
+            "<html><body><h1>pydoc</h1><p>Specify a module path in the URL.</p>"
+            "</body></html>"
+        )
+    else:
+        html = pydoc.HTMLDoc().document(obj)
+    return HTMLResponse(content=html)

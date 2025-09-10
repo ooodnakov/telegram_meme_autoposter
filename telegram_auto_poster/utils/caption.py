@@ -29,8 +29,8 @@ def generate_caption(media_path: str, target_lang: str) -> str:
 
     Returns:
         Suggested caption or an empty string on failure.
-    """
 
+    """
     try:
         import pytesseract
         from PIL import Image

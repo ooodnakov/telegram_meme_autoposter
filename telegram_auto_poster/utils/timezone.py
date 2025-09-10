@@ -1,3 +1,5 @@
+"""Timezone helpers for formatting and conversions."""
+
 import datetime
 
 UTC = datetime.timezone.utc
@@ -12,6 +14,7 @@ def now_utc() -> datetime.datetime:
 
     Returns:
         datetime.datetime: Timezone-aware ``datetime`` in UTC.
+
     """
     return datetime.datetime.now(UTC)
 
@@ -24,6 +27,7 @@ def to_display(dt: datetime.datetime) -> datetime.datetime:
 
     Returns:
         datetime.datetime: ``dt`` converted to the display timezone.
+
     """
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
@@ -39,6 +43,7 @@ def format_display(dt: datetime.datetime, fmt: str = DATETIME_FORMAT) -> str:
 
     Returns:
         str: Formatted date/time string.
+
     """
     return to_display(dt).strftime(fmt)
 

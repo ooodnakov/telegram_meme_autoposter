@@ -1,12 +1,16 @@
+"""Telethon-based client for monitoring source channels and forwarding media."""
+
 import asyncio
 import os
 from typing import TYPE_CHECKING
 
 from loguru import logger
 from telethon import TelegramClient, events, types
+from telethon.events.common import EventCommon
 
 if TYPE_CHECKING:
     from loguru import Logger
+    from telegram.ext import Application
 
 from telegram_auto_poster.bot.handlers import (
     process_media_group,
@@ -28,14 +32,16 @@ class TelegramMemeClient:
         target_channel (str): Channel username or ID where media is forwarded.
         bot_chat_id (str): Chat ID of the controlling bot.
         selected_chats (list[str]): Channels to monitor for new media.
+
     """
 
-    def __init__(self, application, config: Config) -> None:
+    def __init__(self, application: "Application", config: Config) -> None:
         """Initialize the Telethon client and store configuration values.
 
         Args:
             application: PTB ``Application`` instance used for coordination.
             config: Typed configuration instance with credentials and channels.
+
         """
         self.client = TelegramClient(
             config.telegram.username,
@@ -63,7 +69,8 @@ class TelegramMemeClient:
     async def _check_rate_limit(self, chat_id: int, log: "Logger") -> bool:
         """Acquire a token from the rate limiter for the given chat.
 
-        Returns ``True`` if processing should continue, ``False`` otherwise."""
+        Returns ``True`` if processing should continue, ``False`` otherwise.
+        """
         limiter = self.rate_limiters.setdefault(
             chat_id,
             RateLimiter(
@@ -85,7 +92,8 @@ class TelegramMemeClient:
 
         Returns a tuple of ``(log, file_info)`` where ``file_info`` is
         ``(path, basename, media_type)``. ``file_info`` is ``None`` if the
-        message doesn't contain photo or video media."""
+        message doesn't contain photo or video media.
+        """
         media_info = None
         if isinstance(message.media, types.MessageMediaPhoto):
             media_info = ("photo", message.media.photo, "jpg")
@@ -106,7 +114,8 @@ class TelegramMemeClient:
         await self.client.download_media(media_obj, file=file_path)
         return log, (file_path, os.path.basename(file_path), media_type)
 
-    async def _get_source_name(self, event) -> str:
+    async def _get_source_name(self, event: EventCommon) -> str:
+        """Return a human-readable name for the originating chat."""
         chat = event.chat if getattr(event, "chat", None) else await event.get_chat()
         return (
             getattr(chat, "username", None)
@@ -119,7 +128,9 @@ class TelegramMemeClient:
         self._running = True
 
         @self.client.on(events.Album(chats=self.selected_chats))
-        async def handle_album(event):  # pragma: no cover - telemetry
+        async def handle_album(
+            event: EventCommon,
+        ) -> None:  # pragma: no cover - telemetry
             log = logger.bind(chat_id=event.chat_id, grouped_id=event.grouped_id)
             if not await self._check_rate_limit(event.chat_id, log):
                 return
@@ -151,7 +162,9 @@ class TelegramMemeClient:
                     log.info("New non photo/video album in channel")
 
         @self.client.on(events.NewMessage(chats=self.selected_chats))
-        async def handle_new_message(event):  # pragma: no cover - telemetry
+        async def handle_new_message(
+            event: EventCommon,
+        ) -> None:  # pragma: no cover - telemetry
             log = logger.bind(chat_id=event.chat_id, message_id=event.id)
             if not await self._check_rate_limit(event.chat_id, log):
                 return

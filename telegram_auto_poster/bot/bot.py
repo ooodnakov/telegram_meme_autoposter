@@ -1,3 +1,5 @@
+"""Telegram bot application setup and lifecycle helpers."""
+
 import datetime
 
 from loguru import logger
@@ -62,14 +64,14 @@ class TelegramMemeBot:
         bot_chat_id (int): Chat ID where administrative commands are accepted.
         application (Application | None): Underlying PTB application instance.
         config (Config): Loaded configuration object.
+
     """
 
     def __init__(self, config: Config) -> None:
         """Store configuration and prepare for later setup."""
-
         self.bot_token = config.bot.bot_token.get_secret_value()
         self.bot_chat_id = config.bot.bot_chat_id
-        self.application = None
+        self.application: Application | None = None
         self.config = config
         logger.info(f"TelegramMemeBot initialized with chat_id: {self.bot_chat_id}")
 
@@ -78,73 +80,70 @@ class TelegramMemeBot:
 
         Returns:
             Application: The initialized application instance.
+
         """
         logger.info("Setting up bot application...")
         self.application = ApplicationBuilder().token(self.bot_token).build()
+        application = self.application
+        assert application is not None
 
         # Store important information in bot_data
-        self.application.bot_data["chat_id"] = self.bot_chat_id
-        self.application.bot_data["target_channel_id"] = (
-            self.config.telegram.target_channel
-        )
-        self.application.bot_data["quiet_hours_start"] = (
+        application.bot_data["chat_id"] = self.bot_chat_id
+        application.bot_data["target_channel_id"] = self.config.telegram.target_channel
+        application.bot_data["quiet_hours_start"] = (
             self.config.schedule.quiet_hours_start
         )
-        self.application.bot_data["quiet_hours_end"] = (
-            self.config.schedule.quiet_hours_end
-        )
+        application.bot_data["quiet_hours_end"] = self.config.schedule.quiet_hours_end
 
         # Store admin IDs
-        self.application.bot_data["admin_ids"] = self.config.bot.admin_ids
+        application.bot_data["admin_ids"] = self.config.bot.admin_ids
         logger.info(f"Configured admin IDs: {self.config.bot.admin_ids}")
 
         # Test the bot connection
-        me = await self.application.bot.get_me()
+        me = await application.bot.get_me()
         logger.info(f"Bot connected successfully as: {me.first_name} (@{me.username})")
 
         # Register command handlers
         logger.info("Registering command handlers...")
-        self.application.add_handler(CommandHandler("start", start_command))
-        self.application.add_handler(CommandHandler("help", help_command))
-        self.application.add_handler(CommandHandler("get", get_chat_id_command))
-        self.application.add_handler(CommandHandler("ok", ok_command))
-        self.application.add_handler(CommandHandler("notok", notok_command))
-        self.application.add_handler(CommandHandler("sendall", send_batch_command))
-        self.application.add_handler(
-            CommandHandler("delete_batch", delete_batch_command)
-        )
-        self.application.add_handler(CommandHandler("luba", send_luba_command))
-        self.application.add_handler(CommandHandler("stats", stats_command))
-        self.application.add_handler(CommandHandler("reset_stats", reset_stats_command))
-        self.application.add_handler(CommandHandler("save_stats", save_stats_command))
-        self.application.add_handler(CommandHandler("schedule", schedule_command))
-        self.application.add_handler(CommandHandler("sch", sch_command))
-        self.application.add_handler(CommandHandler("batch", batch_command))
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("get", get_chat_id_command))
+        application.add_handler(CommandHandler("ok", ok_command))
+        application.add_handler(CommandHandler("notok", notok_command))
+        application.add_handler(CommandHandler("sendall", send_batch_command))
+        application.add_handler(CommandHandler("delete_batch", delete_batch_command))
+        application.add_handler(CommandHandler("luba", send_luba_command))
+        application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("reset_stats", reset_stats_command))
+        application.add_handler(CommandHandler("save_stats", save_stats_command))
+        application.add_handler(CommandHandler("schedule", schedule_command))
+        application.add_handler(CommandHandler("sch", sch_command))
+        application.add_handler(CommandHandler("batch", batch_command))
 
         # Register callback handlers - fixed to use exact pattern matching with regex
         logger.info("Registering callback handlers...")
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(ok_callback, pattern=rf"^{CALLBACK_OK}$")
         )
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(push_callback, pattern=rf"^{CALLBACK_PUSH}$")
         )
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(notok_callback, pattern=rf"^{CALLBACK_NOTOK}$")
         )
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(schedule_callback, pattern=rf"^{CALLBACK_SCHEDULE}$")
         )
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(unschedule_callback, pattern=r"^/unschedule:")
         )
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(
                 schedule_browser_callback,
                 pattern=r"^/sch_(prev|next|unschedule|push):",
             )
         )
-        self.application.add_handler(
+        application.add_handler(
             CallbackQueryHandler(
                 batch_browser_callback,
                 pattern=r"^/batch_(prev|next|remove|push):",
@@ -153,12 +152,12 @@ class TelegramMemeBot:
 
         # Register media handler
         logger.info("Registering media handler...")
-        self.application.add_handler(
+        application.add_handler(
             MessageHandler(filters.PHOTO | filters.VIDEO, handle_media)
         )
 
         # Schedule daily statistics report at midnight
-        self.application.job_queue.run_daily(
+        application.job_queue.run_daily(
             daily_stats_callback,
             time=datetime.time(hour=0, minute=0),
             name="daily_stats_report",
@@ -170,7 +169,7 @@ class TelegramMemeBot:
         next_hour = (now + datetime.timedelta(hours=1)).replace(
             minute=0, second=0, microsecond=0
         )
-        self.application.job_queue.run_repeating(
+        application.job_queue.run_repeating(
             post_scheduled_media_job,
             interval=60 * 60,
             first=next_hour,
@@ -179,23 +178,27 @@ class TelegramMemeBot:
 
         # Just initialize the application
         logger.info("Initializing application...")
-        await self.application.initialize()
+        await application.initialize()
 
-        return self.application
+        self.application = application
+        return application
 
     async def start_polling(self) -> None:
         """Start receiving updates without running a separate event loop."""
         # Start the bot without using run_polling (which creates its own event loop)
         logger.info("Starting bot application...")
-        await self.application.start()
+        application = self.application
+        if application is None:
+            raise RuntimeError("Application not initialized")
+        await application.start()
 
         # Fix: Make sure updater exists (it may not in newer versions)
-        if not hasattr(self.application, "updater") or self.application.updater is None:
+        if not hasattr(application, "updater") or application.updater is None:
             logger.error("Application has no updater! Cannot start polling.")
             return
 
         logger.info("Starting updater polling...")
-        await self.application.updater.start_polling(
+        await application.updater.start_polling(
             poll_interval=0.5,
             timeout=10,
             bootstrap_retries=1,
@@ -207,18 +210,19 @@ class TelegramMemeBot:
     async def stop(self) -> None:
         """Gracefully stop the bot and shut down its resources."""
         logger.info("Stopping bot...")
+        application = self.application
         if (
-            self.application
-            and hasattr(self.application, "updater")
-            and self.application.updater
-            and self.application.updater.running
+            application
+            and hasattr(application, "updater")
+            and application.updater
+            and application.updater.running
         ):
             logger.info("Stopping updater...")
-            await self.application.updater.stop()
-        if self.application and self.application.running:
+            await application.updater.stop()
+        if application and application.running:
             logger.info("Stopping application...")
-            await self.application.stop()
-        if self.application:
+            await application.stop()
+        if application:
             logger.info("Shutting down application...")
-            await self.application.shutdown()
+            await application.shutdown()
         logger.info("Bot stopped successfully")

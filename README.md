@@ -96,6 +96,19 @@ These instructions will get you a copy of the project up and running on your loc
     uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
     ```
 
+### Local documentation with pydoc
+
+The dashboard exposes project documentation through Python's built-in pydoc
+module. After starting the application (for example with `./run_bg.sh`), visit
+`http://localhost:8000/pydoc/` to browse the available modules.
+
+Append dotted module paths to the URL to jump directly to a specific section,
+for example:
+
+```
+http://localhost:8000/pydoc/telegram_auto_poster.utils.storage
+```
+
 ### Translations
 
 Localization files live in `telegram_auto_poster/locales`.  To extract new

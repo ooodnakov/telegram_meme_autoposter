@@ -1,6 +1,9 @@
+"""Bot command handlers for administrative and user interactions."""
+
 import asyncio
 import datetime
 import os
+from typing import IO, cast
 
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
@@ -41,14 +44,14 @@ from telegram_auto_poster.utils.timezone import (
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Start the bot and provide welcome message"""
+    """Start the bot and provide a welcome message."""
     logger.info(f"Received /start command from user {update.effective_user.id}")
     set_locale(resolve_locale(update))
     await update.message.reply_text(_("Привет! Присылай сюда свои мемы)"))
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Display help information about the bot"""
+    """Display help information about the bot."""
     logger.info(f"Received /help command from user {update.effective_user.id}")
     set_locale(resolve_locale(update))
 
@@ -99,7 +102,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def get_chat_id_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Get the current chat ID"""
+    """Get the current chat ID."""
     chat_id = update.effective_chat.id
     logger.info(f"Received /get chat_id command, returning ID: {chat_id}")
     await update.message.reply_text(
@@ -108,7 +111,7 @@ async def get_chat_id_command(
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command to show bot statistics"""
+    """Show bot statistics."""
     logger.info(f"Received /stats command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -131,7 +134,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def reset_stats_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Command to reset daily statistics"""
+    """Reset daily statistics."""
     logger.info(f"Received /reset_stats command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -154,7 +157,7 @@ async def reset_stats_command(
 async def save_stats_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Command to save statistics"""
+    """Persist collected statistics to storage."""
     logger.info(f"Received /save_stats command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -188,7 +191,7 @@ async def daily_stats_callback(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command to approve a media item"""
+    """Approve a media item."""
     logger.info(f"Received /ok command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -243,7 +246,7 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command to reject a media item"""
+    """Reject a media item."""
     logger.info(f"Received /notok command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -279,7 +282,7 @@ async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def delete_batch_command(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
-    """Command to delete the current batch of media"""
+    """Delete the current batch of media."""
     logger.info(f"Received /delete_batch command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -325,7 +328,7 @@ async def delete_batch_command(
 
 
 async def send_luba_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command to send all files to Luba"""
+    """Send all downloaded files to the Luba chat."""
     logger.info(f"Received /luba command from user {update.effective_user.id}")
 
     luba_chat = context.bot_data.get("luba_chat")
@@ -490,7 +493,7 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command to show scheduled posts"""
+    """Show scheduled posts."""
     logger.info(f"Received /sch command from user {update.effective_user.id}")
 
     # Check admin rights
@@ -515,7 +518,7 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Command to show batch posts"""
+    """Show pending batch posts."""
     logger.info(f"Received /batch command from user {update.effective_user.id}")
     if not await check_admin_rights(update, context):
         return
@@ -533,8 +536,10 @@ async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
 
 
-async def send_batch_command(update, context):
-    """Send all batch_ files from MinIO to the target channel."""
+async def send_batch_command(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Send all batch files from MinIO to the target channel."""
     if not await check_admin_rights(update, context):
         return
 
@@ -558,7 +563,7 @@ async def send_batch_command(update, context):
         for file_path in batch_files:
             temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
             ext = os.path.splitext(temp_path)[1].lower()
-            file_obj = open(temp_path, "rb")
+            file_obj: IO[bytes] = open(temp_path, "rb")
             info = {
                 "file_path": file_path,
                 "temp_path": temp_path,
@@ -591,7 +596,7 @@ async def send_batch_command(update, context):
             for item in chunk:
                 file_path = item["file_path"]
                 temp_path = item["temp_path"]
-                file_obj = item["file_obj"]
+                file_obj = cast(IO[bytes], item["file_obj"])
                 media_type = item["media_type"]
                 base_name = item["base_name"]
                 file_obj.close()

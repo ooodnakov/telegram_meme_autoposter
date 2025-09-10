@@ -1,3 +1,5 @@
+"""Image processing helpers for watermarking and uploading photos."""
+
 import os
 import tempfile
 from random import randint
@@ -17,12 +19,19 @@ async def add_watermark_to_image(
     user_metadata: dict | None = None,
     media_hash: str | None = None,
     group_id: str | None = None,
-):
-    """Add watermark to an image and save it with EXIF data.
+) -> None:
+    """Add a semi-transparent watermark to an image and upload it.
 
     Args:
-        input_path: Path to the local file
-        output_filename: Name for the output file in MinIO
+        input_path: Path to the local file.
+        output_filename: Name for the output file in MinIO.
+        user_metadata: Optional submission metadata to attach to the upload.
+        media_hash: Optional hash used for deduplication.
+        group_id: Optional album identifier for media groups.
+
+    Returns:
+        None
+
     """
     # Create temporary file for the output
     temp_output = None
@@ -47,7 +56,7 @@ async def add_watermark_to_image(
 
         base.paste(overlay, position, overlay)
 
-        exif_dict = {}
+        exif_dict: dict[str, dict[int, str]] = {}
         exif_dict["0th"] = {}
         exif_dict["0th"][piexif.ImageIFD.Artist] = "t.me/ooodnakov_memes"
         exif_dict["0th"][piexif.ImageIFD.ImageDescription] = "t.me/ooodnakov_memes"

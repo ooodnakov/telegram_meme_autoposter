@@ -39,8 +39,8 @@ async def upload_processed_media(
         media_hash: Optional hash used for deduplication.
         group_id: Optional identifier for media groups/albums.
         media_label: Human readable label for logging and error messages.
-    """
 
+    """
     meta = user_metadata
     if meta is None:
         lookup = os.path.basename(original_name or file_path)

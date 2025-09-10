@@ -1,12 +1,17 @@
+"""Callback handlers and helpers for Telegram bot interactions."""
+
 import datetime
 import os
+from typing import Any
 
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
 from telegram import (
+    Bot,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    Message,
     Update,
 )
 from telegram.ext import ContextTypes
@@ -55,21 +60,23 @@ from telegram_auto_poster.utils.ui import (
 
 
 def _is_streaming_video(file_path: str) -> bool:
-    """Checks if a file is a video that supports streaming."""
+    """Check if a file is a video that supports streaming."""
     return os.path.splitext(file_path)[1].lower() in [".mp4", ".avi", ".mov"]
 
 
 def _translated_media_type(media_type: str) -> str:
+    """Return a Russian label for ``media_type``."""
     return "фото" if media_type == "photo" else "видео"
 
 
 async def _notify_submitter(
     context: ContextTypes.DEFAULT_TYPE,
-    user_metadata: dict | None,
+    user_metadata: dict[str, Any] | None,
     media_type: str,
     template: str,
     storage_name: str,
 ) -> None:
+    """Send a templated notification to the submitting user if possible."""
     if (
         user_metadata
         and not user_metadata.get("notified")
@@ -88,7 +95,8 @@ async def _notify_submitter(
         )
 
 
-def _compute_media_hash(temp_path: str, media_type: str) -> str:
+def _compute_media_hash(temp_path: str, media_type: str) -> str | None:
+    """Return a content hash for the temporary file based on ``media_type``."""
     return (
         calculate_image_hash(temp_path)
         if media_type == "photo"
@@ -101,9 +109,10 @@ async def _add_media_hash(
     media_type: str,
     file_prefix: str,
     temp_path: str | None,
-    metadata: dict | None,
+    metadata: dict[str, Any] | None,
     context_name: str,
 ) -> str | None:
+    """Ensure ``file_name`` is present in the deduplication corpus."""
     media_hash = None
     try:
         meta = metadata or await storage.get_submission_metadata(file_name)
@@ -136,6 +145,7 @@ async def _add_media_hash(
 
 
 async def _edit_message(query: CallbackQuery, text: str) -> None:
+    """Edit the caption or text of ``query``'s message to ``text``."""
     if query.message.caption:
         await query.message.edit_caption(text, reply_markup=None)
     else:
@@ -215,7 +225,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle approval: add post to batch"""
+    """Handle approval: add post to batch."""
     logger.info(
         f"Received {CALLBACK_OK} callback from user {update.callback_query.from_user.id}"
     )
@@ -309,7 +319,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle direct publish of approved media"""
+    """Handle direct publish of approved media."""
     logger.info(
         f"Received {CALLBACK_PUSH} callback from user {update.callback_query.from_user.id}"
     )
@@ -391,8 +401,8 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await query.message.reply_text(f"Error sending to channel: {str(e)}")
 
 
-async def notok_callback(update, context) -> None:
-    """Handle rejection of media submissions"""
+async def notok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle rejection of media submissions."""
     logger.info(
         f"Received {CALLBACK_NOTOK} callback from user {update.callback_query.from_user.id}"
     )
@@ -500,7 +510,9 @@ async def unschedule_callback(
         await query.message.reply_text(f"Failed to remove scheduled post: {str(e)}")
 
 
-async def send_schedule_preview(bot, chat_id: int, file_path: str, index: int):
+async def send_schedule_preview(
+    bot: Bot, chat_id: int, file_path: str, index: int
+) -> Message:
     """Send a preview of a scheduled post with navigation buttons."""
     buttons = [
         [
@@ -533,7 +545,7 @@ async def send_schedule_preview(bot, chat_id: int, file_path: str, index: int):
 
 async def _remove_post_and_show_next(
     query: CallbackQuery, context: ContextTypes.DEFAULT_TYPE, index: int, file_path: str
-):
+) -> None:
     """Remove a post then display the next available one."""
     db.remove_scheduled_post(file_path)
     if await storage.file_exists(file_path, BUCKET_MAIN):
@@ -635,12 +647,16 @@ async def schedule_browser_callback(
 
 
 async def list_batch_files() -> list[str]:
+    """Return the combined list of photo and video batch files."""
     photo_batch = await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
     video_batch = await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
     return photo_batch + video_batch
 
 
-async def send_batch_preview(bot, chat_id: int, file_path: str, index: int):
+async def send_batch_preview(
+    bot: Bot, chat_id: int, file_path: str, index: int
+) -> Message:
+    """Show a preview of a batch file with navigation buttons."""
     buttons = [
         [
             InlineKeyboardButton("Prev", callback_data=f"/batch_prev:{index}"),
