@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="m-0">Queued Media</h1>
+    <h1 class="m-0">{{ _('Queued Media') }}</h1>
     {% set query_suffix = '?page=' ~ page %}
-    <a class="btn btn-sm btn-outline-secondary" href="/queue{{ query_suffix }}">Refresh</a>
+    <a class="btn btn-sm btn-outline-secondary" href="/queue{{ query_suffix }}">{{ _('Refresh') }}</a>
 
 </div>
 {% if posts %}
@@ -11,10 +11,10 @@
     <table class="table table-striped table-hover">
         <thead>
             <tr>
-                <th scope="col">File Path</th>
-                <th scope="col">Caption</th>
-                <th scope="col">Scheduled Time</th>
-                <th scope="col">Preview</th>
+                <th scope="col">{{ _('File Path') }}</th>
+                <th scope="col">{{ _('Caption') }}</th>
+                <th scope="col">{{ _('Scheduled Time') }}</th>
+                <th scope="col">{{ _('Preview') }}</th>
             </tr>
         </thead>
         <tbody>
@@ -27,7 +27,7 @@
                     <form method="post" action="/queue/schedule" data-bg="true" class="d-flex align-items-center gap-2 flex-wrap">
                         <input type="hidden" name="path" value="{{ p.path }}" />
                         <input type="text" name="scheduled_at" value="{{ p.dt_input }}" class="form-control form-control-sm datetime-picker" />
-                        <button class="btn btn-sm btn-success" type="submit">Save</button>
+                        <button class="btn btn-sm btn-success" type="submit">{{ _('Save') }}</button>
                     </form>
                 </td>
                 <td>
@@ -37,23 +37,23 @@
                                 data-bs-target="#preview-{{ loop.index0 }}"
                                 aria-expanded="false"
                                 aria-controls="preview-{{ loop.index0 }}">
-                            Toggle Preview
+                            {{ _('Toggle Preview') }}
                         </button>
-                        <form method="post" action="/queue/unschedule" data-bg="true" onsubmit="return confirm('Unschedule this item?');">
+                        <form method="post" action="/queue/unschedule" data-bg="true" onsubmit="return confirm('{{ _('Unschedule this item?') }}');">
                             <input type="hidden" name="path" value="{{ p.path }}" />
-                            <button class="btn btn-sm btn-danger" type="submit">Unschedule</button>
+                            <button class="btn btn-sm btn-danger" type="submit">{{ _('Unschedule') }}</button>
                         </form>
                     </div>
                     <div class="collapse mt-2" id="preview-{{ loop.index0 }}">
                         {% if p.is_video %}
                             <video class="queue-video img-fluid" controls preload="none" playsinline style="max-height: 180px;">
                                 <source src="{{ p.url }}" {% if p.mime %}type="{{ p.mime }}"{% endif %} />
-                                Your browser does not support the video tag.
+                                {{ _('Your browser does not support the video tag.') }}
                             </video>
                         {% elif p.is_image %}
                             <img src="{{ p.url }}" loading="lazy" class="img-fluid" style="max-height: 180px; object-fit: contain;" alt="preview">
                         {% else %}
-                            <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer">Open</a>
+                            <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer">{{ _('Open') }}</a>
                         {% endif %}
                     </div>
                 </td>
@@ -64,7 +64,7 @@
 </div>
 {% else %}
 <div class="alert alert-info" role="alert">
-    No media scheduled.
+    {{ _('No media scheduled.') }}
 </div>
 {% endif %}
 {% if total_pages > 1 %}
@@ -72,19 +72,19 @@
     <ul class="pagination justify-content-center mt-3">
         <li class="page-item {% if page == 1 %}disabled{% endif %}">
             {% if page == 1 %}
-            <span class="page-link">Previous</span>
+            <span class="page-link">{{ _('Previous') }}</span>
             {% else %}
-            <a class="page-link" href="/queue?page={{ page - 1 }}">Previous</a>
+            <a class="page-link" href="/queue?page={{ page - 1 }}">{{ _('Previous') }}</a>
             {% endif %}
         </li>
         <li class="page-item disabled">
-            <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+            <span class="page-link">{{ _("Page {page} of {total_pages}").format(page=page, total_pages=total_pages) }}</span>
         </li>
         <li class="page-item {% if page == total_pages %}disabled{% endif %}">
             {% if page == total_pages %}
-            <span class="page-link">Next</span>
+            <span class="page-link">{{ _('Next') }}</span>
             {% else %}
-            <a class="page-link" href="/queue?page={{ page + 1 }}">Next</a>
+            <a class="page-link" href="/queue?page={{ page + 1 }}">{{ _('Next') }}</a>
             {% endif %}
         </li>
     </ul>

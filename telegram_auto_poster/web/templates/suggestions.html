@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="m-0">User Suggestions</h1>
+    <h1 class="m-0">{{ _('User Suggestions') }}</h1>
     {% set query_suffix = '?page=' ~ page %}
     <button
         class="btn btn-sm btn-outline-secondary"
@@ -9,13 +9,13 @@
         hx-target="#suggestions-grid"
         hx-swap="innerHTML"
     >
-        Refresh
+        {{ _('Refresh') }}
     </button>
 </div>
 <div id="suggestions-grid">
     {% set origin = "suggestions" %}
-    {% set alt_text = "suggestion" %}
-    {% set empty_message = "No suggestions pending." %}
+    {% set alt_text = _('suggestion') %}
+    {% set empty_message = _('No suggestions pending.') %}
     {% include "_post_grid.html" %}
 </div>
 {% endblock %}

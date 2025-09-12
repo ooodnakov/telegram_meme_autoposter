@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% macro render_table(title, items, columns) %}
-<h2>{{ _(title) }}</h2>
+<h2>{{ title }}</h2>
 <table class="table table-striped">
   <thead>
     <tr>
       <th>{{ _('Source') }}</th>
       {% for field, label in columns %}
-      <th>{{ _(label) }}</th>
+      <th>{{ label }}</th>
       {% endfor %}
     </tr>
   </thead>
@@ -16,9 +16,9 @@
       <td>{{ item.source }}</td>
       {% for field, label in columns %}
       <td>
-        {{ item|attr(field) }}
+        {{ item[field] }}
         {% if field != 'submissions' %}
-        ({{ '%.1f'|format(item|attr(field ~ '_pct')) }}%)
+        ({{ '%.1f'|format(item[field ~ '_pct']) }}%)
         {% endif %}
       </td>
       {% endfor %}
@@ -29,7 +29,7 @@
 {% endmacro %}
 {% block content %}
 <h1>{{ _('Leaderboard') }}</h1>
-{{ render_table('Most Submissions', submissions, [('submissions','Submissions'), ('approved','Approved'), ('rejected','Rejected')]) }}
-{{ render_table('Most Approved', approved, [('approved','Approved'), ('submissions','Submissions'), ('rejected','Rejected')]) }}
-{{ render_table('Most Rejected', rejected, [('rejected','Rejected'), ('submissions','Submissions'), ('approved','Approved')]) }}
+{{ render_table(_('Most Submissions'), submissions, [('submissions', _('Submissions')), ('approved', _('Approved')), ('rejected', _('Rejected'))]) }}
+{{ render_table(_('Most Approved'), approved, [('approved', _('Approved')), ('submissions', _('Submissions')), ('rejected', _('Rejected'))]) }}
+{{ render_table(_('Most Rejected'), rejected, [('rejected', _('Rejected')), ('submissions', _('Submissions')), ('approved', _('Approved'))]) }}
 {% endblock %}

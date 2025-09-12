@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Analytics</h1>
+<h1>{{ _('Analytics') }}</h1>
 <div class="row">
     <div class="col-md-4">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>Last 24 Hours</h2>
+                <h2>{{ _('Last 24 Hours') }}</h2>
             </div>
             <div class="card-body">
                 <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Media Received: <span class="badge bg-primary rounded-pill">{{ daily.media_received }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Photos Processed: <span class="badge bg-primary rounded-pill">{{ daily.photos_processed }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Videos Processed: <span class="badge bg-primary rounded-pill">{{ daily.videos_processed }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Photos Approved: <span class="badge bg-success rounded-pill">{{ daily.photos_approved }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Videos Approved: <span class="badge bg-success rounded-pill">{{ daily.videos_approved }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Photos Rejected: <span class="badge bg-danger rounded-pill">{{ daily.photos_rejected }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Videos Rejected: <span class="badge bg-danger rounded-pill">{{ daily.videos_rejected }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Batches Sent: <span class="badge bg-info rounded-pill">{{ daily.batch_sent }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Approval Rate: <span class="badge bg-secondary rounded-pill">{{ '%.1f'|format(approval_24h) }}%</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Success Rate: <span class="badge bg-secondary rounded-pill">{{ '%.1f'|format(success_24h) }}%</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Errors: <span class="badge bg-warning text-dark rounded-pill">{{ daily_errors }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Busiest Hour: <span class="badge bg-secondary rounded-pill">{{ busiest_hour }} ({{ busiest_count }} events)</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Media Received') }}: <span class="badge bg-primary rounded-pill">{{ daily.media_received }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Photos Processed') }}: <span class="badge bg-primary rounded-pill">{{ daily.photos_processed }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Videos Processed') }}: <span class="badge bg-primary rounded-pill">{{ daily.videos_processed }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Photos Approved') }}: <span class="badge bg-success rounded-pill">{{ daily.photos_approved }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Videos Approved') }}: <span class="badge bg-success rounded-pill">{{ daily.videos_approved }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Photos Rejected') }}: <span class="badge bg-danger rounded-pill">{{ daily.photos_rejected }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Videos Rejected') }}: <span class="badge bg-danger rounded-pill">{{ daily.videos_rejected }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Batches Sent') }}: <span class="badge bg-info rounded-pill">{{ daily.batch_sent }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Approval Rate') }}: <span class="badge bg-secondary rounded-pill">{{ '%.1f'|format(approval_24h) }}%</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Success Rate') }}: <span class="badge bg-secondary rounded-pill">{{ '%.1f'|format(success_24h) }}%</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Errors') }}: <span class="badge bg-warning text-dark rounded-pill">{{ daily_errors }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Busiest Hour') }}: <span class="badge bg-secondary rounded-pill">{{ busiest_hour }} ({{ _('{} events').format(busiest_count) }})</span></li>
                 </ul>
             </div>
         </div>
@@ -28,14 +28,14 @@
     <div class="col-md-4">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>Performance</h2>
+                <h2>{{ _('Performance') }}</h2>
             </div>
             <div class="card-body">
                 <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Avg Photo Processing: <span class="badge bg-primary rounded-pill">{{ '%.2f'|format(perf.avg_photo_processing_time) }}s</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Avg Video Processing: <span class="badge bg-primary rounded-pill">{{ '%.2f'|format(perf.avg_video_processing_time) }}s</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Avg Upload: <span class="badge bg-info rounded-pill">{{ '%.2f'|format(perf.avg_upload_time) }}s</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Avg Download: <span class="badge bg-info rounded-pill">{{ '%.2f'|format(perf.avg_download_time) }}s</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Avg Photo Processing') }}: <span class="badge bg-primary rounded-pill">{{ '%.2f'|format(perf.avg_photo_processing_time) }}s</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Avg Video Processing') }}: <span class="badge bg-primary rounded-pill">{{ '%.2f'|format(perf.avg_video_processing_time) }}s</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Avg Upload') }}: <span class="badge bg-info rounded-pill">{{ '%.2f'|format(perf.avg_upload_time) }}s</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Avg Download') }}: <span class="badge bg-info rounded-pill">{{ '%.2f'|format(perf.avg_download_time) }}s</span></li>
                 </ul>
             </div>
         </div>
@@ -43,20 +43,20 @@
     <div class="col-md-4">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>All-Time Totals</h2>
+                <h2>{{ _('All-Time Totals') }}</h2>
             </div>
             <div class="card-body">
                 <ul class="list-group list-group-flush">
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Photos Processed: <span class="badge bg-primary rounded-pill">{{ total.photos_processed }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Videos Processed: <span class="badge bg-primary rounded-pill">{{ total.videos_processed }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Photos Approved: <span class="badge bg-success rounded-pill">{{ total.photos_approved }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Videos Approved: <span class="badge bg-success rounded-pill">{{ total.videos_approved }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Photos Rejected: <span class="badge bg-danger rounded-pill">{{ total.photos_rejected }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Videos Rejected: <span class="badge bg-danger rounded-pill">{{ total.videos_rejected }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Batches Sent: <span class="badge bg-info rounded-pill">{{ total.batch_sent }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Approval Rate: <span class="badge bg-secondary rounded-pill">{{ '%.1f'|format(approval_total) }}%</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">Total Errors: <span class="badge bg-warning text-dark rounded-pill">{{ total_errors }}</span></li>
-                    <li class="list-group-item d-flex justify-content-between align-items-center">List Operations: <span class="badge bg-secondary rounded-pill">{{ total.list_operations }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Photos Processed') }}: <span class="badge bg-primary rounded-pill">{{ total.photos_processed }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Videos Processed') }}: <span class="badge bg-primary rounded-pill">{{ total.videos_processed }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Photos Approved') }}: <span class="badge bg-success rounded-pill">{{ total.photos_approved }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Videos Approved') }}: <span class="badge bg-success rounded-pill">{{ total.videos_approved }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Photos Rejected') }}: <span class="badge bg-danger rounded-pill">{{ total.photos_rejected }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Videos Rejected') }}: <span class="badge bg-danger rounded-pill">{{ total.videos_rejected }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Batches Sent') }}: <span class="badge bg-info rounded-pill">{{ total.batch_sent }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Approval Rate') }}: <span class="badge bg-secondary rounded-pill">{{ '%.1f'|format(approval_total) }}%</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('Total Errors') }}: <span class="badge bg-warning text-dark rounded-pill">{{ total_errors }}</span></li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center">{{ _('List Operations') }}: <span class="badge bg-secondary rounded-pill">{{ total.list_operations }}</span></li>
                 </ul>
             </div>
         </div>
@@ -66,7 +66,7 @@
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>Daily Approvals vs Rejections (24h)</h2>
+                <h2>{{ _('Daily Approvals vs Rejections (24h)') }}</h2>
             </div>
             <div class="card-body">
                 <canvas
@@ -82,7 +82,7 @@
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>Error Breakdown (24h)</h2>
+                <h2>{{ _('Error Breakdown (24h)') }}</h2>
             </div>
             <div class="card-body">
                 <canvas
@@ -99,7 +99,7 @@
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>Performance Metrics (Avg Seconds)</h2>
+                <h2>{{ _('Performance Metrics (Avg Seconds)') }}</h2>
             </div>
             <div class="card-body">
                 <canvas
@@ -115,7 +115,7 @@
     <div class="col-md-6">
         <div class="card mb-4">
             <div class="card-header">
-                <h2>All-Time Activity</h2>
+                <h2>{{ _('All-Time Activity') }}</h2>
             </div>
             <div class="card-body">
                 <canvas

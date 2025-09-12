@@ -3,7 +3,7 @@
     {% for p in posts %}
     <div class="col-sm-6 col-md-4">
         {% if p['items']|length > 1 %}
-        <span class="badge bg-secondary mb-1">Group of {{ p['items']|length }}</span>
+        <span class="badge bg-secondary mb-1">{{ _('Group of {n}').format(n=p['items']|length) }}</span>
         {% endif %}
         {% for media in p['items'] %}
         {% if media.is_video %}
@@ -19,7 +19,7 @@
                 {% endfor %}
                 <input type="hidden" name="action" value="push" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <button class="btn btn-sm btn-primary" type="submit">Push!</button>
+                <button class="btn btn-sm btn-primary" type="submit">{{ _('Push!') }}</button>
             </form>
             <form method="post" action="/action" data-bg="true">
                 {% for media in p['items'] %}
@@ -27,20 +27,20 @@
                 {% endfor %}
                 <input type="hidden" name="action" value="schedule" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <button class="btn btn-sm btn-secondary" type="submit">Schedule</button>
+                <button class="btn btn-sm btn-secondary" type="submit">{{ _('Schedule') }}</button>
             </form>
             <form
                 method="post"
                 action="/action"
                 data-bg="true"
-                onsubmit="return confirm('Remove from batch?');"
+                onsubmit="return confirm('{{ _('Remove from batch?') }}');"
             >
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
                 <input type="hidden" name="action" value="remove_batch" />
                 <input type="hidden" name="origin" value="{{ origin }}" />
-                <button class="btn btn-sm btn-danger" type="submit">Remove</button>
+                <button class="btn btn-sm btn-danger" type="submit">{{ _('Remove') }}</button>
             </form>
         </div>
     </div>
@@ -54,27 +54,27 @@
     <ul class="pagination justify-content-center mt-3">
         <li class="page-item {% if page == 1 %}disabled{% endif %}">
             {% if page == 1 %}
-            <span class="page-link">Previous</span>
+            <span class="page-link">{{ _('Previous') }}</span>
             {% else %}
             <a class="page-link"
                hx-get="/batch?page={{ page - 1 }}"
                hx-target="#batch-grid"
                hx-swap="innerHTML"
-               href="/batch?page={{ page - 1 }}">Previous</a>
+               href="/batch?page={{ page - 1 }}">{{ _('Previous') }}</a>
             {% endif %}
         </li>
         <li class="page-item disabled">
-            <span class="page-link">Page {{ page }} of {{ total_pages }}</span>
+            <span class="page-link">{{ _("Page {page} of {total_pages}").format(page=page, total_pages=total_pages) }}</span>
         </li>
         <li class="page-item {% if page == total_pages %}disabled{% endif %}">
             {% if page == total_pages %}
-            <span class="page-link">Next</span>
+            <span class="page-link">{{ _('Next') }}</span>
             {% else %}
             <a class="page-link"
                hx-get="/batch?page={{ page + 1 }}"
                hx-target="#batch-grid"
                hx-swap="innerHTML"
-               href="/batch?page={{ page + 1 }}">Next</a>
+               href="/batch?page={{ page + 1 }}">{{ _('Next') }}</a>
             {% endif %}
         </li>
     </ul>

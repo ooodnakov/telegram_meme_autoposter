@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="m-0">Channel Posts</h1>
+    <h1 class="m-0">{{ _('Channel Posts') }}</h1>
     {% set query_suffix = '?page=' ~ page %}
     <button
         class="btn btn-sm btn-outline-secondary"
@@ -9,13 +9,13 @@
         hx-target="#posts-grid"
         hx-swap="innerHTML"
     >
-        Refresh
+        {{ _('Refresh') }}
     </button>
 </div>
 <div id="posts-grid">
     {% set origin = "posts" %}
-    {% set alt_text = "post" %}
-    {% set empty_message = "No posts pending." %}
+    {% set alt_text = _('post') %}
+    {% set empty_message = _('No posts pending.') %}
     {% include "_post_grid.html" %}
 </div>
 {% endblock %}
