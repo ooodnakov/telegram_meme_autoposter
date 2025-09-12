@@ -24,7 +24,7 @@ def mock_minio_client(mocker: MockerFixture):
 class FakeRedis:
     def __init__(self):
         self.hash_store: dict[str, dict[str, str]] = {}
-        self.set_store: dict[str, set[str]] = {}
+        self.zset_store: dict[str, list[str]] = {}
 
     async def hset(self, key, field=None, value=None, mapping=None):
         if mapping is not None:
@@ -37,15 +37,74 @@ class FakeRedis:
     async def hgetall(self, key):
         return self.hash_store.get(key, {}).copy()
 
-    async def sadd(self, key, *values):
-        self.set_store.setdefault(key, set()).update(values)
+    async def zadd(self, key, mapping):
+        items = self.zset_store.setdefault(key, [])
+        for member in mapping.keys():
+            if member not in items:
+                items.append(member)
+        items.sort()
 
-    async def srem(self, key, *values):
-        if key in self.set_store:
-            self.set_store[key].difference_update(values)
+    async def zrem(self, key, *members):
+        if key in self.zset_store:
+            self.zset_store[key] = [m for m in self.zset_store[key] if m not in members]
 
-    async def smembers(self, key):
-        return set(self.set_store.get(key, set()))
+    async def zrangebylex(self, key, min_val, max_val, start=None, num=None):
+        items = self.zset_store.get(key, [])
+
+        def gte_min(item):
+            if min_val == "-":
+                return True
+            prefix = min_val[1:]
+            return item >= prefix if min_val.startswith("[") else item > prefix
+
+        def lte_max(item):
+            if max_val == "+":
+                return True
+            prefix = max_val[1:]
+            return item <= prefix if max_val.startswith("[") else item < prefix
+
+        filtered = [i for i in items if gte_min(i) and lte_max(i)]
+        if start is not None:
+            filtered = filtered[start:]
+        if num is not None:
+            filtered = filtered[:num]
+        return filtered
+
+    async def zcard(self, key):
+        return len(self.zset_store.get(key, []))
+
+    async def zlexcount(self, key, min_val, max_val):
+        items = await self.zrangebylex(key, min_val, max_val)
+        return len(items)
+
+    async def exists(self, key):
+        return int(key in self.zset_store)
+
+    async def delete(self, key):
+        self.zset_store.pop(key, None)
+
+    def pipeline(self):
+        parent = self
+
+        class Pipeline:
+            def __init__(self):
+                self.commands = []
+
+            async def delete(self, key):
+                self.commands.append(("delete", key))
+
+            async def zadd(self, key, mapping):
+                self.commands.append(("zadd", key, mapping))
+
+            async def execute(self):
+                for cmd in self.commands:
+                    if cmd[0] == "delete":
+                        await parent.delete(cmd[1])
+                    elif cmd[0] == "zadd":
+                        await parent.zadd(cmd[1], cmd[2])
+                self.commands.clear()
+
+        return Pipeline()
 
 
 @pytest.fixture
@@ -192,7 +251,7 @@ async def test_upload_file(storage, mock_minio_client, mock_redis_client, tmp_pa
     assert meta["group_id"] == "g3"
     assert meta["source"] == "src3"
     cache_key = _redis_key("objects", BUCKET_MAIN)
-    assert kwargs["object_name"] in mock_redis_client.set_store[cache_key]
+    assert kwargs["object_name"] in mock_redis_client.zset_store[cache_key]
 
 
 @pytest.mark.asyncio
@@ -231,12 +290,12 @@ async def test_get_object_data_minio_error(storage, mock_minio_client):
 async def test_delete_file(storage, mock_minio_client, mock_redis_client):
     """Test deleting a file."""
     cache_key = _redis_key("objects", BUCKET_MAIN)
-    mock_redis_client.set_store[cache_key] = {"obj1"}
+    mock_redis_client.zset_store[cache_key] = ["obj1"]
     await storage.delete_file("obj1", BUCKET_MAIN)
     mock_minio_client.remove_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1"
     )
-    assert "obj1" not in mock_redis_client.set_store[cache_key]
+    assert "obj1" not in mock_redis_client.zset_store[cache_key]
 
 
 @pytest.mark.asyncio
@@ -252,7 +311,7 @@ async def test_file_exists(storage, mock_minio_client):
 async def test_list_files_from_cache(storage, mock_minio_client, mock_redis_client):
     """Listing uses cached entries when available."""
     cache_key = _redis_key("objects", BUCKET_MAIN)
-    mock_redis_client.set_store[cache_key] = {"a.jpg", "b.jpg"}
+    mock_redis_client.zset_store[cache_key] = ["a.jpg", "b.jpg"]
     files = await storage.list_files(BUCKET_MAIN, prefix="a")
     assert files == ["a.jpg"]
     mock_minio_client.list_objects.assert_not_called()
@@ -276,5 +335,45 @@ async def test_list_files_populates_cache(
     mock_minio_client.list_objects.assert_called_once_with(
         BUCKET_MAIN, prefix=None, recursive=True
     )
-    assert mock_redis_client.set_store[cache_key] == {"a.jpg", "b.jpg"}
+    assert mock_redis_client.zset_store[cache_key] == ["a.jpg", "b.jpg"]
+
+
+@pytest.mark.asyncio
+async def test_list_files_with_prefix_does_not_cache(
+    storage, mock_minio_client, mock_redis_client, mocker: MockerFixture
+):
+    """Prefix listings should not populate the cache or affect other prefixes."""
+    cache_key = _redis_key("objects", BUCKET_MAIN)
+
+    async def gen_a():
+        yield SimpleNamespace(object_name="a.jpg")
+
+    async def gen_b():
+        yield SimpleNamespace(object_name="b.jpg")
+
+    def side_effect(bucket, prefix=None, recursive=True):
+        return gen_a() if prefix == "a" else gen_b()
+
+    mock_minio_client.list_objects = mocker.Mock(side_effect=side_effect)
+
+    files_a = await storage.list_files(BUCKET_MAIN, prefix="a")
+    assert files_a == ["a.jpg"]
+    assert cache_key not in mock_redis_client.zset_store
+
+    files_b = await storage.list_files(BUCKET_MAIN, prefix="b")
+    assert files_b == ["b.jpg"]
+    assert mock_minio_client.list_objects.call_count == 2
+    assert cache_key not in mock_redis_client.zset_store
+
+
+@pytest.mark.asyncio
+async def test_count_files_uses_cache(
+    storage, mock_minio_client, mock_redis_client
+):
+    """Counting uses Valkey's sorted set when available."""
+    cache_key = _redis_key("objects", BUCKET_MAIN)
+    mock_redis_client.zset_store[cache_key] = ["a.jpg", "b.jpg"]
+    assert await storage.count_files(BUCKET_MAIN) == 2
+    assert await storage.count_files(BUCKET_MAIN, prefix="a") == 1
+    mock_minio_client.list_objects.assert_not_called()
 
