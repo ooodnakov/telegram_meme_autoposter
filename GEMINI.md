@@ -93,4 +93,3 @@ Logging uses `loguru` with configuration in `telegram_auto_poster/utils/logger_s
 ### Configuration
 
 Settings are loaded from `config.ini` and environment variables by `load_config()` in `telegram_auto_poster/config.py`.
-

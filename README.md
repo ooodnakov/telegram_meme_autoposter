@@ -1,163 +1,121 @@
 # Telegram Meme Autoposter
 
-A system that monitors various Telegram channels for media content (photos/videos), processes them, and forwards approved content to a target channel.
+A Telegram bot + watcher that monitors source channels for media (photos/videos), watermarks and queues them for admin review, then posts to a target channel. Includes feedback to submitters, usage stats, and a simple web dashboard.
+
+## Quick Setup
+
+Follow these steps to get running fast. For expanded docs, see the Wiki.
+
+1. Clone and init submodules
+   ```bash
+   git clone https://github.com/ooodnakov/telegram_meme_autoposter.git
+   cd telegram_meme_autoposter
+   git submodule update --init --recursive
+   ```
+2. Install dependencies (Python 3.12 + uv)
+   ```bash
+   uv sync
+   ```
+3. Create config and env files
+   ```bash
+   cp config.example.ini config.ini
+   cp .env.example .env
+   ```
+4. Fill in credentials and endpoints
+   - Telegram Bot token and API ID/Hash
+   - MinIO endpoint, access/secret keys, bucket
+   - Valkey host/port
+   - Target channel and admin IDs in `config.ini`
+5. Run the app
+   ```bash
+   uv run python -m telegram_auto_poster.main
+   ```
+   Or run bot + dashboard together:
+   ```bash
+   ./run_bg.sh
+   ```
+
+## Documentation & Wiki
+
+- Wiki (GitHub): https://github.com/ooodnakov/telegram_meme_autoposter/wiki
+- Local copy (submodule): `wiki/Home.md`
+
+Key topics to start with:
+- Setup and configuration (env + `config.ini`)
+- Running locally vs Docker
+- Admin workflow and permissions
 
 ## Features
 
-- Monitors multiple source channels for new media content
-- Adds watermarks to images with configurable positioning
-- Processes video content
-- Allows admin approval or rejection of content
-- Supports batching multiple approved items for posting at once
-- Provides detailed statistics on media processing
-- Automatically sends a daily statistics report at midnight
-- Stores statistics in a Valkey server for fast access
-- **NEW: Provides feedback to media submitters when their content is approved or rejected**
-- **NEW: Enhanced admin permission system to control access to admin commands**
-- **NEW: Simple web dashboard for reviewing queued media and viewing analytics**
-- Stores media in MinIO object storage for efficient processing
+- Watches multiple source channels (Telethon)
+- Watermarks images and processes videos
+- Admin approval queue with batch posting
+- Feedback to submitters on approval/rejection
+- Daily stats and Valkey-backed metrics
+- Simple FastAPI dashboard for review/analytics
+- MinIO-backed storage for originals/processed media
 
-## User Features
+## Project Structure
 
-Users can now interact with the bot in the following ways:
+- `telegram_auto_poster/main.py`: App entrypoint wiring bot + client
+- `telegram_auto_poster/bot/`: Bot commands, handlers, permissions
+- `telegram_auto_poster/client/`: Telethon client watching channels
+- `telegram_auto_poster/web/`: FastAPI dashboard app
+- `telegram_auto_poster/utils/`: Logging, storage, helpers
+- `telegram_auto_poster/locales/`: I18n files and scripts
+- `wiki/`: Project Wiki (git submodule)
 
-1. **Submit Content**: Users can send photos and videos directly to the bot
-2. **Receive Feedback**: Users will get notifications when their content is:
-   - Approved and scheduled for posting
-   - Approved and immediately posted
-   - Rejected by the admin
+## Web Dashboard & Docs
 
-## Admin Features
+- Run standalone dashboard:
+  ```bash
+  uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
+  ```
+- Built-in pydoc browser after start: `http://localhost:8000/pydoc/`
+  - Example: `http://localhost:8000/pydoc/telegram_auto_poster.utils.storage`
 
-- `/start` - Initialize the bot
-- `/help` - Display available commands
-- `/sendall` - Send all approved media in the batch to the target channel
-- `/stats` - View bot statistics including processing counts and performance metrics
-- `/reset_stats` - Reset daily statistics
-- `/save_stats` - Force save statistics to disk
+## Translations
 
-All admin commands are protected with permission checks to ensure only authorized users can access them.
-
-## Architecture
-
-The system consists of the following components:
-
-1. **Telegram Bot**: Interface for users to submit content and for admins to moderate
-2. **Media Processor**: Adds watermarks to images and processes video content
-3. **Storage System**: MinIO-based storage for original and processed media
-4. **Stats System**: Tracking system for monitoring performance and usage patterns
-5. **Permissions System**: Controls access to admin commands
-
-## Getting Started
-
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
-
-### Prerequisites
-
-- Python 3.12
-- [uv](https://github.com/astral-sh/uv)
-- Docker
-- Docker Compose
-
-### Installation
-
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/your_username/telegram-meme-autoposter.git
-    cd telegram-meme-autoposter
-    ```
-
-2.  **Create a virtual environment and install dependencies**
-    ```bash
-    uv sync
-    ```
-
-3.  **Set up environment variables**
-
-    Create a `.env` file by copying the `env.example` file and fill in the required values.
-
-    ```bash
-    cp env.example .env
-    ```
-
-4.  **Run the application**
-    ```bash
-    uv run python -m telegram_auto_poster.main
-    ```
-
-    Or start both the bot and dashboard together:
-
-    ```bash
-    ./run_bg.sh
-    ```
-
-5.  **Launch the web dashboard** (if not using `run_bg.sh` or Docker Compose)
-    ```bash
-    uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
-    ```
-
-### Local documentation with pydoc
-
-The dashboard exposes project documentation through Python's built-in pydoc
-module. After starting the application (for example with `./run_bg.sh`), visit
-`http://localhost:8000/pydoc/` to browse the available modules.
-
-Append dotted module paths to the URL to jump directly to a specific section,
-for example:
-
-```
-http://localhost:8000/pydoc/telegram_auto_poster.utils.storage
-```
-
-### Translations
-
-Localization files live in `telegram_auto_poster/locales`.  To extract new
-messages and compile `.mo` files after updating translations run:
+Localization files live in `telegram_auto_poster/locales`. To extract and compile after updating translations:
 
 ```bash
 ./scripts/i18n.sh
 ```
 
-The default language and per-user overrides can be configured in `config.ini`
-under the `[I18n]` section.
+Default language and per-user overrides are configured in `config.ini` under `[I18n]`.
 
 ## Running with Docker
 
-You can also run the application using Docker and Docker Compose.
+1. Prepare env and config
+   ```bash
+   cp config.example.ini config.ini
+   cp .env.example .env
+   ```
+2. Start services
+   ```bash
+   docker-compose up -d --build
+   ```
 
-1.  **Set up environment variables**
+Dashboard: `http://localhost:8000`. Logs: `docker-compose logs -f`.
 
-    Create a `.env` file by copying the `env.example` file and fill in the required values.
-
-    ```bash
-    cp env.example .env
-    ```
-
-2.  **Build and run the Docker container**
-    ```bash
-    docker-compose up --build
-    ```
-
-The application will be running in a container, and you can view the logs using `docker-compose logs -f`. The web dashboard will be available at `http://localhost:8000`.
+See the Wiki for full Docker notes and production tips.
 
 ## Contributing
 
-We welcome contributions to this project. Please follow these steps to contribute:
+We welcome contributions! Please:
 
-1.  **Fork the repository**
-2.  **Create a new branch**
-    ```bash
-    git checkout -b feature/your-feature-name
-    ```
-3.  **Make your changes**
-4.  **Commit your changes**
-    ```bash
-    git commit -m "feat: add your feature"
-    ```
-5.  **Push to the branch**
-    ```bash
-    git push origin feature/your-feature-name
-    ```
-6.  **Create a pull request**
+1. Fork the repository
+2. Create a feature branch
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
+3. Commit changes
+   ```bash
+   git commit -m "feat: add your feature"
+   ```
+4. Push and open a PR
+   ```bash
+   git push origin feature/your-feature-name
+   ```
 
-Please make sure your code follows the project's coding style and that you have added tests for any new functionality.
+Before submitting, ensure style checks pass and tests are added when applicable.
