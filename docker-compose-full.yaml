@@ -1,0 +1,100 @@
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: valkey_local
+    env_file: .env
+    environment:
+      - VALKEY_PASSWORD=${VALKEY_PASSWORD:-redis}
+    volumes:
+      - ./valkeydata:/data
+    command: >
+      sh -c '
+        mkdir -p /usr/local/etc/valkey && \
+        {
+          echo "bind 0.0.0.0";
+          echo "port 6379";
+          [ -n "$VALKEY_PASSWORD" ] && echo "requirepass $VALKEY_PASSWORD";
+          echo "appendonly yes";
+          echo "appendfsync everysec";
+          echo "maxmemory 256mb";
+          echo "maxmemory-policy allkeys-lru";
+        } > /usr/local/etc/valkey/valkey.conf && \
+        valkey-server /usr/local/etc/valkey/valkey.conf
+      '
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a \"$VALKEY_PASSWORD\" ping | grep PONG || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_net
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z-cpuv1
+    container_name: minio_local
+    env_file: .env
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_CONSOLE_PORT_NUMBER=9001
+      - MINIO_API_PORT_NUMBER=9000
+    volumes:
+      - ./minio_data:/data
+    command: server /data --console-address ":9001" --address ":9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app_net
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  app:
+    container_name: telegram_auto_poster
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      - TZ=${TZ:-UTC}
+      # Wire the app to in-compose services
+      - VALKEY_HOST=valkey
+      - VALKEY_PORT=6379
+      - VALKEY_PASS=${VALKEY_PASS:-redis}
+      - MINIO_HOST=minio
+      - MINIO_PORT=9000
+      - MINIO_URL=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - WEB_PORT=${WEB_PORT:-8000}
+    volumes:
+      - ./telegram_auto_poster:/workspace/telegram_auto_poster
+      - ./pyproject.toml:/workspace/pyproject.toml
+      - ./uv.lock:/workspace/uv.lock
+      - ./videos:/workspace/videos
+      - ./photos:/workspace/photos
+      - ./config.ini:/workspace/config.ini
+      - ./ooodnakov.session:/workspace/ooodnakov.session
+      - ./wm.png:/workspace/wm.png
+    depends_on:
+      valkey:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge
+
