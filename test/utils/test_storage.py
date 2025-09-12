@@ -3,6 +3,7 @@ from miniopy_async.error import MinioException
 from pytest_mock import MockerFixture
 from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
 from telegram_auto_poster.utils.db import _redis_key
+from types import SimpleNamespace
 
 
 @pytest.fixture
@@ -22,18 +23,29 @@ def mock_minio_client(mocker: MockerFixture):
 
 class FakeRedis:
     def __init__(self):
-        self.store: dict[str, dict[str, str]] = {}
+        self.hash_store: dict[str, dict[str, str]] = {}
+        self.set_store: dict[str, set[str]] = {}
 
     async def hset(self, key, field=None, value=None, mapping=None):
         if mapping is not None:
-            self.store.setdefault(key, {}).update(mapping)
+            self.hash_store.setdefault(key, {}).update(mapping)
         elif field is not None and value is not None:
-            self.store.setdefault(key, {})[field] = value
+            self.hash_store.setdefault(key, {})[field] = value
         else:
             raise ValueError("hset requires field and value or mapping")
 
     async def hgetall(self, key):
-        return self.store.get(key, {}).copy()
+        return self.hash_store.get(key, {}).copy()
+
+    async def sadd(self, key, *values):
+        self.set_store.setdefault(key, set()).update(values)
+
+    async def srem(self, key, *values):
+        if key in self.set_store:
+            self.set_store[key].difference_update(values)
+
+    async def smembers(self, key):
+        return set(self.set_store.get(key, set()))
 
 
 @pytest.fixture
@@ -163,7 +175,7 @@ async def test_mark_notified(storage, mock_redis_client):
 
 
 @pytest.mark.asyncio
-async def test_upload_file(storage, mock_minio_client, tmp_path):
+async def test_upload_file(storage, mock_minio_client, mock_redis_client, tmp_path):
     """Test uploading a file."""
     file = tmp_path / "test.jpg"
     file.write_text("content")
@@ -179,6 +191,8 @@ async def test_upload_file(storage, mock_minio_client, tmp_path):
     assert meta["user_id"] == 123
     assert meta["group_id"] == "g3"
     assert meta["source"] == "src3"
+    cache_key = _redis_key("objects", BUCKET_MAIN)
+    assert kwargs["object_name"] in mock_redis_client.set_store[cache_key]
 
 
 @pytest.mark.asyncio
@@ -214,12 +228,15 @@ async def test_get_object_data_minio_error(storage, mock_minio_client):
 
 
 @pytest.mark.asyncio
-async def test_delete_file(storage, mock_minio_client):
+async def test_delete_file(storage, mock_minio_client, mock_redis_client):
     """Test deleting a file."""
+    cache_key = _redis_key("objects", BUCKET_MAIN)
+    mock_redis_client.set_store[cache_key] = {"obj1"}
     await storage.delete_file("obj1", BUCKET_MAIN)
     mock_minio_client.remove_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1"
     )
+    assert "obj1" not in mock_redis_client.set_store[cache_key]
 
 
 @pytest.mark.asyncio
@@ -229,3 +246,35 @@ async def test_file_exists(storage, mock_minio_client):
     mock_minio_client.stat_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1"
     )
+
+
+@pytest.mark.asyncio
+async def test_list_files_from_cache(storage, mock_minio_client, mock_redis_client):
+    """Listing uses cached entries when available."""
+    cache_key = _redis_key("objects", BUCKET_MAIN)
+    mock_redis_client.set_store[cache_key] = {"a.jpg", "b.jpg"}
+    files = await storage.list_files(BUCKET_MAIN, prefix="a")
+    assert files == ["a.jpg"]
+    mock_minio_client.list_objects.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_files_populates_cache(
+    storage, mock_minio_client, mock_redis_client, mocker: MockerFixture
+):
+    """Listing populates cache when missing."""
+    cache_key = _redis_key("objects", BUCKET_MAIN)
+
+    async def gen():
+        for name in ["a.jpg", "b.jpg"]:
+            yield SimpleNamespace(object_name=name)
+
+    mock_minio_client.list_objects = mocker.Mock(return_value=gen())
+
+    files = await storage.list_files(BUCKET_MAIN)
+    assert files == ["a.jpg", "b.jpg"]
+    mock_minio_client.list_objects.assert_called_once_with(
+        BUCKET_MAIN, prefix=None, recursive=True
+    )
+    assert mock_redis_client.set_store[cache_key] == {"a.jpg", "b.jpg"}
+

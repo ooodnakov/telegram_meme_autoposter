@@ -403,6 +403,13 @@ class MinioStorage:
                 file_path=file_path,
             )
             logger.debug(f"Uploaded {file_path} to {bucket}/{object_name}")
+            try:
+                r = get_async_redis_client()
+                await r.sadd(_redis_key("objects", bucket), object_name)
+            except Exception as e:  # pragma: no cover - cache is best effort
+                logger.error(
+                    f"Failed to cache object list entry for {bucket}/{object_name}: {e}"
+                )
             # Store submission metadata in-memory as well
             if any(
                 x is not None
@@ -531,6 +538,13 @@ class MinioStorage:
         try:
             await self.client.remove_object(bucket_name=bucket, object_name=object_name)
             logger.debug(f"Deleted {bucket}/{object_name}")
+            try:
+                r = get_async_redis_client()
+                await r.srem(_redis_key("objects", bucket), object_name)
+            except Exception as e:  # pragma: no cover - cache is best effort
+                logger.error(
+                    f"Failed to evict object list entry for {bucket}/{object_name}: {e}"
+                )
             return True
         except MinioException as e:
             logger.error(f"MinIO error deleting {bucket}/{object_name}: {e}")
@@ -566,6 +580,22 @@ class MinioStorage:
 
         """
         start_time = time.time()
+        cache_key = _redis_key("objects", bucket)
+        try:
+            r = get_async_redis_client()
+            cached = await r.smembers(cache_key)
+            if cached:
+                objects = sorted(cached)
+                if prefix:
+                    objects = [o for o in objects if o.startswith(prefix)]
+                end = None if limit is None else offset + limit
+                result = objects[offset:end]
+                duration = time.time() - start_time
+                await _stats_record_operation("list", duration)
+                return result
+        except Exception as e:  # pragma: no cover - cache is best effort
+            logger.debug(f"Redis unavailable for list_files: {e}")
+
         try:
             objects: list[str] = []
             results = self.client.list_objects(bucket, prefix=prefix, recursive=True)
@@ -586,6 +616,15 @@ class MinioStorage:
             logger.debug(
                 f"Listed {len(objects)} objects in {bucket} with prefix {prefix}"
             )
+
+            try:
+                if objects:
+                    r = get_async_redis_client()
+                    await r.sadd(cache_key, *objects)
+            except Exception as e:  # pragma: no cover - cache is best effort
+                logger.error(
+                    f"Failed to update cache for listing {bucket} with prefix {prefix}: {e}"
+                )
 
             duration = time.time() - start_time
             await _stats_record_operation("list", duration)
@@ -609,36 +648,7 @@ class MinioStorage:
 
     async def count_files(self, bucket: str, prefix: str | None = None) -> int:
         """Return the number of objects matching ``prefix`` in ``bucket``."""
-        start_time = time.time()
-        try:
-            count = 0
-            results = self.client.list_objects(bucket, prefix=prefix, recursive=True)
-            async for obj in results:
-                name = getattr(obj, "object_name", None) if obj is not None else None
-                if not name:
-                    continue
-                count += 1
-            duration = time.time() - start_time
-            await _stats_record_operation("list", duration)
-            return count
-        except MinioException as e:
-            logger.error(
-                f"MinIO error listing objects in {bucket} with prefix {prefix}: {e}"
-            )
-            await _stats_record_error(
-                "storage",
-                f"Failed to count objects in {bucket} with prefix {prefix}: {e}",
-            )
-            return 0
-        except Exception as e:
-            logger.error(
-                f"Error counting objects in {bucket} with prefix {prefix}: {e}"
-            )
-            await _stats_record_error(
-                "storage",
-                f"Unexpected error counting objects in {bucket} with prefix {prefix}: {e}",
-            )
-            return 0
+        return len(await self.list_files(bucket, prefix=prefix))
 
     async def file_exists(self, object_name: str, bucket: str) -> bool:
         """Check if a file exists in MinIO by attempting to stat it.
