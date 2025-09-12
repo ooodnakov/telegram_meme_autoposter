@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
-from loguru import Logger, logger
+from loguru import logger
+
+if TYPE_CHECKING:  # Only for type hints, not at runtime
+    from loguru import Logger as LoguruLogger
 
 
 class PropagateHandler(logging.Handler):
@@ -43,7 +46,7 @@ def custom_format(record: Mapping[str, Any]) -> str:
     )
 
 
-def setup_logger() -> Logger:
+def setup_logger() -> "LoguruLogger":
     """Configure a :mod:`loguru` logger that also propagates to ``logging``.
 
     The returned logger prints colourful timestamped messages to stderr and

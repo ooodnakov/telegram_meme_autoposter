@@ -16,9 +16,9 @@
       <td>{{ item.source }}</td>
       {% for field, label in columns %}
       <td>
-        {{ attribute(item, field) }}
+        {{ item|attr(field) }}
         {% if field != 'submissions' %}
-        ({{ '%.1f'|format(attribute(item, field + '_pct')) }}%)
+        ({{ '%.1f'|format(item|attr(field ~ '_pct')) }}%)
         {% endif %}
       </td>
       {% endfor %}

@@ -567,15 +567,20 @@ class MinioStorage:
         """
         start_time = time.time()
         try:
-            objects = []
+            objects: list[str] = []
             results = self.client.list_objects(bucket, prefix=prefix, recursive=True)
-            index = 0
+            valid_seen = 0
             async for obj in results:
-                if index < offset:
-                    index += 1
+                # Some SDKs may yield None or incomplete entries; skip safely
+                name = getattr(obj, "object_name", None) if obj is not None else None
+                if not name:
+                    logger.debug("Skipping null/incomplete object from list_objects")
                     continue
-                objects.append(obj.object_name)
-                index += 1
+                if valid_seen < offset:
+                    valid_seen += 1
+                    continue
+                objects.append(name)
+                valid_seen += 1
                 if limit is not None and len(objects) >= limit:
                     break
             logger.debug(
@@ -608,7 +613,10 @@ class MinioStorage:
         try:
             count = 0
             results = self.client.list_objects(bucket, prefix=prefix, recursive=True)
-            async for _ in results:
+            async for obj in results:
+                name = getattr(obj, "object_name", None) if obj is not None else None
+                if not name:
+                    continue
                 count += 1
             duration = time.time() - start_time
             await _stats_record_operation("list", duration)

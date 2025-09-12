@@ -16,4 +16,4 @@ uv.lock
 .gemini/
 gha-creds-*.json
 **/*.mo
-
+.coverage
