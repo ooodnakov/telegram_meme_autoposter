@@ -306,8 +306,8 @@ async def login_view(request: Request) -> HTMLResponse:
 
 
 @app.post("/auth", response_class=JSONResponse)
-async def auth(request: Request) -> Response:
-    """Validate Telegram login payload and establish a session."""
+async def auth_post(request: Request) -> Response:
+    """Validate Telegram login payload (POST JSON) and establish a session."""
 
     data = await request.json()
     if not validate_telegram_login(data, CONFIG.bot.bot_token.get_secret_value()):
@@ -317,6 +317,44 @@ async def auth(request: Request) -> Response:
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/auth", response_class=HTMLResponse)
+async def auth_get(request: Request) -> Response:
+    """Validate Telegram login payload (GET query) and establish a session.
+
+    This supports the Telegram widget "data-auth-url" flow where Telegram opens
+    a popup and appends user data as query parameters. On success the popup
+    closes and the opener page is reloaded.
+    """
+
+    data = dict(request.query_params)
+    if not data:
+        return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Missing data")
+    if not validate_telegram_login(data, CONFIG.bot.bot_token.get_secret_value()):
+        return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid data")
+    try:
+        user_id = int(data.get("id", 0))
+    except ValueError:
+        return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid id")
+    if user_id not in (CONFIG.bot.admin_ids or []):
+        return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
+    request.session["user_id"] = user_id
+
+    # Return a small page that refreshes the opener and closes the popup
+    html = """
+    <html><body>Authenticated. You can close this window.
+    <script>
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.opener.location = '/';
+        }
+      } catch (e) {}
+      window.close();
+    </script>
+    </body></html>
+    """
+    return HTMLResponse(content=html)
 
 
 @app.get("/logout")
