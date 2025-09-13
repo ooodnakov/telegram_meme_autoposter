@@ -35,6 +35,12 @@ class BotConfig(BaseModel):
         return self
 
 
+class WebConfig(BaseModel):
+    """Web dashboard settings."""
+
+    session_secret: SecretStr
+
+
 class ChatsConfig(BaseModel):
     """Source chat identifiers."""
 
@@ -67,12 +73,6 @@ class ValkeyConfig(BaseModel):
     port: int = 6379
     password: SecretStr = SecretStr("redis")
     prefix: str = "telegram_auto_poster"
-
-
-class WebConfig(BaseModel):
-    """Web dashboard access configuration."""
-
-    access_key: SecretStr | None = None
 
 
 class RateLimitConfig(BaseModel):
@@ -108,11 +108,11 @@ class Config(BaseModel):
 
     telegram: TelegramConfig
     bot: BotConfig
+    web: WebConfig
     chats: ChatsConfig
     schedule: ScheduleConfig = ScheduleConfig()
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
-    web: WebConfig = WebConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
     gemini: GeminiConfig = GeminiConfig()
     caption: CaptionConfig = CaptionConfig()
@@ -129,6 +129,7 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "BOT_BOT_USERNAME": ("bot", "bot_username"),
     "BOT_BOT_CHAT_ID": ("bot", "bot_chat_id"),
     "BOT_ADMIN_IDS": ("bot", "admin_ids"),
+    "WEB_SESSION_SECRET": ("web", "session_secret"),
     "CHATS_SELECTED_CHATS": ("chats", "selected_chats"),
     "CHATS_LUBA_CHAT": ("chats", "luba_chat"),
     "SCHEDULE_QUIET_HOURS_START": ("schedule", "quiet_hours_start"),
@@ -143,7 +144,6 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "VALKEY_PORT": ("valkey", "port"),
     "VALKEY_PASS": ("valkey", "password"),
     "REDIS_PREFIX": ("valkey", "prefix"),
-    "WEB_ACCESS_KEY": ("web", "access_key"),
     "RATE_LIMIT_RATE": ("rate_limit", "rate"),
     "RATE_LIMIT_CAPACITY": ("rate_limit", "capacity"),
     "GEMINI_API_KEY": ("gemini", "api_key"),
@@ -179,6 +179,7 @@ def _load_ini(path: str) -> dict[str, Any]:
 
     section_map: dict[str, tuple[str, type[BaseModel]]] = {
         "Telegram": ("telegram", TelegramConfig),
+        "Web": ("web", WebConfig),
         "Schedule": ("schedule", ScheduleConfig),
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),
@@ -231,12 +232,6 @@ def _load_ini(path: str) -> dict[str, Any]:
             k: parser.get("Schedule", k)
             for k in ScheduleConfig.model_fields
             if parser.has_option("Schedule", k)
-        }
-    if parser.has_section("Web"):
-        data["web"] = {
-            k: parser.get("Web", k)
-            for k in WebConfig.model_fields
-            if parser.has_option("Web", k)
         }
     if parser.has_section("RateLimit"):
         data["rate_limit"] = {

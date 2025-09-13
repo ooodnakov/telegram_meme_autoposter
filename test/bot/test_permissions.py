@@ -7,6 +7,7 @@ from telegram_auto_poster.config import (
     BotConfig,
     ChatsConfig,
     Config,
+    WebConfig,
     TelegramConfig,
 )
 
@@ -41,6 +42,7 @@ async def test_check_admin_rights_config(mocker, mock_update):
             bot=BotConfig(
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
             ),
+            web=WebConfig(session_secret="s"),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
         ),
     )
@@ -62,6 +64,7 @@ async def test_check_admin_rights_config_cached(mocker, mock_update):
             bot=BotConfig(
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
             ),
+            web=WebConfig(session_secret="s"),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
         ),
     )
@@ -81,6 +84,7 @@ async def test_check_admin_rights_bot_chat_id(mocker, mock_update):
                 api_id=1, api_hash="h", username="u", target_channel="@c"
             ),
             bot=BotConfig(bot_token="t", bot_username="b", bot_chat_id=123),
+            web=WebConfig(session_secret="s"),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
         ),
     )
@@ -102,6 +106,7 @@ async def test_check_admin_rights_no_permission(mocker, mock_update):
             bot=BotConfig(
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
             ),
+            web=WebConfig(session_secret="s"),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
         ),
     )
