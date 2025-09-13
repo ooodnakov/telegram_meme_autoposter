@@ -105,6 +105,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1,@test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 """
 
 config_path = Path("/tmp/test_config.ini")
@@ -134,6 +136,7 @@ def mock_config(mocker):
         BotConfig,
         ChatsConfig,
         Config,
+        WebConfig,
         TelegramConfig,
     )
 
@@ -152,6 +155,7 @@ def mock_config(mocker):
                 bot_chat_id=1,
                 admin_ids=[1],
             ),
+            web=WebConfig(session_secret="secret"),
             chats=ChatsConfig(
                 selected_chats=["@test1", "@test2"],
                 luba_chat="@luba",

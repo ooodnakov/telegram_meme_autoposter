@@ -43,6 +43,13 @@
                     <a class="nav-link" href="/leaderboard">{{ _('Leaderboard') }}</a>
                 </li>
             </ul>
+            <ul class="navbar-nav ms-auto">
+                {% if request.session.get('user_id') %}
+                <li class="nav-item"><a class="nav-link" href="/logout">{{ _('Logout') }}</a></li>
+                {% else %}
+                <li class="nav-item"><a class="nav-link" href="/login">{{ _('Login') }}</a></li>
+                {% endif %}
+            </ul>
         </div>
     </div>
 </nav>

@@ -1,7 +1,14 @@
 import types
 
 from pydantic import SecretStr
-from telegram_auto_poster.config import Config, BotConfig, TelegramConfig, ChatsConfig, I18nConfig
+from telegram_auto_poster.config import (
+    Config,
+    BotConfig,
+    TelegramConfig,
+    ChatsConfig,
+    I18nConfig,
+    WebConfig,
+)
 from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale, gettext
 
 class DummyUser:
@@ -20,6 +27,7 @@ def minimal_config(i18n):
             api_id=1, api_hash="a", username="u", target_channels=["c"]
         ),
         bot=BotConfig(bot_token=SecretStr("t"), bot_username="b", bot_chat_id=1),
+        web=WebConfig(session_secret=SecretStr("s")),
         chats=ChatsConfig(selected_chats=["a"], luba_chat="b"),
         i18n=i18n,
     )

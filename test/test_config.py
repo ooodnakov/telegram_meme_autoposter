@@ -24,7 +24,7 @@ target_channels = @test
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
     sys.modules.pop("telegram_auto_poster.config", None)
-    with pytest.raises(ValidationError, match="bot"):
+    with pytest.raises(ValidationError, match="(bot|web)"):
         importlib.import_module("telegram_auto_poster.config")
 
 
@@ -44,6 +44,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 """,
     )
     monkeypatch.chdir(tmp_path)
@@ -69,6 +71,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 """,
     )
     monkeypatch.chdir(tmp_path)
@@ -101,6 +105,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 [Schedule]
 quiet_hours_start = 20
 quiet_hours_end = 8
@@ -131,6 +137,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 [RateLimit]
 rate = 2
 capacity = 10
@@ -161,6 +169,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 """,
     )
     monkeypatch.chdir(tmp_path)
@@ -187,6 +197,8 @@ bot_chat_id = 1
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 [Schedule]
 quiet_hours_start = 20
 quiet_hours_end = 8
