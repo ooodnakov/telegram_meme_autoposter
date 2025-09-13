@@ -85,7 +85,8 @@ class TelegramMemeBot:
         logger.info("Setting up bot application...")
         self.application = ApplicationBuilder().token(self.bot_token).build()
         application = self.application
-        assert application is not None
+        if application is None:
+            raise RuntimeError("Failed to initialize bot application")
 
         # Store important information in bot_data
         application.bot_data["chat_id"] = self.bot_chat_id

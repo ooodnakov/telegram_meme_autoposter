@@ -341,6 +341,21 @@ async def send_media_to_telegram(
 
     try:
         ext = get_file_extension(file_path).lower()
+        method_map = {
+            ".jpg": ("send_photo", "photo"),
+            ".jpeg": ("send_photo", "photo"),
+            ".png": ("send_photo", "photo"),
+            ".mp4": ("send_video", "video"),
+            ".avi": ("send_video", "video"),
+            ".mov": ("send_video", "video"),
+            ".gif": ("send_animation", "animation"),
+        }
+        method_name, arg_name = method_map.get(ext, ("send_document", "document"))
+        if method_name == "send_document":
+            logger.warning(f"Unsupported file type {ext}, sending as document")
+            await stats.record_error("processing", f"{ERROR_FILE_NOT_SUPPORTED}: {ext}")
+
+        send_func = getattr(bot, method_name)
 
         for chat_id in chat_ids:
             max_retries = 3
@@ -349,53 +364,18 @@ async def send_media_to_telegram(
 
             while retry_count < max_retries:
                 try:
-                    if ext in [".jpg", ".jpeg", ".png"]:
-                        with open(file_path, "rb") as media_file:
-                            last_message = await bot.send_photo(
-                                chat_id=chat_id,
-                                photo=media_file,
-                                caption=caption,
-                                read_timeout=60,
-                                write_timeout=60,
-                            )
-                        break
-                    elif ext in [".mp4", ".avi", ".mov"]:
-                        with open(file_path, "rb") as media_file:
-                            last_message = await bot.send_video(
-                                chat_id=chat_id,
-                                video=media_file,
-                                caption=caption,
-                                supports_streaming=supports_streaming,
-                                read_timeout=60,
-                                write_timeout=60,
-                            )
-                        break
-                    elif ext in [".gif"]:
-                        with open(file_path, "rb") as media_file:
-                            last_message = await bot.send_animation(
-                                chat_id=chat_id,
-                                animation=media_file,
-                                caption=caption,
-                                read_timeout=60,
-                                write_timeout=60,
-                            )
-                        break
-                    else:
-                        logger.warning(
-                            f"Unsupported file type {ext}, sending as document"
-                        )
-                        await stats.record_error(
-                            "processing", f"{ERROR_FILE_NOT_SUPPORTED}: {ext}"
-                        )
-                        with open(file_path, "rb") as media_file:
-                            last_message = await bot.send_document(
-                                chat_id=chat_id,
-                                document=media_file,
-                                caption=caption,
-                                read_timeout=60,
-                                write_timeout=60,
-                            )
-                        break
+                    with open(file_path, "rb") as media_file:
+                        kwargs = {
+                            "chat_id": chat_id,
+                            arg_name: media_file,
+                            "caption": caption,
+                            "read_timeout": 60,
+                            "write_timeout": 60,
+                        }
+                        if method_name == "send_video":
+                            kwargs["supports_streaming"] = supports_streaming
+                        last_message = await send_func(**kwargs)
+                    break
                 except (TimedOut, NetworkError) as e:
                     retry_count += 1
                     last_error = e
