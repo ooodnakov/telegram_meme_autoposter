@@ -16,7 +16,7 @@ class TelegramConfig(BaseModel):
     api_id: int
     api_hash: str
     username: str
-    target_channel: str
+    target_channels: list[str]
 
 
 class BotConfig(BaseModel):
@@ -26,6 +26,7 @@ class BotConfig(BaseModel):
     bot_username: str
     bot_chat_id: int
     admin_ids: list[int] | None = None
+    prompt_target_channel: bool = False
 
     @model_validator(mode="after")
     def default_admins(self) -> "BotConfig":
@@ -124,11 +125,12 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "TELEGRAM_API_ID": ("telegram", "api_id"),
     "TELEGRAM_API_HASH": ("telegram", "api_hash"),
     "TELEGRAM_USERNAME": ("telegram", "username"),
-    "TELEGRAM_TARGET_CHANNEL": ("telegram", "target_channel"),
+    "TELEGRAM_TARGET_CHANNELS": ("telegram", "target_channels"),
     "BOT_BOT_TOKEN": ("bot", "bot_token"),
     "BOT_BOT_USERNAME": ("bot", "bot_username"),
     "BOT_BOT_CHAT_ID": ("bot", "bot_chat_id"),
     "BOT_ADMIN_IDS": ("bot", "admin_ids"),
+    "BOT_PROMPT_TARGET_CHANNEL": ("bot", "prompt_target_channel"),
     "CHATS_SELECTED_CHATS": ("chats", "selected_chats"),
     "CHATS_LUBA_CHAT": ("chats", "luba_chat"),
     "SCHEDULE_QUIET_HOURS_START": ("schedule", "quiet_hours_start"),
@@ -189,11 +191,17 @@ def _load_ini(path: str) -> dict[str, Any]:
 
     for section_name, (key, model) in section_map.items():
         if parser.has_section(section_name):
-            section_data = {
-                field: parser.get(section_name, field)
-                for field in model.model_fields
-                if parser.has_option(section_name, field)
-            }
+            section_data = {}
+            for field in model.model_fields:
+                if not parser.has_option(section_name, field):
+                    continue
+                value = parser.get(section_name, field)
+                if section_name == "Telegram" and field == "target_channels":
+                    section_data[field] = [
+                        c.strip() for c in value.split(",") if c.strip()
+                    ]
+                else:
+                    section_data[field] = value
             if section_data:
                 data[key] = section_data
 
@@ -267,7 +275,7 @@ def _load_env() -> dict[str, Any]:
             env_data[section] = value
             continue
         env_section = env_data.setdefault(section, {})
-        if field in {"selected_chats", "admin_ids"}:
+        if field in {"selected_chats", "admin_ids", "target_channels"}:
             env_section[field] = [x.strip() for x in value.split(",") if x.strip()]
         elif field == "users":
             env_section[field] = _parse_i18n_users(value)

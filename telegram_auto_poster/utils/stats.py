@@ -105,16 +105,20 @@ class MediaStats:
             await self._increment("videos_processed", scope="total")
 
     async def record_approved(
-        self, media_type: str, filename: str | None = None, source: str | None = None
+        self,
+        media_type: str,
+        filename: str | None = None,
+        source: str | None = None,
+        count: int = 1,
     ) -> None:
         """Record that an item was approved for publication."""
         name = "photos_approved" if media_type == "photo" else "videos_approved"
-        await self._increment(name)
-        await self._increment(name, scope="total")
+        await self._increment(name, count=count)
+        await self._increment(name, scope="total", count=count)
         hour_key = _redis_key("hourly", str(now_utc().hour))
-        await self.r.incrby(hour_key, 1)
+        await self.r.incrby(hour_key, count)
         if source:
-            await self.r.zincrby(_redis_key("leaderboard", "approved"), 1, source)
+            await self.r.zincrby(_redis_key("leaderboard", "approved"), count, source)
 
     async def record_rejected(
         self, media_type: str, filename: str | None = None, source: str | None = None

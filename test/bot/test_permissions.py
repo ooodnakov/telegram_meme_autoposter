@@ -36,7 +36,7 @@ async def test_check_admin_rights_config(mocker, mock_update):
         "telegram_auto_poster.bot.permissions.load_config",
         return_value=Config(
             telegram=TelegramConfig(
-                api_id=1, api_hash="h", username="u", target_channel="@c"
+                api_id=1, api_hash="h", username="u", target_channels=["@c"]
             ),
             bot=BotConfig(
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
@@ -57,7 +57,7 @@ async def test_check_admin_rights_config_cached(mocker, mock_update):
         "telegram_auto_poster.bot.permissions.load_config",
         return_value=Config(
             telegram=TelegramConfig(
-                api_id=1, api_hash="h", username="u", target_channel="@c"
+                api_id=1, api_hash="h", username="u", target_channels=["@c"]
             ),
             bot=BotConfig(
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]
@@ -78,7 +78,7 @@ async def test_check_admin_rights_bot_chat_id(mocker, mock_update):
         "telegram_auto_poster.bot.permissions.load_config",
         return_value=Config(
             telegram=TelegramConfig(
-                api_id=1, api_hash="h", username="u", target_channel="@c"
+                api_id=1, api_hash="h", username="u", target_channels=["@c"]
             ),
             bot=BotConfig(bot_token="t", bot_username="b", bot_chat_id=123),
             chats=ChatsConfig(selected_chats=["@a"], luba_chat="@b"),
@@ -97,7 +97,7 @@ async def test_check_admin_rights_no_permission(mocker, mock_update):
         "telegram_auto_poster.bot.permissions.load_config",
         return_value=Config(
             telegram=TelegramConfig(
-                api_id=1, api_hash="h", username="u", target_channel="@c"
+                api_id=1, api_hash="h", username="u", target_channels=["@c"]
             ),
             bot=BotConfig(
                 bot_token="t", bot_username="b", bot_chat_id=999, admin_ids=[123]

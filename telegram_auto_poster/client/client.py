@@ -29,7 +29,7 @@ class TelegramMemeClient:
         client (TelegramClient): Underlying Telethon client instance.
         application (Application): Telegram bot application used for
             processing.
-        target_channel (str): Channel username or ID where media is forwarded.
+        target_channels (list[str]): Channel usernames or IDs where media is forwarded.
         bot_chat_id (str): Chat ID of the controlling bot.
         selected_chats (list[str]): Channels to monitor for new media.
 
@@ -49,7 +49,7 @@ class TelegramMemeClient:
             config.telegram.api_hash,
         )
         self.application = application
-        self.target_channel = config.telegram.target_channel
+        self.target_channels = config.telegram.target_channels
         self.bot_chat_id = config.bot.bot_chat_id
         self.selected_chats = config.chats.selected_chats
         self._running = False

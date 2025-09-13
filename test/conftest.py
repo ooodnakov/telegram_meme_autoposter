@@ -97,7 +97,7 @@ CONFIG_CONTENT = """
 api_id = 1
 api_hash = test
 username = test
-target_channel = @test
+target_channels = @test
 [Bot]
 bot_token = token
 bot_username = bot
@@ -144,7 +144,7 @@ def mock_config(mocker):
                 api_id=1,
                 api_hash="test",
                 username="test",
-                target_channel="@test",
+                target_channels=["@test"],
             ),
             bot=BotConfig(
                 bot_token="token",

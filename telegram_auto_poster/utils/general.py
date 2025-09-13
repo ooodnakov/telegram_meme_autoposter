@@ -4,7 +4,7 @@ import asyncio
 import os
 import random
 import tempfile
-from typing import List, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 from loguru import logger
 from telegram import Bot, InputMediaPhoto, InputMediaVideo, Message
@@ -303,22 +303,22 @@ def get_file_extension(filename: str) -> str:
 # Helper function to send media to Telegram
 async def send_media_to_telegram(
     bot: Bot,
-    chat_id: int | str,
+    chat_ids: Iterable[int | str] | int | str,
     file_path: str,
     caption: str | None = None,
     supports_streaming: bool = True,
 ) -> Message | None:
-    """Send media to Telegram based on file extension.
+    """Send media to one or more Telegram chats based on file extension.
 
     Args:
         bot: The Telegram bot instance.
-        chat_id: Chat ID to send the media to.
+        chat_ids: One or more chat IDs to send the media to.
         file_path: Path to the media file.
         caption: Optional caption for the media.
         supports_streaming: Whether video streaming is supported.
 
     Returns:
-        telegram.Message | None: Message sent on success, otherwise ``None``.
+        The last ``telegram.Message`` sent on success, otherwise ``None``.
 
     Raises:
         TelegramMediaError: If there's an issue sending media to Telegram.
@@ -334,103 +334,111 @@ async def send_media_to_telegram(
         await stats.record_error("telegram", f"File {file_path} does not exist")
         raise FileNotFoundError(f"File {file_path} does not exist")
 
+    if isinstance(chat_ids, (int, str)):
+        chat_ids = [chat_ids]
+
+    last_message: Message | None = None
+
     try:
         ext = get_file_extension(file_path).lower()
 
-        # Max retries for sending media
-        max_retries = 3
-        retry_count = 0
-        last_error = None
+        for chat_id in chat_ids:
+            max_retries = 3
+            retry_count = 0
+            last_error: Exception | None = None
 
-        while retry_count < max_retries:
-            try:
-                if ext in [".jpg", ".jpeg", ".png"]:
-                    with open(file_path, "rb") as media_file:
-                        return await bot.send_photo(
-                            chat_id=chat_id,
-                            photo=media_file,
-                            caption=caption,
-                            read_timeout=60,
-                            write_timeout=60,
+            while retry_count < max_retries:
+                try:
+                    if ext in [".jpg", ".jpeg", ".png"]:
+                        with open(file_path, "rb") as media_file:
+                            last_message = await bot.send_photo(
+                                chat_id=chat_id,
+                                photo=media_file,
+                                caption=caption,
+                                read_timeout=60,
+                                write_timeout=60,
+                            )
+                        break
+                    elif ext in [".mp4", ".avi", ".mov"]:
+                        with open(file_path, "rb") as media_file:
+                            last_message = await bot.send_video(
+                                chat_id=chat_id,
+                                video=media_file,
+                                caption=caption,
+                                supports_streaming=supports_streaming,
+                                read_timeout=60,
+                                write_timeout=60,
+                            )
+                        break
+                    elif ext in [".gif"]:
+                        with open(file_path, "rb") as media_file:
+                            last_message = await bot.send_animation(
+                                chat_id=chat_id,
+                                animation=media_file,
+                                caption=caption,
+                                read_timeout=60,
+                                write_timeout=60,
+                            )
+                        break
+                    else:
+                        logger.warning(
+                            f"Unsupported file type {ext}, sending as document"
                         )
-                elif ext in [".mp4", ".avi", ".mov"]:
-                    with open(file_path, "rb") as media_file:
-                        return await bot.send_video(
-                            chat_id=chat_id,
-                            video=media_file,
-                            caption=caption,
-                            supports_streaming=supports_streaming,
-                            read_timeout=60,
-                            write_timeout=60,
+                        await stats.record_error(
+                            "processing", f"{ERROR_FILE_NOT_SUPPORTED}: {ext}"
                         )
-                elif ext in [".gif"]:
-                    with open(file_path, "rb") as media_file:
-                        return await bot.send_animation(
-                            chat_id=chat_id,
-                            animation=media_file,
-                            caption=caption,
-                            read_timeout=60,
-                            write_timeout=60,
-                        )
-                else:
-                    logger.warning(f"Unsupported file type {ext}, sending as document")
-                    await stats.record_error(
-                        "processing", f"{ERROR_FILE_NOT_SUPPORTED}: {ext}"
+                        with open(file_path, "rb") as media_file:
+                            last_message = await bot.send_document(
+                                chat_id=chat_id,
+                                document=media_file,
+                                caption=caption,
+                                read_timeout=60,
+                                write_timeout=60,
+                            )
+                        break
+                except (TimedOut, NetworkError) as e:
+                    retry_count += 1
+                    last_error = e
+                    wait_time = 2**retry_count
+                    logger.warning(
+                        f"Network error, retrying in {wait_time}s (attempt {retry_count}/{max_retries}): {e}"
                     )
-                    with open(file_path, "rb") as media_file:
-                        return await bot.send_document(
-                            chat_id=chat_id,
-                            document=media_file,
-                            caption=caption,
-                            read_timeout=60,
-                            write_timeout=60,
-                        )
-            except (TimedOut, NetworkError) as e:
-                # These errors are retryable
-                retry_count += 1
-                last_error = e
-                wait_time = 2**retry_count  # Exponential backoff
-                logger.warning(
-                    f"Network error, retrying in {wait_time}s (attempt {retry_count}/{max_retries}): {e}"
-                )
+                    await stats.record_error(
+                        "telegram", f"Network error (retrying): {str(e)}"
+                    )
+                    await asyncio.sleep(wait_time)
+                except BadRequest as e:
+                    logger.error(f"Bad request error when sending media: {e}")
+                    await stats.record_error(
+                        "telegram",
+                        f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}",
+                    )
+                    raise TelegramMediaError(
+                        f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}"
+                    )
+                except Exception as e:
+                    logger.error(f"Unexpected error in send_media_to_telegram: {e}")
+                    await stats.record_error("telegram", f"Unexpected error: {str(e)}")
+                    raise TelegramMediaError(f"Unexpected error: {str(e)}")
+
+            if last_error and retry_count >= max_retries:
+                logger.error(f"Failed to send media after {max_retries} retries")
                 await stats.record_error(
-                    "telegram", f"Network error (retrying): {str(e)}"
-                )
-                await asyncio.sleep(wait_time)
-            except BadRequest as e:
-                # Bad request errors are usually not retryable
-                logger.error(f"Bad request error when sending media: {e}")
-                await stats.record_error(
-                    "telegram", f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}"
+                    "telegram",
+                    f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}",
                 )
                 raise TelegramMediaError(
-                    f"{ERROR_TELEGRAM_SEND_FAILED} (bad request): {str(e)}"
+                    f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}"
                 )
-            except Exception as e:
-                logger.error(f"Unexpected error in send_media_to_telegram: {e}")
-                await stats.record_error("telegram", f"Unexpected error: {str(e)}")
-                raise TelegramMediaError(f"Unexpected error: {str(e)}")
-
-        # If we've exhausted retries
-        if last_error:
-            logger.error(f"Failed to send media after {max_retries} retries")
-            await stats.record_error(
-                "telegram",
-                f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}",
-            )
-            raise TelegramMediaError(
-                f"{ERROR_TELEGRAM_SEND_FAILED} after {max_retries} retries: {str(last_error)}"
-            )
 
     except (FileNotFoundError, TelegramMediaError):
-        # Re-raise these specific exceptions
         raise
     except Exception as e:
         logger.error(f"Unexpected error in send_media_to_telegram: {e}")
         await stats.record_error("telegram", f"Unexpected error: {str(e)}")
         raise TelegramMediaError(f"Unexpected error: {str(e)}")
 
-    return None
+    return last_message
 
 
 async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
@@ -494,34 +502,38 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
 
 
 async def send_group_media(
-    bot: Bot, chat_id: int, items: List[dict], caption: str
+    bot: Bot, chat_ids: Iterable[int | str] | int | str, items: List[dict], caption: str
 ) -> None:
-    """Send a list of prepared items to Telegram as a group or single message."""
+    """Send a list of prepared items to one or more chats as a group."""
+    if isinstance(chat_ids, (int, str)):
+        chat_ids = [chat_ids]
     if len(items) >= 2:
-        for i in range(0, len(items), 10):
-            chunk = items[i : i + 10]
-            media_group = []
-            for idx, it in enumerate(chunk):
-                is_first = i == 0 and idx == 0 and bool(caption)
-                fh = it["file_obj"]
-                if it["media_type"] == "video":
-                    media = InputMediaVideo(
-                        fh,
-                        supports_streaming=True,
-                        caption=caption if is_first else None,
-                    )
-                else:
-                    media = InputMediaPhoto(
-                        fh,
-                        caption=caption if is_first else None,
-                    )
-                media_group.append(media)
-            await bot.send_media_group(chat_id=chat_id, media=media_group)
+        for chat_id in chat_ids:
+            for i in range(0, len(items), 10):
+                chunk = items[i : i + 10]
+                media_group = []
+                for idx, it in enumerate(chunk):
+                    is_first = i == 0 and idx == 0 and bool(caption)
+                    fh = it["file_obj"]
+                    fh.seek(0)
+                    if it["media_type"] == "video":
+                        media = InputMediaVideo(
+                            fh,
+                            supports_streaming=True,
+                            caption=caption if is_first else None,
+                        )
+                    else:
+                        media = InputMediaPhoto(
+                            fh,
+                            caption=caption if is_first else None,
+                        )
+                    media_group.append(media)
+                await bot.send_media_group(chat_id=chat_id, media=media_group)
     elif len(items) == 1:
         it = items[0]
         await send_media_to_telegram(
             bot,
-            chat_id,
+            chat_ids,
             it["temp_path"],
             caption=caption or None,
             supports_streaming=(it["media_type"] == "video"),

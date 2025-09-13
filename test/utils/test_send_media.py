@@ -38,7 +38,7 @@ async def test_send_media_supported_types(tmp_path, bot, mocker, name, method):
         new=mocker.AsyncMock(),
     )
 
-    await send_media_to_telegram(bot, 123, str(file_path))
+    await send_media_to_telegram(bot, [123], str(file_path))
 
     getattr(bot, method).assert_awaited_once()
     bot.send_document.assert_not_called()
@@ -54,7 +54,7 @@ async def test_send_media_unsupported_falls_back_to_document(tmp_path, bot, mock
         new=mocker.AsyncMock(),
     )
 
-    await send_media_to_telegram(bot, 123, str(file_path))
+    await send_media_to_telegram(bot, [123], str(file_path))
 
     bot.send_document.assert_awaited_once()
     record_error.assert_awaited_once()
@@ -76,7 +76,7 @@ async def test_send_media_retries_on_network_error(tmp_path, bot, mocker):
     )
 
     with pytest.raises(TelegramMediaError):
-        await send_media_to_telegram(bot, 123, str(file_path))
+        await send_media_to_telegram(bot, [123], str(file_path))
 
     assert bot.send_photo.await_count == 3
     assert sleep.await_args_list == [call(2), call(4), call(8)]
@@ -92,7 +92,7 @@ async def test_send_media_missing_file_logs_and_raises(bot, tmp_path, mocker):
     )
 
     with pytest.raises(FileNotFoundError):
-        await send_media_to_telegram(bot, 123, str(missing))
+        await send_media_to_telegram(bot, [123], str(missing))
 
     record_error.assert_awaited_once_with(
         "telegram", f"File {missing} does not exist"

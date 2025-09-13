@@ -26,7 +26,7 @@ def mock_bot_and_context(mocker: MockerFixture, commands):
     context = SimpleNamespace(
         bot=bot,
         bot_data={
-            "target_channel_id": 123,
+            "target_channel_ids": [123],
             "photo_batch": ["file1"],
             "video_batch": ["file2"],
         },
@@ -309,7 +309,9 @@ async def test_post_scheduled_media_job_uses_correct_path(
     mocker.patch.object(commands.storage, "delete_file", new=mocker.AsyncMock())
     mocker.patch.object(commands.db, "remove_scheduled_post")
 
-    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={"target_channel_id": 1})
+    context = SimpleNamespace(
+        bot=SimpleNamespace(), bot_data={"target_channel_ids": [1]}
+    )
 
     await commands.post_scheduled_media_job(context)
 
@@ -349,7 +351,7 @@ async def test_sch_command_uses_preview(mocker: MockerFixture, commands):
         effective_chat=SimpleNamespace(id=99),
         message=SimpleNamespace(reply_text=mocker.AsyncMock()),
     )
-    context = SimpleNamespace(bot=SimpleNamespace())
+    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={})
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mocker.patch.object(
         commands.db, "get_scheduled_posts", return_value=[("p1.jpg", 0)]
@@ -360,7 +362,7 @@ async def test_sch_command_uses_preview(mocker: MockerFixture, commands):
 
     await commands.sch_command(update, context)
 
-    preview.assert_awaited_once_with(context.bot, 99, "p1.jpg", 0)
+    preview.assert_awaited_once_with(context.bot, 99, "p1.jpg", 0, None, False)
 
 
 @pytest.mark.asyncio
@@ -370,7 +372,7 @@ async def test_batch_command_uses_preview(mocker: MockerFixture, commands):
         effective_chat=SimpleNamespace(id=99),
         message=SimpleNamespace(reply_text=mocker.AsyncMock()),
     )
-    context = SimpleNamespace(bot=SimpleNamespace())
+    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={})
     mocker.patch.object(commands, "check_admin_rights", return_value=True)
     mocker.patch.object(
         commands, "list_batch_files", new=mocker.AsyncMock(return_value=["p1.jpg"])
@@ -381,7 +383,7 @@ async def test_batch_command_uses_preview(mocker: MockerFixture, commands):
 
     await commands.batch_command(update, context)
 
-    preview.assert_awaited_once_with(context.bot, 99, "p1.jpg", 0)
+    preview.assert_awaited_once_with(context.bot, 99, "p1.jpg", 0, None, False)
 
 
 @pytest.mark.asyncio

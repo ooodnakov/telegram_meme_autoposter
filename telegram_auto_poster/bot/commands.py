@@ -210,14 +210,31 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
         await update.message.reply_text("Post approved!")
 
-        # Get the target channel from config
-        target_channel = context.bot_data.get("target_channel_id")
-        if not target_channel:
+        # Determine target channels
+        target_channels = context.bot_data.get("target_channel_ids")
+        if not target_channels:
             await update.message.reply_text("Target channel ID not set!")
             return
 
+        prompt = context.bot_data.get("prompt_target_channel")
+        if prompt and len(target_channels) > 1:
+            args = getattr(context, "args", [])
+            if not args:
+                await update.message.reply_text(
+                    "Specify channels or 'all': " + " ".join(map(str, target_channels))
+                )
+                return
+            if any(a.lower() == "all" for a in args):
+                selected_channels = target_channels
+            else:
+                selected_channels = [c for c in args if c in target_channels]
+            if not selected_channels:
+                await update.message.reply_text("No valid channels specified.")
+                return
+            target_channels = selected_channels
+
         # Use helper function to send media
-        await send_media_to_telegram(context.bot, target_channel, temp_path, "photo")
+        await send_media_to_telegram(context.bot, target_channels, temp_path, "photo")
 
         # Clean up
         await storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
@@ -230,6 +247,7 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             media_type,
             filename=object_name,
             source=meta.get("source") if meta else None,
+            count=len(target_channels),
         )
 
     except MinioError as e:
@@ -402,8 +420,8 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
             logger.info("No scheduled posts to publish.")
             return
 
-        target_channel = context.bot_data.get("target_channel_id")
-        if not target_channel:
+        target_channels = context.bot_data.get("target_channel_ids")
+        if not target_channels:
             logger.error("Target channel ID not set! Cannot post scheduled media.")
             return
 
@@ -422,7 +440,7 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 # Send to channel without caption, enabling streaming for videos
                 await send_media_to_telegram(
                     context.bot,
-                    target_channel,
+                    target_channels,
                     temp_path,
                     caption=None,
                     supports_streaming=(
@@ -508,7 +526,12 @@ async def sch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         first_path = scheduled_posts[0][0]
         await send_schedule_preview(
-            context.bot, update.effective_chat.id, first_path, 0
+            context.bot,
+            update.effective_chat.id,
+            first_path,
+            0,
+            context.bot_data.get("target_channel_ids"),
+            bool(context.bot_data.get("prompt_target_channel")),
         )
     except Exception as e:
         logger.error(f"Error in sch_command: {e}")
@@ -528,7 +551,14 @@ async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text("No items in batch.")
             return
         first_path = batch_files[0]
-        await send_batch_preview(context.bot, update.effective_chat.id, first_path, 0)
+        await send_batch_preview(
+            context.bot,
+            update.effective_chat.id,
+            first_path,
+            0,
+            context.bot_data.get("target_channel_ids"),
+            bool(context.bot_data.get("prompt_target_channel")),
+        )
     except Exception as e:
         logger.error(f"Error in batch_command: {e}")
         await update.message.reply_text(
@@ -544,10 +574,27 @@ async def send_batch_command(
         return
 
     try:
-        target_channel = context.bot_data.get("target_channel_id")
-        if not target_channel:
+        target_channels = context.bot_data.get("target_channel_ids")
+        if not target_channels:
             await update.message.reply_text("Target channel ID not set!")
             return
+
+        prompt = context.bot_data.get("prompt_target_channel")
+        if prompt and len(target_channels) > 1:
+            args = getattr(context, "args", [])
+            if not args:
+                await update.message.reply_text(
+                    "Specify channels or 'all': " + " ".join(map(str, target_channels))
+                )
+                return
+            if any(a.lower() == "all" for a in args):
+                selected_channels = target_channels
+            else:
+                selected_channels = [c for c in args if c in target_channels]
+            if not selected_channels:
+                await update.message.reply_text("No valid channels specified.")
+                return
+            target_channels = selected_channels
 
         # Collect current batch files directly from MinIO
         batch_files = await list_batch_files()
@@ -582,16 +629,21 @@ async def send_batch_command(
         for i in range(0, len(media_info), 10):
             chunk = media_info[i : i + 10]
             media_group = [item["input_media"] for item in chunk]
-            try:
-                await context.bot.send_media_group(
-                    chat_id=target_channel, media=media_group
-                )
-            except Exception as e:
-                logger.error(f"Error sending media group: {e}")
-                await stats.record_error(
-                    "telegram", f"Failed to send media group: {str(e)}"
-                )
-                continue
+            for channel in target_channels:
+                try:
+                    # Reset file handles for each channel
+                    for item in chunk:
+                        file_obj = cast(IO[bytes], item["file_obj"])
+                        file_obj.seek(0)
+                    await context.bot.send_media_group(
+                        chat_id=channel, media=media_group
+                    )
+                except Exception as e:
+                    logger.error(f"Error sending media group: {e}")
+                    await stats.record_error(
+                        "telegram", f"Failed to send media group: {str(e)}"
+                    )
+                    continue
 
             for item in chunk:
                 file_path = item["file_path"]
@@ -606,6 +658,7 @@ async def send_batch_command(
                     media_type,
                     filename=base_name,
                     source=user_metadata.get("source") if user_metadata else None,
+                    count=len(target_channels),
                 )
                 if user_metadata and not user_metadata.get("notified"):
                     user_id = user_metadata.get("user_id")
@@ -630,7 +683,7 @@ async def send_batch_command(
 
         if sent_count:
             await db.decrement_batch_count(sent_count)
-            await stats.record_batch_sent(1)
+            await stats.record_batch_sent(len(target_channels))
             await update.message.reply_text(
                 f"Batch sent to channel! ({sent_count} items)"
             )
