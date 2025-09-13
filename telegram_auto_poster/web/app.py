@@ -7,7 +7,6 @@ import datetime
 import mimetypes
 import os
 import pydoc
-import secrets
 from pathlib import Path
 from pydoc import locate
 from typing import Awaitable, Callable
@@ -19,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from telegram import Bot
 
 from telegram_auto_poster.config import (
@@ -60,12 +61,36 @@ from telegram_auto_poster.utils.timezone import (
     now_utc,
     parse_to_utc_timestamp,
 )
+from telegram_auto_poster.web.auth import validate_telegram_login
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """Session-based authentication using Telegram user IDs."""
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:  # type: ignore[override]
+        path = request.url.path
+        if path.startswith("/static") or path in {"/login", "/auth", "/logout"}:
+            return await call_next(request)
+        user_id = request.session.get("user_id")
+        if user_id and user_id in (CONFIG.bot.admin_ids or []):
+            return await call_next(request)
+        return Response(
+            status_code=status.HTTP_401_UNAUTHORIZED, content="Unauthorized"
+        )
+
 
 app = FastAPI(title="Telegram Autoposter Admin")
+app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    SessionMiddleware, secret_key=CONFIG.bot.bot_token.get_secret_value()
+)
 
 base_path = Path(__file__).parent
 templates = Jinja2Templates(directory=str(base_path / "templates"))
 templates.env.globals["_"] = _
+templates.env.globals["BOT_USERNAME"] = CONFIG.bot.bot_username
 set_locale(CONFIG.i18n.default)
 app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
 
@@ -84,35 +109,6 @@ def _paginate(
     page = max(1, min(page, total_pages))
     offset = (page - 1) * per_page
     return page, total_pages, offset
-
-
-@app.middleware("http")
-async def require_access_key(
-    request: Request, call_next: Callable[[Request], Awaitable[Response]]
-) -> Response:
-    """Ensure that incoming requests include a valid access key."""
-    access_key = CONFIG.web.access_key
-    if access_key is None:
-        return await call_next(request)
-    expected = access_key.get_secret_value()
-    query_key = request.query_params.get("key")
-    if query_key is not None:
-        if secrets.compare_digest(query_key, expected):
-            response = await call_next(request)
-            response.set_cookie(
-                "access_key", query_key, httponly=True, secure=True, samesite="lax"
-            )
-            return response
-        return Response(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content="Invalid access key",
-        )
-    cookie_key = request.cookies.get("access_key")
-    if cookie_key and secrets.compare_digest(cookie_key, expected):
-        return await call_next(request)
-    return Response(
-        status_code=status.HTTP_401_UNAUTHORIZED, content="Invalid access key"
-    )
 
 
 async def _list_media(
@@ -300,6 +296,35 @@ async def _render_posts_page(
         else template_name
     )
     return templates.TemplateResponse(template, context)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_view(request: Request) -> HTMLResponse:
+    """Render the Telegram login page."""
+
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.post("/auth", response_class=JSONResponse)
+async def auth(request: Request) -> Response:
+    """Validate Telegram login payload and establish a session."""
+
+    data = await request.json()
+    if not validate_telegram_login(data, CONFIG.bot.bot_token.get_secret_value()):
+        return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid data")
+    user_id = int(data.get("id", 0))
+    if user_id not in (CONFIG.bot.admin_ids or []):
+        return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
+    request.session["user_id"] = user_id
+    return JSONResponse({"status": "ok"})
+
+
+@app.get("/logout")
+async def logout(request: Request) -> Response:
+    """Clear the current session."""
+
+    request.session.clear()
+    return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/", response_class=HTMLResponse)

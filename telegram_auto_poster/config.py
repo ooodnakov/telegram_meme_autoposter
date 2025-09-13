@@ -69,12 +69,6 @@ class ValkeyConfig(BaseModel):
     prefix: str = "telegram_auto_poster"
 
 
-class WebConfig(BaseModel):
-    """Web dashboard access configuration."""
-
-    access_key: SecretStr | None = None
-
-
 class RateLimitConfig(BaseModel):
     """Token bucket rate limiting parameters."""
 
@@ -112,7 +106,6 @@ class Config(BaseModel):
     schedule: ScheduleConfig = ScheduleConfig()
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
-    web: WebConfig = WebConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
     gemini: GeminiConfig = GeminiConfig()
     caption: CaptionConfig = CaptionConfig()
@@ -143,7 +136,6 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "VALKEY_PORT": ("valkey", "port"),
     "VALKEY_PASS": ("valkey", "password"),
     "REDIS_PREFIX": ("valkey", "prefix"),
-    "WEB_ACCESS_KEY": ("web", "access_key"),
     "RATE_LIMIT_RATE": ("rate_limit", "rate"),
     "RATE_LIMIT_CAPACITY": ("rate_limit", "capacity"),
     "GEMINI_API_KEY": ("gemini", "api_key"),
@@ -231,12 +223,6 @@ def _load_ini(path: str) -> dict[str, Any]:
             k: parser.get("Schedule", k)
             for k in ScheduleConfig.model_fields
             if parser.has_option("Schedule", k)
-        }
-    if parser.has_section("Web"):
-        data["web"] = {
-            k: parser.get("Web", k)
-            for k in WebConfig.model_fields
-            if parser.has_option("Web", k)
         }
     if parser.has_section("RateLimit"):
         data["rate_limit"] = {
