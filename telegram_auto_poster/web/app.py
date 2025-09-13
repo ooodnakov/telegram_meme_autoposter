@@ -84,7 +84,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 app = FastAPI(title="Telegram Autoposter Admin")
 app.add_middleware(AuthMiddleware)
 app.add_middleware(
-    SessionMiddleware, secret_key=CONFIG.bot.bot_token.get_secret_value()
+    SessionMiddleware, secret_key=CONFIG.web.session_secret.get_secret_value()
 )
 
 base_path = Path(__file__).parent

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import time
 from typing import Mapping, MutableMapping
 
 
@@ -22,18 +23,26 @@ def _compute_hash(data: Mapping[str, str], token: str) -> str:
 
 
 def validate_telegram_login(
-    payload: MutableMapping[str, str | int], bot_token: str
+    payload: MutableMapping[str, str | int], bot_token: str, *, max_age: int = 86400
 ) -> bool:
     """Validate Telegram Login Widget ``payload`` using ``bot_token``.
 
-    ``payload`` must contain a ``hash`` field. The remaining fields are used to
-    build the ``data-check-string``. Returns ``True`` if the signature matches
-    and ``False`` otherwise.
+    ``payload`` must contain ``hash`` and ``auth_date`` fields. The
+    ``auth_date`` must be within ``max_age`` seconds of the current time. The
+    remaining fields are used to build the ``data-check-string``. Returns
+    ``True`` if the signature matches and the payload is fresh, ``False``
+    otherwise.
     """
 
     data: dict[str, str] = {k: str(v) for k, v in payload.items()}
     received_hash = data.pop("hash", None)
-    if received_hash is None:
+    auth_date = data.get("auth_date")
+    if received_hash is None or auth_date is None:
+        return False
+    try:
+        if int(auth_date) < int(time.time()) - max_age:
+            return False
+    except ValueError:
         return False
     expected_hash = _compute_hash(data, bot_token)
     return hmac.compare_digest(expected_hash, received_hash)

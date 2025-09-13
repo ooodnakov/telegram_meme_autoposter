@@ -35,6 +35,12 @@ class BotConfig(BaseModel):
         return self
 
 
+class WebConfig(BaseModel):
+    """Web dashboard settings."""
+
+    session_secret: SecretStr
+
+
 class ChatsConfig(BaseModel):
     """Source chat identifiers."""
 
@@ -102,6 +108,7 @@ class Config(BaseModel):
 
     telegram: TelegramConfig
     bot: BotConfig
+    web: WebConfig
     chats: ChatsConfig
     schedule: ScheduleConfig = ScheduleConfig()
     minio: MinioConfig = MinioConfig()
@@ -122,6 +129,7 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "BOT_BOT_USERNAME": ("bot", "bot_username"),
     "BOT_BOT_CHAT_ID": ("bot", "bot_chat_id"),
     "BOT_ADMIN_IDS": ("bot", "admin_ids"),
+    "WEB_SESSION_SECRET": ("web", "session_secret"),
     "CHATS_SELECTED_CHATS": ("chats", "selected_chats"),
     "CHATS_LUBA_CHAT": ("chats", "luba_chat"),
     "SCHEDULE_QUIET_HOURS_START": ("schedule", "quiet_hours_start"),
@@ -171,6 +179,7 @@ def _load_ini(path: str) -> dict[str, Any]:
 
     section_map: dict[str, tuple[str, type[BaseModel]]] = {
         "Telegram": ("telegram", TelegramConfig),
+        "Web": ("web", WebConfig),
         "Schedule": ("schedule", ScheduleConfig),
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),

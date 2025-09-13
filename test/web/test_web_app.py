@@ -1,26 +1,13 @@
 import datetime
-import time
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+
 from telegram_auto_poster.web.app import CONFIG, app
 from telegram_auto_poster.web.auth import sign_telegram_data
 
-
-def _login_payload(user_id: int) -> dict[str, int | str]:
-    auth_date = int(time.time())
-    data = {"id": user_id, "auth_date": auth_date}
-    data["hash"] = sign_telegram_data(data, CONFIG.bot.bot_token.get_secret_value())
-    return data
-
-
-@pytest.fixture()
-def auth_client() -> TestClient:
-    with TestClient(app) as client:
-        payload = _login_payload(CONFIG.bot.admin_ids[0])
-        assert client.post("/auth", json=payload).status_code == 200
-        yield client
+from .conftest import login_payload
 
 
 def test_queue_requires_login(mocker):
@@ -41,7 +28,7 @@ def test_queue_requires_login(mocker):
     with TestClient(app) as client:
         resp = client.get("/queue")
         assert resp.status_code == 401
-        payload = _login_payload(CONFIG.bot.admin_ids[0])
+        payload = login_payload(CONFIG.bot.admin_ids[0])
         assert client.post("/auth", json=payload).status_code == 200
         assert client.get("/queue").status_code == 200
 
@@ -62,9 +49,21 @@ def test_login_rejects_non_admin(mocker):
         new=mocker.AsyncMock(return_value=[]),
     )
     with TestClient(app) as client:
-        payload = _login_payload(999999)
+        payload = login_payload(999999)
+    resp = client.post("/auth", json=payload)
+    assert resp.status_code == 403
+
+
+def test_login_rejects_stale_payload():
+    with TestClient(app) as client:
+        payload = login_payload(CONFIG.bot.admin_ids[0])
+        payload["auth_date"] -= 90000
+        payload["hash"] = sign_telegram_data(
+            {"id": payload["id"], "auth_date": payload["auth_date"]},
+            CONFIG.bot.bot_token.get_secret_value(),
+        )
         resp = client.post("/auth", json=payload)
-        assert resp.status_code == 403
+        assert resp.status_code == 400
 
 
 def test_login_sets_session_cookie(mocker):
@@ -83,7 +82,7 @@ def test_login_sets_session_cookie(mocker):
         new=mocker.AsyncMock(return_value=[]),
     )
     with TestClient(app) as client:
-        payload = _login_payload(CONFIG.bot.admin_ids[0])
+        payload = login_payload(CONFIG.bot.admin_ids[0])
         resp = client.post("/auth", json=payload)
         assert resp.status_code == 200
         assert client.cookies.get("session") is not None
