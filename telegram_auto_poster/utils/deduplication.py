@@ -1,4 +1,4 @@
-"""Media deduplication helpers using perceptual and MD5 hashes."""
+"""Media deduplication helpers using perceptual and SHA-256 hashes."""
 
 from __future__ import annotations
 
@@ -34,22 +34,22 @@ def calculate_image_hash(file_path: str) -> str | None:
 
 
 def calculate_video_hash(file_path: str) -> str | None:
-    """Calculate the MD5 hash of a video file.
+    """Calculate the SHA-256 hash of a video file.
 
     Args:
         file_path: Path to the video file.
 
     Returns:
-        The MD5 hash of the file as a hexadecimal string, or ``None``
+        The SHA-256 hash of the file as a hexadecimal string, or ``None``
         if the hash calculation fails.
 
     """
-    hash_md5 = hashlib.md5()
+    hash_sha256 = hashlib.sha256()
     try:
         with open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
+                hash_sha256.update(chunk)
+        return hash_sha256.hexdigest()
     except Exception as e:
         logger.error(f"Could not calculate hash for video {file_path}: {e}")
         return None

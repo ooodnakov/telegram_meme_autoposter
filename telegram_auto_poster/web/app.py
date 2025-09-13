@@ -95,7 +95,7 @@ set_locale(CONFIG.i18n.default)
 app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
 
 bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())
-TARGET_CHANNEL = CONFIG.telegram.target_channel
+TARGET_CHANNELS = CONFIG.telegram.target_channels
 QUIET_START = CONFIG.schedule.quiet_hours_start
 QUIET_END = CONFIG.schedule.quiet_hours_end
 ITEMS_PER_PAGE = 30
@@ -506,12 +506,12 @@ async def _push_post(path: str) -> None:
     try:
         await send_media_to_telegram(
             bot,
-            TARGET_CHANNEL,
+            TARGET_CHANNELS,
             temp_path,
             caption=caption or None,
             supports_streaming=media_type == "video",
         )
-        await _finalize_post(item)
+        await _finalize_post(item, len(TARGET_CHANNELS))
     finally:
         cleanup_temp_file(temp_path)
 
@@ -520,9 +520,9 @@ async def _push_post_group(paths: list[str]) -> None:
     """Publish a group of media items in a single post."""
     items, caption = await prepare_group_items(paths)
     try:
-        await send_group_media(bot, TARGET_CHANNEL, items, caption)
+        await send_group_media(bot, TARGET_CHANNELS, items, caption)
         for it in items:
-            await _finalize_post(it)
+            await _finalize_post(it, len(TARGET_CHANNELS))
     finally:
         for item in items:
             file_obj = item["file_obj"]
@@ -531,7 +531,7 @@ async def _push_post_group(paths: list[str]) -> None:
             cleanup_temp_file(temp_path)
 
 
-async def _finalize_post(item: dict[str, object]) -> None:
+async def _finalize_post(item: dict[str, object], dest_count: int) -> None:
     """Remove temporary files and update statistics after publishing."""
     file_name = item["file_name"]
     media_type = item["media_type"]
@@ -554,6 +554,7 @@ async def _finalize_post(item: dict[str, object]) -> None:
         media_type,
         filename=file_name,
         source=meta.get("source") if meta else None,
+        count=dest_count,
     )
 
     review = await storage.get_review_message(file_name)

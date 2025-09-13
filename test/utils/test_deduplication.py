@@ -51,7 +51,7 @@ def test_calculate_video_hash(sample_video):
     video_hash = calculate_video_hash(sample_video)
     assert video_hash is not None
     assert isinstance(video_hash, str)
-    assert len(video_hash) == 32  # md5 is 32 chars
+    assert len(video_hash) == 64  # sha256 is 64 chars
 
 
 def test_check_and_add_hash(fake_redis):

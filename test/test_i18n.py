@@ -23,7 +23,9 @@ class DummyUpdate:
 
 def minimal_config(i18n):
     return Config(
-        telegram=TelegramConfig(api_id=1, api_hash="a", username="u", target_channel="c"),
+        telegram=TelegramConfig(
+            api_id=1, api_hash="a", username="u", target_channels=["c"]
+        ),
         bot=BotConfig(bot_token=SecretStr("t"), bot_username="b", bot_chat_id=1),
         web=WebConfig(session_secret=SecretStr("s")),
         chats=ChatsConfig(selected_chats=["a"], luba_chat="b"),

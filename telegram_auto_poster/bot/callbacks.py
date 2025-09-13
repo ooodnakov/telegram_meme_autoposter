@@ -328,7 +328,13 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     query = update.callback_query
     await query.answer()
 
-    target_channel = context.bot_data.get("target_channel_id")
+    target_channels = context.bot_data.get("target_channel_ids")
+    prompt = context.bot_data.get("prompt_target_channel")
+    data = query.data
+    if prompt and data and ":" in data:
+        _, selected = data.split(":", 1)
+        if selected != "all":
+            target_channels = [selected]
 
     paths = extract_paths_from_message(query.message)
     if not paths:
@@ -339,7 +345,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         sent_counts = {"photo": 0, "video": 0}
 
         await send_group_media(
-            context.bot, target_channel, media_items, caption_to_send
+            context.bot, target_channels, media_items, caption_to_send
         )
 
         # Post-send bookkeeping: dedup, delete, stats, notify
@@ -367,6 +373,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     media_type,
                     filename=file_name,
                     source=user_metadata.get("source") if user_metadata else None,
+                    count=len(target_channels),
                 )
                 sent_counts[media_type] += 1
 
@@ -388,7 +395,9 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             f"Pushed: {sent_counts['photo']} photos, {sent_counts['video']} videos."
         )
         await _edit_message(query, summary)
-        logger.info(f"Media group sent to channel {target_channel}")
+        logger.info(
+            f"Media group sent to channels {', '.join(map(str, target_channels))}"
+        )
     except MinioError as e:
         logger.error(f"MinIO error in push_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
@@ -511,7 +520,12 @@ async def unschedule_callback(
 
 
 async def send_schedule_preview(
-    bot: Bot, chat_id: int, file_path: str, index: int
+    bot: Bot,
+    chat_id: int,
+    file_path: str,
+    index: int,
+    target_channels: list[str] | None = None,
+    prompt_channel: bool = False,
 ) -> Message:
     """Send a preview of a scheduled post with navigation buttons."""
     buttons = [
@@ -521,10 +535,26 @@ async def send_schedule_preview(
                 "Unschedule",
                 callback_data=f"/sch_unschedule:{index}",
             ),
-            InlineKeyboardButton("Push", callback_data=f"/sch_push:{index}"),
             InlineKeyboardButton("Next", callback_data=f"/sch_next:{index}"),
         ]
     ]
+    channels = target_channels or []
+    if prompt_channel and len(channels) > 1:
+        for ch in channels:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        f"Push {ch}", callback_data=f"/sch_push:{index}:{ch}"
+                    )
+                ]
+            )
+        buttons.append(
+            [InlineKeyboardButton("Push all", callback_data=f"/sch_push:{index}:all")]
+        )
+    else:
+        buttons[0].insert(
+            2, InlineKeyboardButton("Push", callback_data=f"/sch_push:{index}")
+        )
     markup = InlineKeyboardMarkup(buttons)
 
     temp_path = None
@@ -559,7 +589,14 @@ async def _remove_post_and_show_next(
     await query.message.delete()
     idx = min(index, len(scheduled_posts) - 1)
     next_path = scheduled_posts[idx][0]
-    await send_schedule_preview(context.bot, query.message.chat_id, next_path, idx)
+    await send_schedule_preview(
+        context.bot,
+        query.message.chat_id,
+        next_path,
+        idx,
+        getattr(context, "bot_data", {}).get("target_channel_ids"),
+        bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
+    )
 
 
 async def schedule_browser_callback(
@@ -597,7 +634,12 @@ async def schedule_browser_callback(
             await query.message.delete()
             file_path = scheduled_posts[idx][0]
             await send_schedule_preview(
-                context.bot, query.message.chat_id, file_path, idx
+                context.bot,
+                query.message.chat_id,
+                file_path,
+                idx,
+                getattr(context, "bot_data", {}).get("target_channel_ids"),
+                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
             )
             return
 
@@ -621,6 +663,7 @@ async def schedule_browser_callback(
             except (ValueError, IndexError):
                 await query.message.reply_text("Invalid request")
                 return
+            selected = payload_parts[1] if len(payload_parts) > 1 else None
             scheduled_posts = db.get_scheduled_posts()
             if not scheduled_posts or idx >= len(scheduled_posts):
                 await query.message.edit_text("No posts scheduled.")
@@ -629,11 +672,16 @@ async def schedule_browser_callback(
             temp_path = None
             try:
                 temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
-                target_channel = context.bot_data.get("target_channel_id")
-                if target_channel:
+                target_channels = getattr(context, "bot_data", {}).get(
+                    "target_channel_ids"
+                )
+                prompt = getattr(context, "bot_data", {}).get("prompt_target_channel")
+                if target_channels:
+                    if prompt and selected and selected != "all":
+                        target_channels = [selected]
                     await send_media_to_telegram(
                         context.bot,
-                        target_channel,
+                        target_channels,
                         temp_path,
                         caption=None,
                         supports_streaming=_is_streaming_video(temp_path),
@@ -654,17 +702,38 @@ async def list_batch_files() -> list[str]:
 
 
 async def send_batch_preview(
-    bot: Bot, chat_id: int, file_path: str, index: int
+    bot: Bot,
+    chat_id: int,
+    file_path: str,
+    index: int,
+    target_channels: list[str] | None = None,
+    prompt_channel: bool = False,
 ) -> Message:
     """Show a preview of a batch file with navigation buttons."""
     buttons = [
         [
             InlineKeyboardButton("Prev", callback_data=f"/batch_prev:{index}"),
             InlineKeyboardButton("Remove", callback_data=f"/batch_remove:{index}"),
-            InlineKeyboardButton("Push", callback_data=f"/batch_push:{index}"),
             InlineKeyboardButton("Next", callback_data=f"/batch_next:{index}"),
         ]
     ]
+    channels = target_channels or []
+    if prompt_channel and len(channels) > 1:
+        for ch in channels:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        f"Push {ch}", callback_data=f"/batch_push:{index}:{ch}"
+                    )
+                ]
+            )
+        buttons.append(
+            [InlineKeyboardButton("Push all", callback_data=f"/batch_push:{index}:all")]
+        )
+    else:
+        buttons[0].insert(
+            2, InlineKeyboardButton("Push", callback_data=f"/batch_push:{index}")
+        )
     markup = InlineKeyboardMarkup(buttons)
     temp_path = None
     try:
@@ -711,7 +780,14 @@ async def batch_browser_callback(
                 idx = (idx + 1) % len(batch_files)
             await query.message.delete()
             file_path = batch_files[idx]
-            await send_batch_preview(context.bot, query.message.chat_id, file_path, idx)
+            await send_batch_preview(
+                context.bot,
+                query.message.chat_id,
+                file_path,
+                idx,
+                getattr(context, "bot_data", {}).get("target_channel_ids"),
+                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
+            )
             return
         if action == "remove":
             try:
@@ -729,7 +805,12 @@ async def batch_browser_callback(
             await query.message.delete()
             next_idx = min(idx, len(batch_files) - 1)
             await send_batch_preview(
-                context.bot, query.message.chat_id, batch_files[next_idx], next_idx
+                context.bot,
+                query.message.chat_id,
+                batch_files[next_idx],
+                next_idx,
+                getattr(context, "bot_data", {}).get("target_channel_ids"),
+                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
             )
             return
         if action == "push":
@@ -738,15 +819,21 @@ async def batch_browser_callback(
             except (ValueError, IndexError):
                 await query.message.reply_text("Invalid request")
                 return
+            selected = payload_parts[1] if len(payload_parts) > 1 else None
             file_path = batch_files[idx]
             temp_path = None
             try:
                 temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
-                target_channel = context.bot_data.get("target_channel_id")
-                if target_channel:
+                target_channels = getattr(context, "bot_data", {}).get(
+                    "target_channel_ids"
+                )
+                prompt = getattr(context, "bot_data", {}).get("prompt_target_channel")
+                if target_channels:
+                    if prompt and selected and selected != "all":
+                        target_channels = [selected]
                     await send_media_to_telegram(
                         context.bot,
-                        target_channel,
+                        target_channels,
                         temp_path,
                         caption=None,
                         supports_streaming=_is_streaming_video(temp_path),
@@ -762,7 +849,12 @@ async def batch_browser_callback(
             await query.message.delete()
             next_idx = min(idx, len(batch_files) - 1)
             await send_batch_preview(
-                context.bot, query.message.chat_id, batch_files[next_idx], next_idx
+                context.bot,
+                query.message.chat_id,
+                batch_files[next_idx],
+                next_idx,
+                getattr(context, "bot_data", {}).get("target_channel_ids"),
+                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
             )
     except Exception as e:
         logger.error(f"Error in batch_browser_callback: {e}")

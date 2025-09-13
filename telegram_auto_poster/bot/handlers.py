@@ -265,6 +265,7 @@ async def _send_to_review(
     user_metadata: dict[str, Any] | None,
     media_hash: str | None,
     media_type: str,
+    application: Application,
 ) -> bool:
     """Send processed media to the review channel.
 
@@ -281,7 +282,10 @@ async def _send_to_review(
         ``True`` if the media was sent successfully.
 
     """
-    keyboard = approval_keyboard()
+    keyboard = approval_keyboard(
+        application.bot_data.get("target_channel_ids"),
+        application.bot_data.get("prompt_target_channel", False),
+    )
 
     temp_path, _ = await download_from_minio(
         f"{path_prefix}/{processed_name}", BUCKET_MAIN, extension
@@ -394,6 +398,7 @@ async def process_photo(
             user_metadata,
             media_hash,
             "photo",
+            application,
         )
         return True
     except MinioError as e:
@@ -483,6 +488,7 @@ async def process_video(
             user_metadata,
             media_hash,
             "video",
+            application,
         )
         return True
     except MinioError as e:
@@ -587,7 +593,10 @@ async def process_media_group(
                     sent_paths.append(object_path)
 
             # Send the summary message with keyboard for approval actions
-            keyboard = approval_keyboard()
+            keyboard = approval_keyboard(
+                application.bot_data.get("target_channel_ids"),
+                application.bot_data.get("prompt_target_channel", False),
+            )
             summary_text = custom_text + "\nNew grouped post:\n" + "\n".join(sent_paths)
             await application.bot.send_message(
                 chat_id=bot_chat_id,

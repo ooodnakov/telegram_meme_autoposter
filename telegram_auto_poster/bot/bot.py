@@ -85,15 +85,21 @@ class TelegramMemeBot:
         logger.info("Setting up bot application...")
         self.application = ApplicationBuilder().token(self.bot_token).build()
         application = self.application
-        assert application is not None
+        if application is None:
+            raise RuntimeError("Failed to initialize bot application")
 
         # Store important information in bot_data
         application.bot_data["chat_id"] = self.bot_chat_id
-        application.bot_data["target_channel_id"] = self.config.telegram.target_channel
+        application.bot_data["target_channel_ids"] = (
+            self.config.telegram.target_channels
+        )
         application.bot_data["quiet_hours_start"] = (
             self.config.schedule.quiet_hours_start
         )
         application.bot_data["quiet_hours_end"] = self.config.schedule.quiet_hours_end
+        application.bot_data["prompt_target_channel"] = (
+            self.config.bot.prompt_target_channel
+        )
 
         # Store admin IDs
         application.bot_data["admin_ids"] = self.config.bot.admin_ids
@@ -126,7 +132,7 @@ class TelegramMemeBot:
             CallbackQueryHandler(ok_callback, pattern=rf"^{CALLBACK_OK}$")
         )
         application.add_handler(
-            CallbackQueryHandler(push_callback, pattern=rf"^{CALLBACK_PUSH}$")
+            CallbackQueryHandler(push_callback, pattern=rf"^{CALLBACK_PUSH}(:.*)?$")
         )
         application.add_handler(
             CallbackQueryHandler(notok_callback, pattern=rf"^{CALLBACK_NOTOK}$")

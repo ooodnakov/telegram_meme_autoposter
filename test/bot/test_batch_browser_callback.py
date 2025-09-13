@@ -39,7 +39,9 @@ async def test_batch_browser_navigation_wraps(
 
     await batch_browser_callback(update, context)
 
-    preview.assert_awaited_once_with(context.bot, 1, expected_path, expected_idx)
+    preview.assert_awaited_once_with(
+        context.bot, 1, expected_path, expected_idx, None, False
+    )
 
 
 @pytest.mark.asyncio
@@ -76,7 +78,7 @@ async def test_batch_browser_remove_shows_next(mocker: MockerFixture):
 
     delete.assert_awaited_once_with("p2", callbacks.BUCKET_MAIN)
     dec.assert_awaited_once_with(1)
-    preview.assert_awaited_once_with(context.bot, 1, "p3", 1)
+    preview.assert_awaited_once_with(context.bot, 1, "p3", 1, None, False)
 
 
 @pytest.mark.asyncio
@@ -117,12 +119,12 @@ async def test_batch_browser_push_sends_and_shows_next(mocker: MockerFixture):
         from_user=SimpleNamespace(id=1),
     )
     update = SimpleNamespace(callback_query=query)
-    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={"target_channel_id": 99})
+    context = SimpleNamespace(bot=SimpleNamespace(), bot_data={"target_channel_ids": [99]})
 
     await batch_browser_callback(update, context)
 
     download.assert_awaited_once()
     send_media.assert_awaited_once_with(
-        context.bot, 99, "/tmp/t.mp4", caption=None, supports_streaming=True
+        context.bot, [99], "/tmp/t.mp4", caption=None, supports_streaming=True
     )
-    preview.assert_awaited_once_with(context.bot, 1, "p1.mp4", 0)
+    preview.assert_awaited_once_with(context.bot, 1, "p1.mp4", 0, [99], False)
