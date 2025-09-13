@@ -26,9 +26,9 @@ async def generate_captions(image_path: str, n: int = 3) -> List[str]:
         logger.warning("OPENAI_API_KEY not set, using fallback captions")
         return DEFAULT_CAPTIONS[:n]
 
-    try:
-        import openai
+    import openai
 
+    try:
         client = openai.AsyncOpenAI(api_key=api_key)
         with open(image_path, "rb") as f:
             b64 = base64.b64encode(f.read()).decode()
@@ -55,6 +55,13 @@ async def generate_captions(image_path: str, n: int = 3) -> List[str]:
         text = response.choices[0].message.content or ""
         captions = [c.strip("- \n") for c in text.split("\n") if c.strip()]
         return captions[:n] if captions else DEFAULT_CAPTIONS[:n]
-    except Exception as e:  # pragma: no cover - network errors
+    except (
+        openai.APIError,
+        openai.RateLimitError,
+        openai.AuthenticationError,
+    ) as e:
         logger.error(f"OpenAI error: {e}")
+        return DEFAULT_CAPTIONS[:n]
+    except Exception as e:  # pragma: no cover - network errors
+        logger.error(f"Unexpected error: {e}")
         return DEFAULT_CAPTIONS[:n]
