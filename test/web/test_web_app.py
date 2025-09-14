@@ -33,25 +33,11 @@ def test_queue_requires_login(mocker):
         assert client.get("/queue").status_code == 200
 
 
-def test_login_rejects_non_admin(mocker):
-    async def fake_run_in_threadpool(func, *args, **kwargs):
-        return await func(*args, **kwargs)
-
-    mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.get_scheduled_posts_count",
-        new=mocker.AsyncMock(return_value=0),
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.get_scheduled_posts",
-        new=mocker.AsyncMock(return_value=[]),
-    )
+def test_login_rejects_non_admin():
     with TestClient(app) as client:
         payload = login_payload(999999)
-    resp = client.post("/auth", json=payload)
-    assert resp.status_code == 403
+        resp = client.post("/auth", json=payload)
+        assert resp.status_code == 403
 
 
 def test_login_rejects_stale_payload():
@@ -66,46 +52,17 @@ def test_login_rejects_stale_payload():
         assert resp.status_code == 400
 
 
-def test_login_post_sets_session_cookie(mocker):
-    async def fake_run_in_threadpool(func, *args, **kwargs):
-        return await func(*args, **kwargs)
-
-    mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.get_scheduled_posts_count",
-        new=mocker.AsyncMock(return_value=0),
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.get_scheduled_posts",
-        new=mocker.AsyncMock(return_value=[]),
-    )
+@pytest.mark.parametrize(
+    "method, payload_kwarg",
+    [
+        ("POST", "json"),
+        ("GET", "params"),
+    ],
+)
+def test_login_sets_session_cookie(method, payload_kwarg):
     with TestClient(app) as client:
         payload = login_payload(CONFIG.bot.admin_ids[0])
-        resp = client.post("/auth", json=payload)
-        assert resp.status_code == 200
-        assert client.cookies.get("session") is not None
-
-
-def test_login_get_sets_session_cookie(mocker):
-    async def fake_run_in_threadpool(func, *args, **kwargs):
-        return await func(*args, **kwargs)
-
-    mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.get_scheduled_posts_count",
-        new=mocker.AsyncMock(return_value=0),
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.get_scheduled_posts",
-        new=mocker.AsyncMock(return_value=[]),
-    )
-    with TestClient(app) as client:
-        payload = login_payload(CONFIG.bot.admin_ids[0])
-        resp = client.get("/auth", params=payload)
+        resp = client.request(method, "/auth", **{payload_kwarg: payload})
         assert resp.status_code == 200
         assert client.cookies.get("session") is not None
 
