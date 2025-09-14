@@ -230,6 +230,8 @@ prompt_target_channel = true
 [Chats]
 selected_chats = @test1, @test2
 luba_chat = @luba
+[Web]
+session_secret = secret
 """,
     )
     monkeypatch.chdir(tmp_path)

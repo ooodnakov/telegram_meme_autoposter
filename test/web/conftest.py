@@ -22,5 +22,5 @@ def login_payload(user_id: int) -> dict[str, int | str]:
 def auth_client() -> TestClient:
     with TestClient(app) as client:
         payload = login_payload(CONFIG.bot.admin_ids[0])
-        assert client.post("/auth", json=payload).status_code == 200
+        assert client.get("/auth", params=payload).status_code == 200
         yield client

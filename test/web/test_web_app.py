@@ -66,7 +66,7 @@ def test_login_rejects_stale_payload():
         assert resp.status_code == 400
 
 
-def test_login_sets_session_cookie(mocker):
+def test_login_post_sets_session_cookie(mocker):
     async def fake_run_in_threadpool(func, *args, **kwargs):
         return await func(*args, **kwargs)
 
@@ -84,6 +84,28 @@ def test_login_sets_session_cookie(mocker):
     with TestClient(app) as client:
         payload = login_payload(CONFIG.bot.admin_ids[0])
         resp = client.post("/auth", json=payload)
+        assert resp.status_code == 200
+        assert client.cookies.get("session") is not None
+
+
+def test_login_get_sets_session_cookie(mocker):
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return await func(*args, **kwargs)
+
+    mocker.patch(
+        "telegram_auto_poster.web.app.run_in_threadpool", side_effect=fake_run_in_threadpool
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts_count",
+        new=mocker.AsyncMock(return_value=0),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    with TestClient(app) as client:
+        payload = login_payload(CONFIG.bot.admin_ids[0])
+        resp = client.get("/auth", params=payload)
         assert resp.status_code == 200
         assert client.cookies.get("session") is not None
 
