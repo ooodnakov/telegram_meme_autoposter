@@ -104,6 +104,53 @@ class CaptionConfig(BaseModel):
     target_lang: str = "en"
 
 
+class BrandingConfig(BaseModel):
+    """Branding strings used across media and captions."""
+
+    attribution: str = "t.me/ooodnakov_memes"
+    suggestion_caption: str = "Пост из предложки @ooodnakov_memes_suggest_bot"
+
+
+class WatermarkImageConfig(BaseModel):
+    """Watermark options for static images."""
+
+    path: str = "wm.png"
+    size_ratio: float = 0.1
+    opacity: int = 40
+
+    @model_validator(mode="after")
+    def validate_values(self) -> "WatermarkImageConfig":
+        """Ensure ratio and opacity are within supported ranges."""
+        if not 0 < self.size_ratio <= 1:
+            raise ValueError("size_ratio must be between 0 and 1")
+        if not 0 <= self.opacity <= 255:
+            raise ValueError("opacity must be between 0 and 255")
+        return self
+
+
+class WatermarkVideoConfig(BaseModel):
+    """Watermark options for animated video overlays."""
+
+    path: str = "wm.png"
+    min_size_percent: int = 15
+    max_size_percent: int = 25
+    min_speed: int = 80
+    max_speed: int = 120
+
+    @model_validator(mode="after")
+    def validate_values(self) -> "WatermarkVideoConfig":
+        """Ensure percent and speed ranges are valid."""
+        if self.min_size_percent <= 0:
+            raise ValueError("min_size_percent must be positive")
+        if self.max_size_percent < self.min_size_percent:
+            raise ValueError("max_size_percent must be >= min_size_percent")
+        if self.min_speed <= 0:
+            raise ValueError("min_speed must be positive")
+        if self.max_speed < self.min_speed:
+            raise ValueError("max_speed must be >= min_speed")
+        return self
+
+
 class Config(BaseModel):
     """Aggregate application configuration."""
 
@@ -117,6 +164,9 @@ class Config(BaseModel):
     rate_limit: RateLimitConfig = RateLimitConfig()
     gemini: GeminiConfig = GeminiConfig()
     caption: CaptionConfig = CaptionConfig()
+    branding: BrandingConfig = BrandingConfig()
+    watermark_image: WatermarkImageConfig = WatermarkImageConfig()
+    watermark_video: WatermarkVideoConfig = WatermarkVideoConfig()
     timezone: str = "UTC"
     i18n: I18nConfig = I18nConfig()
 
@@ -152,6 +202,16 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "GEMINI_MODEL": ("gemini", "model"),
     "CAPTION_ENABLED": ("caption", "enabled"),
     "CAPTION_TARGET_LANG": ("caption", "target_lang"),
+    "BRANDING_ATTRIBUTION": ("branding", "attribution"),
+    "BRANDING_SUGGESTION_CAPTION": ("branding", "suggestion_caption"),
+    "WATERMARK_IMAGE_PATH": ("watermark_image", "path"),
+    "WATERMARK_IMAGE_SIZE_RATIO": ("watermark_image", "size_ratio"),
+    "WATERMARK_IMAGE_OPACITY": ("watermark_image", "opacity"),
+    "WATERMARK_VIDEO_PATH": ("watermark_video", "path"),
+    "WATERMARK_VIDEO_MIN_SIZE_PERCENT": ("watermark_video", "min_size_percent"),
+    "WATERMARK_VIDEO_MAX_SIZE_PERCENT": ("watermark_video", "max_size_percent"),
+    "WATERMARK_VIDEO_MIN_SPEED": ("watermark_video", "min_speed"),
+    "WATERMARK_VIDEO_MAX_SPEED": ("watermark_video", "max_speed"),
     "TZ": ("timezone", None),
     "I18N_DEFAULT": ("i18n", "default"),
     "I18N_USERS": ("i18n", "users"),
@@ -188,6 +248,9 @@ def _load_ini(path: str) -> dict[str, Any]:
         "RateLimit": ("rate_limit", RateLimitConfig),
         "Gemini": ("gemini", GeminiConfig),
         "Caption": ("caption", CaptionConfig),
+        "Branding": ("branding", BrandingConfig),
+        "WatermarkImage": ("watermark_image", WatermarkImageConfig),
+        "WatermarkVideo": ("watermark_video", WatermarkVideoConfig),
     }
 
     for section_name, (key, model) in section_map.items():
@@ -302,6 +365,10 @@ def load_config() -> Config:
     return config
 
 
+# Global configuration instance
+CONFIG = load_config()
+
+
 # Define path names
 BUCKET_MAIN = "telegram-auto-poster"
 PHOTOS_PATH = "photos"
@@ -309,13 +376,9 @@ VIDEOS_PATH = "videos"
 SCHEDULED_PATH = "scheduled"
 DOWNLOADS_PATH = "downloads"
 
-# Watermark animation speed range in pixels per second
-WATERMARK_MIN_SPEED = 80
-WATERMARK_MAX_SPEED = 120
+# Watermark animation speed range in pixels per second (backwards compatibility)
+WATERMARK_MIN_SPEED = CONFIG.watermark_video.min_speed
+WATERMARK_MAX_SPEED = CONFIG.watermark_video.max_speed
 
-# Caption appended to posts originating from user suggestions
-SUGGESTION_CAPTION = "Пост из предложки @ooodnakov_memes_suggest_bot"
-
-
-# Global configuration instance
-CONFIG = load_config()
+# Caption appended to posts originating from user suggestions (backwards compatibility)
+SUGGESTION_CAPTION = CONFIG.branding.suggestion_caption

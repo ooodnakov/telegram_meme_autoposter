@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from pathlib import Path
 from random import randint
 
 import piexif
@@ -9,7 +10,7 @@ from loguru import logger
 from PIL import Image
 from PIL.ImageFile import ImageFile
 
-from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
+from telegram_auto_poster.config import BUCKET_MAIN, CONFIG, PHOTOS_PATH
 from telegram_auto_poster.media import upload_processed_media
 
 
@@ -44,10 +45,13 @@ async def add_watermark_to_image(
 
         # Process the image
         base: ImageFile = Image.open(input_path)
-        overlay = Image.open("wm.png").resize(
-            [int(base.size[0] * 0.1)] * 2, Image.Resampling.NEAREST
+        image_cfg = CONFIG.watermark_image
+        overlay_source = Path(image_cfg.path).expanduser()
+        overlay = Image.open(overlay_source).resize(
+            [max(1, int(base.size[0] * image_cfg.size_ratio))] * 2,
+            Image.Resampling.NEAREST,
         )
-        overlay.putalpha(40)
+        overlay.putalpha(image_cfg.opacity)
 
         position = (
             randint(0, base.width - overlay.width),
@@ -58,9 +62,11 @@ async def add_watermark_to_image(
 
         exif_dict: dict[str, dict[int, str]] = {}
         exif_dict["0th"] = {}
-        exif_dict["0th"][piexif.ImageIFD.Artist] = "t.me/ooodnakov_memes"
-        exif_dict["0th"][piexif.ImageIFD.ImageDescription] = "t.me/ooodnakov_memes"
-        exif_dict["0th"][piexif.ImageIFD.Copyright] = "t.me/ooodnakov_memes"
+        if CONFIG.branding.attribution:
+            attribution = CONFIG.branding.attribution
+            exif_dict["0th"][piexif.ImageIFD.Artist] = attribution
+            exif_dict["0th"][piexif.ImageIFD.ImageDescription] = attribution
+            exif_dict["0th"][piexif.ImageIFD.Copyright] = attribution
 
         # Convert the modified EXIF data to bytes
         exif_bytes = piexif.dump(exif_dict)
