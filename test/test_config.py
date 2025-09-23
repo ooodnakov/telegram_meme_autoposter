@@ -240,3 +240,68 @@ session_secret = secret
     config_module = importlib.import_module("telegram_auto_poster.config")
     conf = config_module.load_config()
     assert conf.bot.prompt_target_channel is True
+
+
+def test_branding_section(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+[Branding]
+attribution = example.com/brand
+suggestion_caption = Custom caption
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+    conf = config_module.load_config()
+    assert conf.branding.attribution == "example.com/brand"
+    assert conf.branding.suggestion_caption == "Custom caption"
+
+
+def test_watermark_env_overrides(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    monkeypatch.setenv("WATERMARK_IMAGE_SIZE_RATIO", "0.25")
+    monkeypatch.setenv("WATERMARK_VIDEO_MIN_SPEED", "10")
+    monkeypatch.setenv("WATERMARK_VIDEO_MAX_SPEED", "20")
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+    conf = config_module.load_config()
+    assert conf.watermark_image.size_ratio == 0.25
+    assert conf.watermark_video.min_speed == 10
+    assert conf.watermark_video.max_speed == 20

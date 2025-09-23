@@ -35,6 +35,17 @@ Follow these steps to get running fast. For expanded docs, see the Wiki.
    ./run_bg.sh
    ```
 
+## Configuration highlights
+
+`config.ini` controls most behaviour. In addition to credentials, you can now:
+
+- Configure attribution strings and the default suggestion caption under `[Branding]`.
+- Change watermark assets, relative size, and transparency for images via `[WatermarkImage]`.
+- Tune video watermark path, size range, and animation speed in `[WatermarkVideo]`.
+
+Every option can also be overridden with environment variables (e.g. `BRANDING_ATTRIBUTION`,
+`WATERMARK_IMAGE_PATH`).
+
 ## Documentation & Wiki
 
 - Wiki (GitHub): https://github.com/ooodnakov/telegram_meme_autoposter/wiki

@@ -63,9 +63,13 @@ async def test_add_watermark_to_image(mocker, sample_image):
     # Check that the EXIF data was correct
     mock_piexif_dump.assert_called_once()
     exif_data = mock_piexif_dump.call_args[0][0]
-    assert exif_data["0th"][270] == "t.me/ooodnakov_memes"  # ImageDescription
-    assert exif_data["0th"][315] == "t.me/ooodnakov_memes"  # Artist
-    assert exif_data["0th"][33432] == "t.me/ooodnakov_memes"  # Copyright
+    from telegram_auto_poster.config import CONFIG
+
+    attribution = CONFIG.branding.attribution
+    if attribution:
+        assert exif_data["0th"][270] == attribution  # ImageDescription
+        assert exif_data["0th"][315] == attribution  # Artist
+        assert exif_data["0th"][33432] == attribution  # Copyright
 
 
 @pytest.mark.asyncio

@@ -9,12 +9,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from telegram_auto_poster.config import (
-    BUCKET_MAIN,
-    VIDEOS_PATH,
-    WATERMARK_MAX_SPEED,
-    WATERMARK_MIN_SPEED,
-)
+from telegram_auto_poster.config import BUCKET_MAIN, CONFIG, VIDEOS_PATH
 from telegram_auto_poster.media import upload_processed_media
 
 
@@ -71,19 +66,24 @@ async def add_watermark_to_video(
         temp_output.close()
         output_path = temp_output.name
 
-        watermark_path = str(Path("wm.png").expanduser())
+        video_cfg = CONFIG.watermark_video
+        branding = CONFIG.branding
+        watermark_path = str(Path(video_cfg.path).expanduser())
 
         # 1. Get video dimensions
         v_w, v_h = await _probe_video_size(input_path)
 
         # 2. Calculate final watermark width
-        wm_w = int(min(v_w, v_h) * random.randint(15, 25) / 100)
+        wm_percent = random.randint(
+            video_cfg.min_size_percent, video_cfg.max_size_percent
+        )
+        wm_w = max(1, int(min(v_w, v_h) * wm_percent / 100))
 
         # Define diagonal bouncing movement for watermark. Use independent speeds for
         # the horizontal and vertical directions to mimic the CSS animation where the
         # durations differ, producing a less predictable path.
-        speed_x = random.randint(WATERMARK_MIN_SPEED, WATERMARK_MAX_SPEED)
-        speed_y = random.randint(WATERMARK_MIN_SPEED, WATERMARK_MAX_SPEED)
+        speed_x = random.randint(video_cfg.min_speed, video_cfg.max_speed)
+        speed_y = random.randint(video_cfg.min_speed, video_cfg.max_speed)
         filter_complex = (
             f"[1]scale={wm_w}:{wm_w}[wm];"
             f"[0][wm]overlay=x='if(gt(mod(t*{speed_x},2*({v_w}-{wm_w})),({v_w}-{wm_w})), "
@@ -92,6 +92,11 @@ async def add_watermark_to_video(
             f"2*({v_h}-{wm_w})-mod(t*{speed_y},2*({v_h}-{wm_w})), mod(t*{speed_y},2*({v_h}-{wm_w})))'"
         )
 
+        metadata_args: list[str] = []
+        if branding.attribution:
+            for tag in ("title", "comment", "copyright", "description"):
+                metadata_args.extend(["-metadata", f"{tag}={branding.attribution}"])
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -99,26 +104,23 @@ async def add_watermark_to_video(
             input_path,
             "-i",
             watermark_path,
-            "-metadata",
-            "title=t.me/ooodnakov_memes",
-            "-metadata",
-            "comment=t.me/ooodnakov_memes",
-            "-metadata",
-            "copyright=t.me/ooodnakov_memes",
-            "-metadata",
-            "description=t.me/ooodnakov_memes",
-            "-filter_complex",
-            filter_complex,
-            "-c:v",
-            "libx264",
-            "-preset",
-            "slow",
-            "-crf",
-            "18",
-            "-c:a",
-            "copy",
-            output_path,
         ]
+        cmd.extend(metadata_args)
+        cmd.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "slow",
+                "-crf",
+                "18",
+                "-c:a",
+                "copy",
+                output_path,
+            ]
+        )
 
         logger.info(f"Running ffmppeg command on video {input_path}")
         proc = await asyncio.create_subprocess_exec(
