@@ -213,6 +213,35 @@ quiet_hours_end = 8
     assert conf.schedule.quiet_hours_start == 5
 
 
+def test_env_admin_ids_cast_to_int(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    monkeypatch.setenv("BOT_ADMIN_IDS", "10, 20")
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+    conf = config_module.load_config()
+    assert conf.bot.admin_ids == [10, 20]
+
+
 def test_prompt_target_channel_config(tmp_path, monkeypatch):
     write_config(
         tmp_path / "config.ini",

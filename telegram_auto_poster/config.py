@@ -333,8 +333,10 @@ def _load_env() -> dict[str, Any]:
             env_data[section] = value
             continue
         env_section = env_data.setdefault(section, {})
-        if field in {"selected_chats", "admin_ids", "target_channels"}:
+        if field in {"selected_chats", "target_channels"}:
             env_section[field] = [x.strip() for x in value.split(",") if x.strip()]
+        elif field == "admin_ids":
+            env_section[field] = [int(x.strip()) for x in value.split(",") if x.strip()]
         elif field == "users":
             env_section[field] = _parse_i18n_users(value)
         else:
