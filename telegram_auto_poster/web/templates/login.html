@@ -5,28 +5,6 @@
     <script async src="https://telegram.org/js/telegram-widget.js?22"
             data-telegram-login="{{ BOT_USERNAME }}"
             data-size="large"
-            data-onauth="onTelegramAuth"
             data-auth-url="/auth"></script>
 </div>
-<script>
-// Make sure the callback is available globally for the Telegram widget
-window.onTelegramAuth = function(user) {
-    fetch('/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(user)
-    }).then(res => {
-        if (res.ok) {
-            window.location = '/';
-        } else {
-            res.text().then(text => {
-                alert(`Login failed: ${text || 'Unauthorized'}`);
-            });
-        }
-    }).catch(error => {
-        console.error('Login request failed:', error);
-        alert('An error occurred during login. Please try again.');
-    });
-}
-</script>
 {% endblock %}

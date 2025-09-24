@@ -74,8 +74,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if path.startswith("/static") or path in {"/login", "/auth", "/logout"}:
             return await call_next(request)
         user_id = request.session.get("user_id")
+        logger.debug(
+            f"AuthMiddleware: path={path}, user_id={user_id}, admin_ids={CONFIG.bot.admin_ids}"
+        )
         if user_id and user_id in (CONFIG.bot.admin_ids or []):
             return await call_next(request)
+        logger.warning(
+            f"AuthMiddleware: Unauthorized access to {path}, user_id={user_id}"
+        )
         return Response(
             status_code=status.HTTP_401_UNAUTHORIZED, content="Unauthorized"
         )
@@ -311,11 +317,15 @@ async def auth_post(request: Request) -> Response:
 
     data = await request.json()
     if not validate_telegram_login(data, CONFIG.bot.bot_token.get_secret_value()):
+        logger.warning("Auth POST: Invalid data")
         return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid data")
     user_id = int(data.get("id", 0))
+    logger.info(f"Auth POST: user_id={user_id}, admin_ids={CONFIG.bot.admin_ids}")
     if user_id not in (CONFIG.bot.admin_ids or []):
+        logger.warning(f"Auth POST: user_id {user_id} not in admin_ids")
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
+    logger.info(f"Auth POST: Session set for user_id={user_id}")
     return JSONResponse({"status": "ok"})
 
 
@@ -330,31 +340,25 @@ async def auth_get(request: Request) -> Response:
 
     data = dict(request.query_params)
     if not data:
+        logger.warning("Auth GET: Missing data")
         return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Missing data")
     if not validate_telegram_login(data, CONFIG.bot.bot_token.get_secret_value()):
+        logger.warning("Auth GET: Invalid data")
         return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid data")
     try:
         user_id = int(data.get("id", 0))
     except ValueError:
+        logger.warning("Auth GET: Invalid id")
         return Response(status_code=status.HTTP_400_BAD_REQUEST, content="Invalid id")
+    logger.info(f"Auth GET: user_id={user_id}, admin_ids={CONFIG.bot.admin_ids}")
     if user_id not in (CONFIG.bot.admin_ids or []):
+        logger.warning(f"Auth GET: user_id {user_id} not in admin_ids")
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
+    logger.info(f"Auth GET: Session set for user_id={user_id}")
 
-    # Return a small page that refreshes the opener and closes the popup
-    html = """
-    <html><body>Authenticated. You can close this window.
-    <script>
-      try {
-        if (window.opener && !window.opener.closed) {
-          window.opener.location = '/';
-        }
-      } catch (e) {}
-      window.close();
-    </script>
-    </body></html>
-    """
-    return HTMLResponse(content=html)
+    # Return a success page that refreshes the opener and closes the popup
+    return templates.TemplateResponse("auth_success.html", {"request": request})
 
 
 @app.get("/logout")
