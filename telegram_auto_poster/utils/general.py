@@ -13,6 +13,7 @@ from telegram_auto_poster.config import (
     BUCKET_MAIN,
     PHOTOS_PATH,
     SUGGESTION_CAPTION,
+    TRASH_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.stats import stats
@@ -59,10 +60,14 @@ def extract_filename(text: str) -> Optional[str]:
     lines = text.strip().split("\n")
 
     # Look for lines containing file paths
-    photo_prefix = f"{PHOTOS_PATH}/"
-    video_prefix = f"{VIDEOS_PATH}/"
+    prefixes = [
+        f"{PHOTOS_PATH}/",
+        f"{VIDEOS_PATH}/",
+        f"{TRASH_PATH}/{PHOTOS_PATH}/",
+        f"{TRASH_PATH}/{VIDEOS_PATH}/",
+    ]
     for line in reversed(lines):
-        if any(path_prefix in line for path_prefix in [photo_prefix, video_prefix]):
+        if any(path_prefix in line for path_prefix in prefixes):
             return line.strip()
 
     # Fall back to the last line if no path was found
@@ -90,11 +95,15 @@ def extract_file_paths(text: str) -> List[str]:
     if not lines:
         return []
 
-    photo_prefix = f"{PHOTOS_PATH}/"
-    video_prefix = f"{VIDEOS_PATH}/"
+    prefixes = [
+        f"{PHOTOS_PATH}/",
+        f"{VIDEOS_PATH}/",
+        f"{TRASH_PATH}/{PHOTOS_PATH}/",
+        f"{TRASH_PATH}/{VIDEOS_PATH}/",
+    ]
     results: List[str] = []
     for line in lines:
-        if line.startswith(photo_prefix) or line.startswith(video_prefix):
+        if any(line.startswith(prefix) for prefix in prefixes):
             results.append(line)
     return results
 

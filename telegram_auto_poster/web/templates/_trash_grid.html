@@ -1,0 +1,76 @@
+{% if posts %}
+<div class="row g-3">
+    {% for p in posts %}
+    <div class="col-sm-6 col-md-4">
+        {% if p['items']|length > 1 %}
+        <span class="badge bg-secondary mb-1">{{ _('Group of {n}').format(n=p['items']|length) }}</span>
+        {% endif %}
+        {% if p.trashed_at %}
+        <div class="text-muted small">{{ _('Trashed at {time}').format(time=p.trashed_at) }}</div>
+        {% endif %}
+        {% if p.expires_at %}
+        <div class="text-muted small mb-1">{{ _('Expires at {time}').format(time=p.expires_at) }}</div>
+        {% endif %}
+        {% for media in p['items'] %}
+        {% if media.is_video %}
+        <video class="img-fluid" controls src="{{ media.url }}"></video>
+        {% elif media.is_image %}
+        <img class="img-fluid" src="{{ media.url }}" alt="trash preview" />
+        {% endif %}
+        {% endfor %}
+        <div class="mt-2 d-flex flex-wrap gap-1">
+            <form method="post" action="/trash/untrash" data-bg="true">
+                {% for media in p['items'] %}
+                <input type="hidden" name="paths" value="{{ media.path }}" />
+                {% endfor %}
+                <button class="btn btn-sm btn-success" type="submit">{{ _('Restore') }}</button>
+            </form>
+            <form
+                method="post"
+                action="/trash/delete"
+                data-bg="true"
+                onsubmit="return confirm('{{ _('Delete permanently?') }}');"
+            >
+                {% for media in p['items'] %}
+                <input type="hidden" name="paths" value="{{ media.path }}" />
+                {% endfor %}
+                <button class="btn btn-sm btn-danger" type="submit">{{ _('Delete') }}</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info" role="alert">{{ empty_message }}</div>
+{% endif %}
+{% if total_pages > 1 %}
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center mt-3">
+        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+            {% if page == 1 %}
+            <span class="page-link">{{ _('Previous') }}</span>
+            {% else %}
+            <a class="page-link"
+               hx-get="/trash?page={{ page - 1 }}"
+               hx-target="#trash-grid"
+               hx-swap="innerHTML"
+               href="/trash?page={{ page - 1 }}">{{ _('Previous') }}</a>
+            {% endif %}
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link">{{ _("Page {page} of {total_pages}").format(page=page, total_pages=total_pages) }}</span>
+        </li>
+        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+            {% if page == total_pages %}
+            <span class="page-link">{{ _('Next') }}</span>
+            {% else %}
+            <a class="page-link"
+               hx-get="/trash?page={{ page + 1 }}"
+               hx-target="#trash-grid"
+               hx-swap="innerHTML"
+               href="/trash?page={{ page + 1 }}">{{ _('Next') }}</a>
+            {% endif %}
+        </li>
+    </ul>
+</nav>
+{% endif %}

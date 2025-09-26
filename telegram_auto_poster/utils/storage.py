@@ -268,12 +268,51 @@ class MinioStorage:
                         "review_chat_id": _to_int(data.get("review_chat_id")),
                         "review_message_id": _to_int(data.get("review_message_id")),
                         "group_id": data.get("group_id"),
+                        "trashed_at": data.get("trashed_at"),
+                        "trash_expires_at": data.get("trash_expires_at"),
                     }
                     self.submission_metadata[name] = meta
                     return meta
         except Exception as e:
             logger.error(f"Failed to get submission metadata from Redis: {e}")
         return None
+
+    async def update_submission_metadata(
+        self, object_name: str, **fields: object | None
+    ) -> dict[str, object]:
+        """Update cached and persisted metadata for ``object_name``.
+
+        ``None`` values remove the corresponding keys from the stored
+        metadata.
+        """
+
+        meta = await self.get_submission_metadata(object_name) or {}
+        to_set = {k: v for k, v in fields.items() if v is not None}
+        to_delete = [k for k, v in fields.items() if v is None]
+
+        meta.update(to_set)
+        for key in to_delete:
+            meta.pop(key, None)
+
+        self.submission_metadata[object_name] = meta
+
+        try:
+            r = get_async_redis_client()
+            redis_key = _redis_key("submissions", object_name)
+            pipe = r.pipeline()
+            has_commands = False
+            if to_set:
+                pipe.hset(redis_key, mapping={k: str(v) for k, v in to_set.items()})
+                has_commands = True
+            for field in to_delete:
+                pipe.hdel(redis_key, field)
+                has_commands = True
+            if has_commands:
+                await pipe.execute()
+        except Exception as e:
+            logger.error(f"Failed to update submission metadata in Redis: {e}")
+
+        return meta
 
     async def mark_notified(self, object_name: str) -> bool:
         """Mark that the user has been notified about their submission.

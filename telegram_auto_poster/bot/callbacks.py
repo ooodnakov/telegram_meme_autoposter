@@ -45,6 +45,11 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.trash import (
+    move_to_trash,
+    purge_expired_trash,
+    restore_from_trash,
+)
 from telegram_auto_poster.utils.timezone import (
     DISPLAY_TZ,
     UTC,
@@ -52,10 +57,13 @@ from telegram_auto_poster.utils.timezone import (
     now_utc,
 )
 from telegram_auto_poster.utils.ui import (
+    approval_keyboard,
     CALLBACK_NOTOK,
     CALLBACK_OK,
     CALLBACK_PUSH,
     CALLBACK_SCHEDULE,
+    CALLBACK_RESTORE,
+    trashed_keyboard,
 )
 
 
@@ -144,12 +152,15 @@ async def _add_media_hash(
     return media_hash
 
 
-async def _edit_message(query: CallbackQuery, text: str) -> None:
-    """Edit the caption or text of ``query``'s message to ``text``."""
+async def _edit_message(
+    query: CallbackQuery, text: str, *, reply_markup: InlineKeyboardMarkup | None = None
+) -> None:
+    """Edit ``query``'s message content while optionally updating the markup."""
+
     if query.message.caption:
-        await query.message.edit_caption(text, reply_markup=None)
+        await query.message.edit_caption(text, reply_markup=reply_markup)
     else:
-        await query.message.edit_text(text, reply_markup=None)
+        await query.message.edit_text(text, reply_markup=reply_markup)
 
 
 async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -421,30 +432,19 @@ async def notok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await query.answer()
 
     try:
+        await purge_expired_trash()
         paths = extract_paths_from_message(query.message)
         if not paths:
             return
 
-        # Update the message first
-        await _edit_message(query, "Post(s) disapproved!")
-
+        trashed_entries: list[tuple[str, str, datetime.datetime]] = []
         for file_path in paths:
             file_name = os.path.basename(file_path)
             media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
-            file_prefix = (
-                f"{PHOTOS_PATH}/"
-                if file_path.startswith(f"{PHOTOS_PATH}/")
-                else f"{VIDEOS_PATH}/"
-            )
             # Get user metadata
             user_metadata = await storage.get_submission_metadata(file_name)
-            # Delete from MinIO if exists
-            if await storage.file_exists(file_prefix + file_name, BUCKET_MAIN):
-                await storage.delete_file(file_prefix + file_name, BUCKET_MAIN)
-            else:
-                logger.warning(
-                    f"File not found for deletion: {BUCKET_MAIN}/{file_prefix + file_name}"
-                )
+            trash_path, _trashed_at, expires_at = await move_to_trash(file_path)
+            trashed_entries.append((file_name, trash_path, expires_at))
 
             await stats.record_rejected(
                 media_type,
@@ -459,8 +459,52 @@ async def notok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 "Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!",
                 file_name,
             )
+
+        if trashed_entries:
+            # Use the most recent expiration timestamp (all share the same default)
+            expires_display = format_display(trashed_entries[-1][2])
+            text_lines = [
+                f"Post moved to trash until {expires_display}",
+                *[entry[1] for entry in trashed_entries],
+            ]
+            await _edit_message(
+                query,
+                "\n".join(text_lines),
+                reply_markup=trashed_keyboard(),
+            )
     except Exception as e:
         logger.error(f"Error in notok_callback: {e}")
+        await query.message.reply_text(get_user_friendly_error_message(e))
+
+
+async def restore_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Restore media from the trash back into the review queue."""
+
+    logger.info(
+        f"Received {CALLBACK_RESTORE} callback from user {update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        await purge_expired_trash()
+        paths = extract_paths_from_message(query.message)
+        if not paths:
+            return
+
+        restored_paths: list[str] = []
+        for path in paths:
+            restored_paths.append(await restore_from_trash(path))
+
+        bot_data = context.application.bot_data
+        keyboard = approval_keyboard(
+            bot_data.get("target_channel_ids"),
+            bot_data.get("prompt_target_channel", False),
+        )
+        text_lines = ["Post restored for review", *restored_paths]
+        await _edit_message(query, "\n".join(text_lines), reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"Error in restore_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
 
 
