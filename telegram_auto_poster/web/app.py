@@ -105,6 +105,18 @@ TARGET_CHANNELS = CONFIG.telegram.target_channels
 QUIET_START = CONFIG.schedule.quiet_hours_start
 QUIET_END = CONFIG.schedule.quiet_hours_end
 ITEMS_PER_PAGE = 30
+MANUAL_SCHEDULE_INTERVAL_SECONDS = 3600
+
+BATCH_ITEM_PREFIXES = (
+    f"{PHOTOS_PATH}/batch_",
+    f"{VIDEOS_PATH}/batch_",
+)
+
+
+def _is_batch_item(path: str) -> bool:
+    """Return True if ``path`` belongs to the batch queue."""
+
+    return path.startswith(BATCH_ITEM_PREFIXES)
 
 
 def _paginate(
@@ -221,8 +233,10 @@ async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[di
 
 async def _get_batch_count() -> int:
     """Return the total number of files currently in the batch."""
-    photos = await storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_")
-    videos = await storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_")
+    photos, videos = await asyncio.gather(
+        storage.list_files(BUCKET_MAIN, prefix=BATCH_ITEM_PREFIXES[0]),
+        storage.list_files(BUCKET_MAIN, prefix=BATCH_ITEM_PREFIXES[1]),
+    )
     return len(photos) + len(videos)
 
 
@@ -485,7 +499,7 @@ async def manual_schedule_batch(
     origin: str = Form("batch"),
 ) -> Response:
     """Schedule batch items starting at a manually provided time."""
-    all_paths: list[str] = list(paths) if paths else []
+    all_paths: list[str] = list(paths)
     if path:
         all_paths.append(path)
 
@@ -505,7 +519,7 @@ async def manual_schedule_batch(
     next_ts = base_ts
     for item_path in all_paths:
         await _schedule_post_at(item_path, next_ts)
-        next_ts += 3600
+        next_ts += MANUAL_SCHEDULE_INTERVAL_SECONDS
 
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
@@ -656,9 +670,7 @@ async def _schedule_post_at(path: str, scheduled_ts: int) -> None:
     await storage.client.copy_object(BUCKET_MAIN, new_object_name, source)
     await storage.delete_file(path, BUCKET_MAIN)
     await run_in_threadpool(add_scheduled_post, scheduled_ts, new_object_name)
-    if path.startswith(f"{PHOTOS_PATH}/batch_") or path.startswith(
-        f"{VIDEOS_PATH}/batch_"
-    ):
+    if _is_batch_item(path):
         await decrement_batch_count(1)
     review = await storage.get_review_message(file_name)
     if review:

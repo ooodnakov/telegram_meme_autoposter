@@ -6,7 +6,11 @@ from fastapi.testclient import TestClient
 
 from telegram_auto_poster.config import PHOTOS_PATH, BUCKET_MAIN
 from telegram_auto_poster.utils.timezone import parse_to_utc_timestamp
-from telegram_auto_poster.web.app import CONFIG, app
+from telegram_auto_poster.web.app import (
+    CONFIG,
+    MANUAL_SCHEDULE_INTERVAL_SECONDS,
+    app,
+)
 
 from .conftest import login_payload
 
@@ -154,7 +158,10 @@ def test_manual_schedule_schedules_paths(mocker, auth_client: TestClient):
     assert resp.headers["location"] == "/batch"
     assert schedule.await_args_list == [
         call(f"{PHOTOS_PATH}/a.jpg", base_ts),
-        call(f"{PHOTOS_PATH}/b.jpg", base_ts + 3600),
+        call(
+            f"{PHOTOS_PATH}/b.jpg",
+            base_ts + MANUAL_SCHEDULE_INTERVAL_SECONDS,
+        ),
     ]
 
 
