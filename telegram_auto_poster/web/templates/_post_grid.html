@@ -41,7 +41,6 @@
                 method="post"
                 action="/action"
                 data-bg="true"
-                onsubmit="return confirm('{{ _('Reject this item?') }}');"
             >
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
