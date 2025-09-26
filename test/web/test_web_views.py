@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from unittest.mock import call
 
-import pytest
 from fastapi.testclient import TestClient
 
 from telegram_auto_poster.config import PHOTOS_PATH, BUCKET_MAIN
+from telegram_auto_poster.utils.timezone import parse_to_utc_timestamp
 from telegram_auto_poster.web.app import CONFIG, app
 
 from .conftest import login_payload
@@ -125,6 +125,57 @@ def test_send_batch_redirects_when_empty(mocker, auth_client: TestClient):
     )
     assert resp.status_code == 303
     assert resp.headers["location"] == "/batch"
+
+
+def test_manual_schedule_requires_login():
+    with TestClient(app) as client:
+        resp = client.post(
+            "/batch/manual_schedule",
+            data={"scheduled_at": "2024-01-01 12:00"},
+        )
+        assert resp.status_code == 401
+
+
+def test_manual_schedule_schedules_paths(mocker, auth_client: TestClient):
+    schedule = mocker.patch(
+        "telegram_auto_poster.web.app._schedule_post_at",
+        new=mocker.AsyncMock(),
+    )
+    base_ts = parse_to_utc_timestamp("2024-01-01 12:00")
+    resp = auth_client.post(
+        "/batch/manual_schedule",
+        data={
+            "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
+            "scheduled_at": "2024-01-01 12:00",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/batch"
+    assert schedule.await_args_list == [
+        call(f"{PHOTOS_PATH}/a.jpg", base_ts),
+        call(f"{PHOTOS_PATH}/b.jpg", base_ts + 3600),
+    ]
+
+
+def test_manual_schedule_background_returns_json(mocker, auth_client: TestClient):
+    schedule = mocker.patch(
+        "telegram_auto_poster.web.app._schedule_post_at",
+        new=mocker.AsyncMock(),
+    )
+    resp = auth_client.post(
+        "/batch/manual_schedule",
+        data={
+            "paths": [f"{PHOTOS_PATH}/a.jpg"],
+            "scheduled_at": "2024-01-01 12:00",
+        },
+        headers={"X-Background-Request": "true"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+    assert schedule.await_args_list == [
+        call(f"{PHOTOS_PATH}/a.jpg", parse_to_utc_timestamp("2024-01-01 12:00"))
+    ]
 
 
 def test_handle_action_push_single(mocker, auth_client: TestClient):

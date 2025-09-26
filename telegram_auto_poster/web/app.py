@@ -447,6 +447,7 @@ async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
         "empty_message": "Batch is empty.",
         "page": page,
         "total_pages": total_pages,
+        "datetime_format_js": FLATPICKR_FORMAT,
     }
     template = (
         "_batch_grid.html"
@@ -473,6 +474,43 @@ async def send_batch() -> Response:
             # A user-facing error message would be a good addition here.
             pass
     return RedirectResponse(url="/batch", status_code=303)
+
+
+@app.post("/batch/manual_schedule")
+async def manual_schedule_batch(
+    request: Request,
+    scheduled_at: str = Form(...),
+    path: str | None = Form(None),
+    paths: list[str] = Form([]),
+    origin: str = Form("batch"),
+) -> Response:
+    """Schedule batch items starting at a manually provided time."""
+    all_paths: list[str] = list(paths) if paths else []
+    if path:
+        all_paths.append(path)
+
+    if not all_paths:
+        if request.headers.get("X-Background-Request", "").lower() == "true":
+            return JSONResponse({"status": "ok"})
+        return RedirectResponse(url=f"/{origin}", status_code=303)
+
+    try:
+        base_ts = parse_to_utc_timestamp(scheduled_at)
+    except ValueError:
+        logger.warning(f"Invalid manual schedule time provided: {scheduled_at}")
+        if request.headers.get("X-Background-Request", "").lower() == "true":
+            return JSONResponse({"status": "error", "detail": "invalid_datetime"})
+        return RedirectResponse(url=f"/{origin}", status_code=303)
+
+    next_ts = base_ts
+    for item_path in all_paths:
+        await _schedule_post_at(item_path, next_ts)
+        next_ts += 3600
+
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+
+    return RedirectResponse(url=f"/{origin}", status_code=303)
 
 
 @app.post("/action")
@@ -610,29 +648,37 @@ async def _finalize_post(item: dict[str, object], dest_count: int) -> None:
         )
 
 
-async def _schedule_post(path: str) -> None:
-    """Move a processed post into the scheduled queue."""
+async def _schedule_post_at(path: str, scheduled_ts: int) -> None:
+    """Move a processed post into the scheduled queue at ``scheduled_ts``."""
     file_name = os.path.basename(path)
-    scheduled_posts = await run_in_threadpool(get_scheduled_posts)
-    next_slot = find_next_available_slot(
-        now_utc(), scheduled_posts, QUIET_START, QUIET_END
-    )
     source = CopySource(BUCKET_MAIN, path)
     new_object_name = f"{SCHEDULED_PATH}/{file_name}"
     await storage.client.copy_object(BUCKET_MAIN, new_object_name, source)
     await storage.delete_file(path, BUCKET_MAIN)
-    await run_in_threadpool(
-        add_scheduled_post, int(next_slot.timestamp()), new_object_name
-    )
+    await run_in_threadpool(add_scheduled_post, scheduled_ts, new_object_name)
+    if path.startswith(f"{PHOTOS_PATH}/batch_") or path.startswith(
+        f"{VIDEOS_PATH}/batch_"
+    ):
+        await decrement_batch_count(1)
     review = await storage.get_review_message(file_name)
     if review:
         chat_id, message_id = review
+        scheduled_dt = datetime.datetime.fromtimestamp(scheduled_ts, tz=UTC)
         await bot.edit_message_caption(
             chat_id=chat_id,
             message_id=message_id,
-            caption=f"Post scheduled for {format_display(next_slot)}!",
+            caption=f"Post scheduled for {format_display(scheduled_dt)}!",
             reply_markup=None,
         )
+
+
+async def _schedule_post(path: str) -> None:
+    """Move a processed post into the next available scheduled slot."""
+    scheduled_posts = await run_in_threadpool(get_scheduled_posts)
+    next_slot = find_next_available_slot(
+        now_utc(), scheduled_posts, QUIET_START, QUIET_END
+    )
+    await _schedule_post_at(path, int(next_slot.timestamp()))
 
 
 async def _ok_post(path: str) -> None:

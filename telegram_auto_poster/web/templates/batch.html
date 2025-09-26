@@ -23,3 +23,11 @@
     {% include "_batch_grid.html" %}
 </div>
 {% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js" integrity="sha256-IFiMwO33n2hRYI42V2B+K42LdwpD/LSJSgLzQ6G6Gqg=" crossorigin="anonymous"></script>
+<script>
+flatpickr(".datetime-picker", {enableTime: true, dateFormat: "{{ datetime_format_js }}"});
+</script>
+{% endblock %}

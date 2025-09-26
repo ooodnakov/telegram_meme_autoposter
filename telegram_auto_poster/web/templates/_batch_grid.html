@@ -1,6 +1,7 @@
 {% if posts %}
 <div class="row g-3">
     {% for p in posts %}
+    {% set batch_idx = loop.index0 %}
     <div class="col-sm-6 col-md-4">
         {% if p['items']|length > 1 %}
         <span class="badge bg-secondary mb-1">{{ _('Group of {n}').format(n=p['items']|length) }}</span>
@@ -29,6 +30,16 @@
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <button class="btn btn-sm btn-secondary" type="submit">{{ _('Schedule') }}</button>
             </form>
+            <button
+                class="btn btn-sm btn-outline-secondary"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#manual-schedule-{{ batch_idx }}"
+                aria-expanded="false"
+                aria-controls="manual-schedule-{{ batch_idx }}"
+            >
+                {{ _('Manual Schedule') }}
+            </button>
             <form
                 method="post"
                 action="/action"
@@ -42,6 +53,26 @@
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <button class="btn btn-sm btn-danger" type="submit">{{ _('Remove') }}</button>
             </form>
+            <div class="collapse w-100" id="manual-schedule-{{ batch_idx }}">
+                <form
+                    method="post"
+                    action="/batch/manual_schedule"
+                    data-bg="true"
+                    class="mt-2 d-flex flex-wrap gap-2 align-items-center"
+                >
+                    {% for media in p['items'] %}
+                    <input type="hidden" name="paths" value="{{ media.path }}" />
+                    {% endfor %}
+                    <input type="hidden" name="origin" value="{{ origin }}" />
+                    <input
+                        type="text"
+                        name="scheduled_at"
+                        class="form-control form-control-sm datetime-picker"
+                        placeholder="{{ _('YYYY-MM-DD HH:MM') }}"
+                    />
+                    <button class="btn btn-sm btn-success" type="submit">{{ _('Save') }}</button>
+                </form>
+            </div>
         </div>
     </div>
     {% endfor %}
