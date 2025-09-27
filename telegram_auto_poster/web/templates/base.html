@@ -46,13 +46,22 @@
                     <a class="nav-link" href="/leaderboard">{{ _('Leaderboard') }}</a>
                 </li>
             </ul>
-            <ul class="navbar-nav ms-auto">
-                {% if request.session.get('user_id') %}
-                <li class="nav-item"><a class="nav-link" href="/logout">{{ _('Logout') }}</a></li>
-                {% else %}
-                <li class="nav-item"><a class="nav-link" href="/login">{{ _('Login') }}</a></li>
-                {% endif %}
-            </ul>
+            <div class="d-flex align-items-center ms-auto">
+                {% set current_lang = request.state.language %}
+                <span class="navbar-text text-white-50 me-2">{{ _('Language:') }} {{ get_language_label(current_lang) or current_lang }}</span>
+                <form method="post" action="/language" class="mb-0 d-inline">
+                    <input type="hidden" name="lang" value="{{ cycle_language(current_lang) }}">
+                    <input type="hidden" name="next" value="{{ request.url.path }}">
+                    <button class="btn btn-outline-light btn-sm" type="submit">{{ _('Change language') }}</button>
+                </form>
+                <ul class="navbar-nav ms-3 mb-0">
+                    {% if request.session.get('user_id') %}
+                    <li class="nav-item"><a class="nav-link" href="/logout">{{ _('Logout') }}</a></li>
+                    {% else %}
+                    <li class="nav-item"><a class="nav-link" href="/login">{{ _('Login') }}</a></li>
+                    {% endif %}
+                </ul>
+            </div>
         </div>
     </div>
 </nav>

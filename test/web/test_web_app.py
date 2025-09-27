@@ -165,3 +165,21 @@ def test_stats_requires_login():
     with TestClient(app) as client:
         resp = client.get("/stats")
         assert resp.status_code == 401
+
+
+def test_change_language_updates_session():
+    with TestClient(app) as client:
+        resp = client.get("/login")
+        assert resp.status_code == 200
+        assert "Сменить язык" in resp.text
+        resp = client.post(
+            "/language",
+            data={"lang": "en", "next": "/login"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/login"
+        resp = client.get("/login")
+        assert resp.status_code == 200
+        assert "Change language" in resp.text
+        assert "Сменить язык" not in resp.text
