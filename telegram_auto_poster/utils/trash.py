@@ -52,7 +52,9 @@ async def move_to_trash(path: str) -> tuple[str, datetime, datetime]:
     """Move ``path`` to the trash and return new path with timestamps."""
 
     _detect_media_type(path)
-    processed_path = path if not path.startswith(f"{TRASH_PATH}/") else _processed_path_for(path)
+    processed_path = (
+        path if not path.startswith(f"{TRASH_PATH}/") else _processed_path_for(path)
+    )
     trash_path = _trash_path_for(processed_path)
     file_name = os.path.basename(processed_path)
 
