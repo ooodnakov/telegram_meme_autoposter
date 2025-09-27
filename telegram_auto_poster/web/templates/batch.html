@@ -6,15 +6,55 @@
     <a class="btn btn-sm btn-outline-secondary" href="/batch{{ query_suffix }}">{{ _('Refresh') }}</a>
 </div>
 {% if posts %}
+{% set ns = namespace(paths=[]) %}
+{% for post in posts %}
+    {% for media in post['items'] %}
+        {% set ns.paths = ns.paths + [media.path] %}
+    {% endfor %}
+{% endfor %}
 <form
     method="post"
     action="/batch/send"
     onsubmit="return confirm('{{ _('Send whole batch?') }}');"
 >
-    <button class="btn btn-primary btn-lg w-100 mb-3" type="submit">
+    <button class="btn btn-primary btn-lg w-100 mb-2" type="submit">
         {{ _('Send Batch') }}
     </button>
 </form>
+<button
+    class="btn btn-outline-secondary w-100 mb-3"
+    type="button"
+    data-bs-toggle="collapse"
+    data-bs-target="#manual-schedule-batch"
+    aria-expanded="false"
+    aria-controls="manual-schedule-batch"
+>
+    {{ _('Manual Schedule Batch') }}
+</button>
+<div class="collapse" id="manual-schedule-batch">
+    <form
+        method="post"
+        action="/batch/manual_schedule"
+        data-bg="true"
+        class="card card-body mb-3 gap-2"
+    >
+        {% for path in ns.paths %}
+        <input type="hidden" name="paths" value="{{ path }}" />
+        {% endfor %}
+        <input type="hidden" name="origin" value="batch" />
+        <label class="form-label" for="manual-schedule-batch-input">{{ _('Start time') }}</label>
+        <div class="d-flex flex-column flex-sm-row gap-2">
+            <input
+                id="manual-schedule-batch-input"
+                type="text"
+                name="scheduled_at"
+                class="form-control form-control-sm datetime-picker"
+                placeholder="{{ _('YYYY-MM-DD HH:MM') }}"
+            />
+            <button class="btn btn-sm btn-success" type="submit">{{ _('Save') }}</button>
+        </div>
+    </form>
+</div>
 {% endif %}
 <div id="batch-grid">
     {% set origin = "batch" %}
