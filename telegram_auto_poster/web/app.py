@@ -10,6 +10,7 @@ import pydoc
 from pathlib import Path
 from pydoc import locate
 from typing import Awaitable, Callable
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
@@ -77,8 +78,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:  # type: ignore[override]
+        lang = CONFIG.i18n.default
+        if "session" in request.scope:
+            stored_lang = request.session.get("language")  # type: ignore[assignment]
+            if isinstance(stored_lang, str) and stored_lang in LANGUAGES:
+                lang = stored_lang
+        set_locale(lang)
         path = request.url.path
-        if path.startswith("/static") or path in {"/login", "/auth", "/logout"}:
+        if path.startswith("/static") or path in {"/login", "/auth", "/logout", "/language"}:
             return await call_next(request)
         user_id = request.session.get("user_id")
         logger.debug(
@@ -104,6 +111,43 @@ base_path = Path(__file__).parent
 templates = Jinja2Templates(directory=str(base_path / "templates"))
 templates.env.globals["_"] = _
 templates.env.globals["BOT_USERNAME"] = CONFIG.bot.bot_username
+
+
+LANGUAGES: dict[str, str] = {
+    "ru": "Русский",
+    "en": "English",
+}
+if CONFIG.i18n.default not in LANGUAGES:
+    LANGUAGES[CONFIG.i18n.default] = CONFIG.i18n.default
+
+
+def _cycle_language(current: str) -> str:
+    """Return the next language code from :data:`LANGUAGES`."""
+
+    codes = list(LANGUAGES)
+    if current in LANGUAGES:
+        index = codes.index(current)
+        return codes[(index + 1) % len(codes)]
+    return codes[0]
+
+
+def _safe_redirect_target(target: str) -> str:
+    """Return a safe redirect target limited to application paths."""
+
+    if not target:
+        return "/"
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc:
+        return "/"
+    if not target.startswith("/"):
+        return "/"
+    return target
+
+
+templates.env.globals["LANGUAGES"] = LANGUAGES
+templates.env.globals["DEFAULT_LANGUAGE"] = CONFIG.i18n.default
+templates.env.globals["cycle_language"] = _cycle_language
+templates.env.globals["get_language_label"] = LANGUAGES.get
 set_locale(CONFIG.i18n.default)
 app.mount("/static", StaticFiles(directory=str(base_path / "static")), name="static")
 
@@ -494,6 +538,22 @@ async def logout(request: Request) -> Response:
 
     request.session.clear()
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/language")
+async def change_language(
+    request: Request, lang: str = Form(...), next_url: str = Form("/")
+) -> Response:
+    """Persist the selected language in the session and redirect back."""
+
+    if lang not in LANGUAGES:
+        return JSONResponse({"status": "error", "detail": "invalid language"}, status_code=400)
+    request.session["language"] = lang
+    set_locale(lang)
+    target = _safe_redirect_target(next_url)
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok", "language": lang})
+    return RedirectResponse(url=target, status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.get("/", response_class=HTMLResponse)

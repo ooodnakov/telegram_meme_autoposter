@@ -276,6 +276,14 @@ msgstr ""
 msgid "Telegram Autoposter"
 msgstr ""
 
+#: telegram_auto_poster/web/templates/base.html:52
+msgid "Language:"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/base.html:55
+msgid "Change language"
+msgstr ""
+
 #: telegram_auto_poster/web/templates/base.html:25
 msgid "Home"
 msgstr ""
