@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0">{{ _('Trash') }}</h1>
+    {% set query_suffix = '?page=' ~ page %}
+    <button
+        class="btn btn-sm btn-outline-secondary"
+        hx-get="/trash{{ query_suffix }}"
+        hx-target="#trash-grid"
+        hx-swap="innerHTML"
+    >
+        {{ _('Refresh') }}
+    </button>
+</div>
+<div id="trash-grid">
+    {% include "_trash_grid.html" %}
+</div>
+{% endblock %}

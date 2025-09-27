@@ -62,6 +62,7 @@ Key topics to start with:
 - Watermarks images and processes videos
 - Admin approval queue with batch posting
 - Feedback to submitters on approval/rejection
+- Configurable trash bin for rejected posts with restore support
 - Daily stats and Valkey-backed metrics
 - Simple FastAPI dashboard for review/analytics
 - MinIO-backed storage for originals/processed media

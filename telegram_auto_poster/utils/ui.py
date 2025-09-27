@@ -10,6 +10,7 @@ CALLBACK_OK = "/ok"
 CALLBACK_SCHEDULE = "/schedule"
 CALLBACK_PUSH = "/push"
 CALLBACK_NOTOK = "/notok"
+CALLBACK_RESTORE = "/restore"
 
 
 def approval_keyboard(
@@ -55,3 +56,11 @@ def approval_keyboard(
             ]
         )
     return InlineKeyboardMarkup(rows)
+
+
+def trashed_keyboard() -> InlineKeyboardMarkup:
+    """Return keyboard markup for trashed items."""
+
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(_("Restore"), callback_data=CALLBACK_RESTORE)]]
+    )

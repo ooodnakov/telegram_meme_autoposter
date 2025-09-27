@@ -30,12 +30,18 @@ from telegram_auto_poster.utils.general import (
     TelegramMediaError,
     cleanup_temp_file,
     download_from_minio,
+    extract_paths_from_message,
     send_media_to_telegram,
 )
 from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.scheduler import get_due_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.trash import (
+    move_to_trash,
+    purge_expired_trash,
+    restore_from_trash,
+)
 from telegram_auto_poster.utils.timezone import (
     UTC,
     format_display,
@@ -83,13 +89,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 "• /save_stats - Принудительно сохранить статистику\n"
                 "• /sendall - Отправить все одобренные медиафайлы из пакета в целевой канал\n"
                 "• /delete_batch - Удалить текущий пакет медиафайлов\n"
+                "• /untrash - Восстановить медиа из корзины\n"
                 "• /get - Получить текущий ID чата\n\n"
                 "<b>Проверка контента администратором:</b>\n"
                 "При проверке контента вы можете использовать кнопки для:\n"
                 "• Send to batch - Добавить медиа в пакет для последующей отправки\n"
                 "• Schedule - Добавляет медиа в очередь\n"
                 "• Push - Немедленно опубликовать медиа в канале\n"
-                "• No - Отклонить медиа"
+                "• No - Отправить медиа в корзину"
             )
         )
 
@@ -264,37 +271,108 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def notok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Reject a media item."""
+    """Move media linked to the message into the trash."""
+
     logger.info(f"Received /notok command from user {update.effective_user.id}")
 
-    # Check admin rights
     if not await check_admin_rights(update, context):
         return
 
-    try:
-        message_id = str(update.effective_message.message_id)
-        object_name = f"{message_id}.jpg"
+    await purge_expired_trash()
 
-        # Try to determine media type
-        media_type = "photo"  # Default
+    target_message = (
+        update.effective_message.reply_to_message or update.effective_message
+    )
+    paths = extract_paths_from_message(target_message)
+    if not paths:
+        await update.message.reply_text(
+            _("No media paths found. Reply to a review message or include paths."),
+        )
+        return
 
-        # Delete from MinIO if exists
-        if await storage.file_exists(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN):
-            await storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
-            await update.message.reply_text("Post disapproved!")
-
-            # Record stats
-            meta = await storage.get_submission_metadata(object_name)
-            await stats.record_rejected(
-                media_type,
-                filename=object_name,
-                source=meta.get("source") if meta else None,
+    results: list[tuple[str, datetime.datetime]] = []
+    for path in paths:
+        try:
+            trash_path, _trashed_at, expires_at = await move_to_trash(path)
+        except Exception as exc:
+            logger.error(f"Failed to move {path} to trash via command: {exc}")
+            await update.message.reply_text(
+                _("Failed to move {path} to trash: {error}").format(
+                    path=path, error=str(exc)
+                )
             )
-        else:
-            await update.message.reply_text("No post found to disapprove.")
-    except Exception as e:
-        logger.error(f"Error in notok_command: {e}")
-        await update.message.reply_text(f"Error: {str(e)}")
+            continue
+
+        file_name = os.path.basename(path)
+        media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
+        meta = await storage.get_submission_metadata(file_name)
+        await stats.record_rejected(
+            media_type,
+            filename=file_name,
+            source=meta.get("source") if meta else None,
+        )
+
+        if meta and meta.get("user_id") and not meta.get("notified"):
+            translated = "фото" if media_type == "photo" else "видео"
+            try:
+                await notify_user(
+                    context,
+                    meta.get("user_id"),
+                    "Ваша {translated_media_type} публикация была рассмотрена, но не была опубликована. Вы можете попробовать еще раз в будущем!".format(
+                        translated_media_type=translated
+                    ),
+                    reply_to_message_id=meta.get("message_id"),
+                )
+                await storage.mark_notified(file_name)
+            except Exception as exc:
+                logger.error(f"Failed to notify user about rejection: {exc}")
+
+        results.append((trash_path, expires_at))
+
+    if results:
+        display = format_display(results[-1][1])
+        lines = [
+            _("Moved to trash until {time}").format(time=display),
+            *[path for path, _ in results],
+        ]
+        await update.message.reply_text("\n".join(lines))
+
+
+async def untrash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Restore trashed media referenced by the message."""
+
+    logger.info(f"Received /untrash command from user {update.effective_user.id}")
+
+    if not await check_admin_rights(update, context):
+        return
+
+    await purge_expired_trash()
+
+    target_message = (
+        update.effective_message.reply_to_message or update.effective_message
+    )
+    paths = extract_paths_from_message(target_message)
+    if not paths:
+        await update.message.reply_text(
+            _("No trashed media paths found. Reply to a trash message or include paths."),
+        )
+        return
+
+    restored: list[str] = []
+    for path in paths:
+        try:
+            restored.append(await restore_from_trash(path))
+        except Exception as exc:
+            logger.error(f"Failed to restore {path} from trash via command: {exc}")
+            await update.message.reply_text(
+                _("Failed to restore {path}: {error}").format(
+                    path=path, error=str(exc)
+                )
+            )
+
+    if restored:
+        lines = [_("Restored for review:"), *restored]
+        await update.message.reply_text("\n".join(lines))
 
 
 async def delete_batch_command(

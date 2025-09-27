@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 from telegram_auto_poster.config import CONFIG
@@ -247,3 +248,40 @@ async def get_batch_count() -> int:
     key = _redis_key("batch", "size")
     value = await r.get(key)
     return int(value) if value is not None else 0
+
+
+async def add_trashed_post(path: str, expires_at: int) -> None:
+    """Record ``path`` as trashed until ``expires_at`` (UTC timestamp)."""
+
+    r = get_async_redis_client()
+    key = _redis_key("trash", "expires")
+    await r.zadd(key, {path: expires_at})
+
+
+async def remove_trashed_post(path: str) -> None:
+    """Remove ``path`` from the trashed registry."""
+
+    r = get_async_redis_client()
+    key = _redis_key("trash", "expires")
+    await r.zrem(key, path)
+
+
+async def get_expired_trashed_posts(now: int | None = None) -> list[str]:
+    """Return trashed paths whose expiration is at or before ``now``."""
+
+    r = get_async_redis_client()
+    key = _redis_key("trash", "expires")
+    max_score = now if now is not None else int(time.time())
+    expired = await r.zrangebyscore(key, 0, max_score)
+    if expired:
+        await r.zremrangebyscore(key, 0, max_score)
+    return list(expired)
+
+
+async def get_trashed_posts_count() -> int:
+    """Return the number of trashed posts currently tracked."""
+
+    r = get_async_redis_client()
+    key = _redis_key("trash", "expires")
+    count = await r.zcard(key)
+    return int(count) if count is not None else 0

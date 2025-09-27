@@ -39,6 +39,10 @@ def test_extract_filename(text, expected):
         ("", []),
         ("photos/a.jpg\nphotos/b.jpg", ["photos/a.jpg", "photos/b.jpg"]),
         ("videos/a.mp4", ["videos/a.mp4"]),
+        (
+            "trash/photos/a.jpg\ntrash/videos/b.mp4",
+            ["trash/photos/a.jpg", "trash/videos/b.mp4"],
+        ),
         ("   ", []),
     ],
 )
@@ -56,6 +60,10 @@ def test_extract_file_paths(text, expected):
         (
             SimpleNamespace(text="intro\nline2", caption=None),
             ["line2"],
+        ),
+        (
+            SimpleNamespace(text="trash/photos/a.jpg", caption=None),
+            ["trash/photos/a.jpg"],
         ),
         (
             SimpleNamespace(text="", caption=None),

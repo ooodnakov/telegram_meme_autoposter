@@ -56,6 +56,12 @@ class ScheduleConfig(BaseModel):
     quiet_hours_end: int = 10
 
 
+class TrashConfig(BaseModel):
+    """Retention configuration for trashed media."""
+
+    retention_hours: int = 24
+
+
 class MinioConfig(BaseModel):
     """MinIO object storage connection settings."""
 
@@ -159,6 +165,7 @@ class Config(BaseModel):
     web: WebConfig
     chats: ChatsConfig
     schedule: ScheduleConfig = ScheduleConfig()
+    trash: TrashConfig = TrashConfig()
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
@@ -186,6 +193,7 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "CHATS_LUBA_CHAT": ("chats", "luba_chat"),
     "SCHEDULE_QUIET_HOURS_START": ("schedule", "quiet_hours_start"),
     "SCHEDULE_QUIET_HOURS_END": ("schedule", "quiet_hours_end"),
+    "TRASH_RETENTION_HOURS": ("trash", "retention_hours"),
     "MINIO_HOST": ("minio", "host"),
     "MINIO_PORT": ("minio", "port"),
     "MINIO_URL": ("minio", "url"),
@@ -243,6 +251,7 @@ def _load_ini(path: str) -> dict[str, Any]:
         "Telegram": ("telegram", TelegramConfig),
         "Web": ("web", WebConfig),
         "Schedule": ("schedule", ScheduleConfig),
+        "Trash": ("trash", TrashConfig),
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),
         "RateLimit": ("rate_limit", RateLimitConfig),
@@ -377,6 +386,7 @@ PHOTOS_PATH = "photos"
 VIDEOS_PATH = "videos"
 SCHEDULED_PATH = "scheduled"
 DOWNLOADS_PATH = "downloads"
+TRASH_PATH = "trash"
 
 # Watermark animation speed range in pixels per second (backwards compatibility)
 WATERMARK_MIN_SPEED = CONFIG.watermark_video.min_speed

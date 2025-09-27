@@ -28,6 +28,7 @@ from telegram_auto_poster.config import (
     PHOTOS_PATH,
     SCHEDULED_PATH,
     SUGGESTION_CAPTION,
+    TRASH_PATH,
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.db import (
@@ -54,6 +55,12 @@ from telegram_auto_poster.utils.i18n import _, set_locale
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.trash import (
+    delete_from_trash,
+    move_to_trash,
+    purge_expired_trash,
+    restore_from_trash,
+)
 from telegram_auto_poster.utils.timezone import (
     FLATPICKR_FORMAT,
     UTC,
@@ -160,6 +167,36 @@ async def _list_media(
     return objects
 
 
+async def _list_trash_media(*, offset: int = 0, limit: int | None = None) -> list[str]:
+    """Return trashed media paths for photos and videos."""
+
+    photos_count = await storage.count_files(
+        BUCKET_MAIN, prefix=f"{TRASH_PATH}/{PHOTOS_PATH}/"
+    )
+    objects: list[str] = []
+    if offset < photos_count:
+        photo_limit = None if limit is None else min(limit, photos_count - offset)
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{TRASH_PATH}/{PHOTOS_PATH}/",
+            offset=offset,
+            limit=photo_limit,
+        )
+        video_offset = 0
+        remaining = None if limit is None else limit - len(objects)
+    else:
+        video_offset = offset - photos_count
+        remaining = None if limit is None else limit
+    if remaining is None or remaining > 0:
+        objects += await storage.list_files(
+            BUCKET_MAIN,
+            prefix=f"{TRASH_PATH}/{VIDEOS_PATH}/",
+            offset=video_offset,
+            limit=remaining,
+        )
+    return objects
+
+
 async def _gather_posts(
     only_suggestions: bool,
     *,
@@ -231,6 +268,71 @@ async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[di
     return posts
 
 
+async def _gather_trash(*, offset: int = 0, limit: int | None = None) -> list[dict]:
+    """Collect trashed posts for display."""
+
+    await purge_expired_trash()
+    objects = await _list_trash_media(offset=offset, limit=limit)
+    posts: list[dict] = []
+    grouped: dict[str, dict] = {}
+    for obj in objects:
+        file_name = os.path.basename(obj)
+        meta = await storage.get_submission_metadata(file_name)
+        url = await storage.get_presigned_url(obj)
+        if not url:
+            continue
+        mime, _ = mimetypes.guess_type(obj)
+        is_video = obj.startswith(f"{TRASH_PATH}/{VIDEOS_PATH}/") or (
+            mime or ""
+        ).startswith("video/")
+        is_image = obj.startswith(f"{TRASH_PATH}/{PHOTOS_PATH}/") or (
+            mime or ""
+        ).startswith("image/")
+        trashed_at_raw = meta.get("trashed_at") if meta else None
+        expires_at_raw = meta.get("trash_expires_at") if meta else None
+        trashed_at = (
+            datetime.datetime.fromisoformat(str(trashed_at_raw))
+            if trashed_at_raw
+            else None
+        )
+        expires_at = (
+            datetime.datetime.fromisoformat(str(expires_at_raw))
+            if expires_at_raw
+            else None
+        )
+        trashed_display = format_display(trashed_at) if trashed_at else None
+        expires_display = format_display(expires_at) if expires_at else None
+        item = {
+            "path": obj,
+            "url": url,
+            "is_video": is_video,
+            "is_image": is_image,
+        }
+        group_id = meta.get("group_id") if meta else None
+        if group_id:
+            entry = grouped.setdefault(
+                group_id,
+                {
+                    "items": [],
+                    "trashed_at": trashed_display,
+                    "expires_at": expires_display,
+                },
+            )
+            entry["items"].append(item)
+            if trashed_display and not entry.get("trashed_at"):
+                entry["trashed_at"] = trashed_display
+            if expires_display and not entry.get("expires_at"):
+                entry["expires_at"] = expires_display
+        else:
+            posts.append({
+                "items": [item],
+                "trashed_at": trashed_display,
+                "expires_at": expires_display,
+            })
+    posts.extend(grouped.values())
+    return posts
+
+
 async def _get_batch_count() -> int:
     """Return the total number of files currently in the batch."""
     photos, videos = await asyncio.gather(
@@ -282,6 +384,17 @@ async def _get_posts_count() -> int:
             count += 1
 
     return count + len(groups)
+
+
+async def _get_trash_count() -> int:
+    """Return the number of items currently in the trash."""
+
+    await purge_expired_trash()
+    photo_files, video_files = await asyncio.gather(
+        storage.list_files(BUCKET_MAIN, prefix=f"{TRASH_PATH}/{PHOTOS_PATH}/"),
+        storage.list_files(BUCKET_MAIN, prefix=f"{TRASH_PATH}/{VIDEOS_PATH}/"),
+    )
+    return len(photo_files) + len(video_files)
 
 
 async def _render_posts_page(
@@ -390,12 +503,14 @@ async def index(request: Request) -> HTMLResponse:
         suggestions_count,
         batch_count,
         posts_count,
+        trash_count,
         scheduled_posts_raw,
         daily,
     ) = await asyncio.gather(
         _get_suggestions_count(),
         _get_batch_count(),
         _get_posts_count(),
+        _get_trash_count(),
         run_in_threadpool(get_scheduled_posts),
         stats.get_daily_stats(reset_if_new_day=False),
     )
@@ -404,6 +519,7 @@ async def index(request: Request) -> HTMLResponse:
         "suggestions_count": suggestions_count,
         "batch_count": batch_count,
         "posts_count": posts_count,
+        "trash_count": trash_count,
         "scheduled_count": len(scheduled_posts_raw),
         "daily": daily,
     }
@@ -442,6 +558,69 @@ async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
         template_name="posts.html",
         page=page,
     )
+
+
+@app.get(
+    "/trash",
+    response_class=HTMLResponse,
+)
+async def trash_view(request: Request, page: int = 1) -> HTMLResponse:
+    """Render the trashed posts page."""
+
+    count = await _get_trash_count()
+    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
+    posts = await _gather_trash(offset=offset, limit=ITEMS_PER_PAGE)
+    context = {
+        "request": request,
+        "posts": posts,
+        "page": page,
+        "total_pages": total_pages,
+        "empty_message": "Trash is empty.",
+    }
+    template = (
+        "_trash_grid.html"
+        if request.headers.get("HX-Request", "").lower() == "true"
+        else "trash.html"
+    )
+    return templates.TemplateResponse(template, context)
+
+
+@app.post("/trash/untrash")
+async def trash_untrash(
+    request: Request,
+    path: str | None = Form(None),
+    paths: list[str] = Form([]),
+) -> Response:
+    """Restore one or more trashed posts."""
+
+    all_paths = paths or []
+    if path:
+        all_paths.append(path)
+    for item in all_paths:
+        await restore_from_trash(item)
+
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+    return RedirectResponse(url="/trash", status_code=303)
+
+
+@app.post("/trash/delete")
+async def trash_delete(
+    request: Request,
+    path: str | None = Form(None),
+    paths: list[str] = Form([]),
+) -> Response:
+    """Permanently delete trashed posts."""
+
+    all_paths = paths or []
+    if path:
+        all_paths.append(path)
+    for item in all_paths:
+        await delete_from_trash(item)
+
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+    return RedirectResponse(url="/trash", status_code=303)
 
 
 @app.get(
@@ -732,7 +911,7 @@ async def _notok_post(path: str) -> None:
     file_name = os.path.basename(path)
     media_type = "photo" if path.startswith(f"{PHOTOS_PATH}/") else "video"
     meta = await storage.get_submission_metadata(file_name)
-    await storage.delete_file(path, BUCKET_MAIN)
+    await move_to_trash(path)
     await stats.record_rejected(
         media_type,
         filename=file_name,

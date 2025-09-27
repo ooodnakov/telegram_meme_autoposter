@@ -19,6 +19,7 @@ from telegram_auto_poster.bot.callbacks import (
     notok_callback,
     ok_callback,
     push_callback,
+    restore_callback,
     schedule_browser_callback,
     schedule_callback,
     unschedule_callback,
@@ -33,6 +34,7 @@ from telegram_auto_poster.bot.commands import (
     help_command,
     notok_command,
     ok_command,
+    untrash_command,
     post_scheduled_media_job,
     reset_stats_command,
     save_stats_command,
@@ -53,6 +55,7 @@ from telegram_auto_poster.utils.ui import (
     CALLBACK_OK,
     CALLBACK_PUSH,
     CALLBACK_SCHEDULE,
+    CALLBACK_RESTORE,
 )
 
 
@@ -116,6 +119,7 @@ class TelegramMemeBot:
         application.add_handler(CommandHandler("get", get_chat_id_command))
         application.add_handler(CommandHandler("ok", ok_command))
         application.add_handler(CommandHandler("notok", notok_command))
+        application.add_handler(CommandHandler("untrash", untrash_command))
         application.add_handler(CommandHandler("sendall", send_batch_command))
         application.add_handler(CommandHandler("delete_batch", delete_batch_command))
         application.add_handler(CommandHandler("luba", send_luba_command))
@@ -136,6 +140,9 @@ class TelegramMemeBot:
         )
         application.add_handler(
             CallbackQueryHandler(notok_callback, pattern=rf"^{CALLBACK_NOTOK}$")
+        )
+        application.add_handler(
+            CallbackQueryHandler(restore_callback, pattern=rf"^{CALLBACK_RESTORE}$")
         )
         application.add_handler(
             CallbackQueryHandler(schedule_callback, pattern=rf"^{CALLBACK_SCHEDULE}$")
