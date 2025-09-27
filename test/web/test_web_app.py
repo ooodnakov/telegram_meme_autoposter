@@ -178,6 +178,7 @@ def test_change_language_updates_session():
             follow_redirects=False,
         )
         assert resp.status_code == 303
+        assert resp.headers["location"] == "/login"
         resp = client.get("/login")
         assert resp.status_code == 200
         assert "Change language" in resp.text

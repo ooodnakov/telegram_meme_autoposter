@@ -83,6 +83,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             stored_lang = request.session.get("language")  # type: ignore[assignment]
             if isinstance(stored_lang, str) and stored_lang in LANGUAGES:
                 lang = stored_lang
+        request.state.language = lang
         set_locale(lang)
         path = request.url.path
         if path.startswith("/static") or path in {"/login", "/auth", "/logout", "/language"}:
@@ -120,15 +121,16 @@ LANGUAGES: dict[str, str] = {
 if CONFIG.i18n.default not in LANGUAGES:
     LANGUAGES[CONFIG.i18n.default] = CONFIG.i18n.default
 
+LANGUAGE_CODES = list(LANGUAGES)
+
 
 def _cycle_language(current: str) -> str:
     """Return the next language code from :data:`LANGUAGES`."""
 
-    codes = list(LANGUAGES)
-    if current in LANGUAGES:
-        index = codes.index(current)
-        return codes[(index + 1) % len(codes)]
-    return codes[0]
+    if current in LANGUAGE_CODES:
+        index = LANGUAGE_CODES.index(current)
+        return LANGUAGE_CODES[(index + 1) % len(LANGUAGE_CODES)]
+    return LANGUAGE_CODES[0]
 
 
 def _safe_redirect_target(target: str) -> str:
@@ -542,7 +544,9 @@ async def logout(request: Request) -> Response:
 
 @app.post("/language")
 async def change_language(
-    request: Request, lang: str = Form(...), next_url: str = Form("/")
+    request: Request,
+    lang: str = Form(...),
+    next_url: str = Form(alias="next", default="/"),
 ) -> Response:
     """Persist the selected language in the session and redirect back."""
 

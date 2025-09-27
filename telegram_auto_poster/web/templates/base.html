@@ -47,10 +47,7 @@
                 </li>
             </ul>
             <div class="d-flex align-items-center ms-auto">
-                {% set current_lang = request.session.get('language', DEFAULT_LANGUAGE) %}
-                {% if current_lang not in LANGUAGES %}
-                    {% set current_lang = DEFAULT_LANGUAGE %}
-                {% endif %}
+                {% set current_lang = request.state.language %}
                 <span class="navbar-text text-white-50 me-2">{{ _('Language:') }} {{ get_language_label(current_lang) or current_lang }}</span>
                 <form method="post" action="/language" class="mb-0 d-inline">
                     <input type="hidden" name="lang" value="{{ cycle_language(current_lang) }}">
