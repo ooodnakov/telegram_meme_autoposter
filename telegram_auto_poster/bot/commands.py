@@ -354,7 +354,9 @@ async def untrash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     paths = extract_paths_from_message(target_message)
     if not paths:
         await update.message.reply_text(
-            _("No trashed media paths found. Reply to a trash message or include paths."),
+            _(
+                "No trashed media paths found. Reply to a trash message or include paths."
+            ),
         )
         return
 
@@ -365,9 +367,7 @@ async def untrash_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         except Exception as exc:
             logger.error(f"Failed to restore {path} from trash via command: {exc}")
             await update.message.reply_text(
-                _("Failed to restore {path}: {error}").format(
-                    path=path, error=str(exc)
-                )
+                _("Failed to restore {path}: {error}").format(path=path, error=str(exc))
             )
 
     if restored:

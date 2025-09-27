@@ -324,11 +324,13 @@ async def _gather_trash(*, offset: int = 0, limit: int | None = None) -> list[di
             if expires_display and not entry.get("expires_at"):
                 entry["expires_at"] = expires_display
         else:
-            posts.append({
-                "items": [item],
-                "trashed_at": trashed_display,
-                "expires_at": expires_display,
-            })
+            posts.append(
+                {
+                    "items": [item],
+                    "trashed_at": trashed_display,
+                    "expires_at": expires_display,
+                }
+            )
     posts.extend(grouped.values())
     return posts
 
