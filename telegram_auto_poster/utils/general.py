@@ -496,34 +496,28 @@ async def send_group_media(
     """Send a list of prepared items to one or more chats as a group."""
     if isinstance(chat_ids, (int, str)):
         chat_ids = [chat_ids]
-    if len(items) >= 2:
-        for chat_id in chat_ids:
-            for i in range(0, len(items), 10):
-                chunk = items[i : i + 10]
-                media_group = []
-                for idx, it in enumerate(chunk):
-                    is_first = i == 0 and idx == 0 and bool(caption)
-                    fh = it["file_obj"]
-                    fh.seek(0)
-                    if it["media_type"] == "video":
-                        media = InputMediaVideo(
-                            fh,
-                            supports_streaming=True,
-                            caption=caption if is_first else None,
-                        )
-                    else:
-                        media = InputMediaPhoto(
-                            fh,
-                            caption=caption if is_first else None,
-                        )
-                    media_group.append(media)
-                await bot.send_media_group(chat_id=chat_id, media=media_group)
-    elif len(items) == 1:
-        it = items[0]
-        await send_media_to_telegram(
-            bot,
-            chat_ids,
-            it["temp_path"],
-            caption=caption or None,
-            supports_streaming=(it["media_type"] == "video"),
-        )
+
+    if not items:
+        return
+
+    for chat_id in chat_ids:
+        for i in range(0, len(items), 10):
+            chunk = items[i : i + 10]
+            media_group = []
+            for idx, it in enumerate(chunk):
+                is_first = i == 0 and idx == 0 and bool(caption)
+                fh = it["file_obj"]
+                fh.seek(0)
+                if it["media_type"] == "video":
+                    media = InputMediaVideo(
+                        fh,
+                        supports_streaming=True,
+                        caption=caption if is_first else None,
+                    )
+                else:
+                    media = InputMediaPhoto(
+                        fh,
+                        caption=caption if is_first else None,
+                    )
+                media_group.append(media)
+            await bot.send_media_group(chat_id=chat_id, media=media_group)
