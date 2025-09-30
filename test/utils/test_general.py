@@ -192,6 +192,11 @@ async def test_send_group_media_batches_respect_limit(mocker):
     assert len(first_call["media"]) == 10
     assert len(second_call["media"]) == 3
 
+    assert first_call["read_timeout"] == 60
+    assert first_call["write_timeout"] == 60
+    assert second_call["read_timeout"] == 60
+    assert second_call["write_timeout"] == 60
+
     assert first_call["media"][0].caption == "Caption"
     for media in first_call["media"][1:]:
         assert media.caption is None
@@ -203,8 +208,13 @@ async def test_send_group_media_batches_respect_limit(mocker):
 
 
 @pytest.mark.asyncio
-async def test_send_group_media_single_item_grouped(mocker):
+async def test_send_group_media_single_item_uses_single_send(mocker):
     bot = SimpleNamespace(send_media_group=mocker.AsyncMock())
+    send_single = mocker.patch(
+        "telegram_auto_poster.utils.general.send_media_to_telegram",
+        new=mocker.AsyncMock(),
+    )
+
     fh = io.BytesIO(b"data")
     items = [
         {
@@ -220,8 +230,43 @@ async def test_send_group_media_single_item_grouped(mocker):
 
     await send_group_media(bot, 123, items, "Caption")
 
-    bot.send_media_group.assert_awaited_once()
-    sent_call = bot.send_media_group.await_args.kwargs
-    media = sent_call["media"]
-    assert len(media) == 1
-    assert media[0].caption == "Caption"
+    bot.send_media_group.assert_not_called()
+    send_single.assert_awaited_once_with(
+        bot,
+        [123],
+        "/tmp/file.jpg",
+        caption="Caption",
+        supports_streaming=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_group_media_single_video_enables_streaming(mocker):
+    bot = SimpleNamespace(send_media_group=mocker.AsyncMock())
+    send_single = mocker.patch(
+        "telegram_auto_poster.utils.general.send_media_to_telegram",
+        new=mocker.AsyncMock(),
+    )
+
+    fh = io.BytesIO(b"data")
+    items = [
+        {
+            "file_name": "file.mp4",
+            "media_type": "video",
+            "file_prefix": "videos/",
+            "path": "videos/file.mp4",
+            "temp_path": "/tmp/file.mp4",
+            "file_obj": fh,
+            "meta": None,
+        }
+    ]
+
+    await send_group_media(bot, 123, items, "Caption")
+
+    send_single.assert_awaited_once_with(
+        bot,
+        [123],
+        "/tmp/file.mp4",
+        caption="Caption",
+        supports_streaming=True,
+    )

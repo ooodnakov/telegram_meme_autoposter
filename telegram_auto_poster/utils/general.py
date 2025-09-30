@@ -490,6 +490,67 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
     return items, caption
 
 
+async def _send_media_group_with_retry(
+    bot: Bot, chat_id: int | str, media_group: list
+) -> None:
+    """Send a media group with retry logic for transient failures."""
+
+    max_retries = 3
+    last_error: Exception | None = None
+
+    for retry_count in range(1, max_retries + 1):
+        try:
+            await bot.send_media_group(
+                chat_id=chat_id,
+                media=media_group,
+                read_timeout=60,
+                write_timeout=60,
+            )
+            return
+        except (TimedOut, NetworkError) as exc:
+            last_error = exc
+            wait_time = 2**retry_count
+            logger.warning(
+                "Network error sending media group, retrying in {wait_time}s (attempt {retry}/{max_retries}): {error}",
+                wait_time=wait_time,
+                retry=retry_count,
+                max_retries=max_retries,
+                error=exc,
+            )
+            await stats.record_error(
+                "telegram",
+                f"Network error sending media group (retrying): {str(exc)}",
+            )
+            await asyncio.sleep(wait_time)
+        except BadRequest as exc:
+            logger.error("Bad request error when sending media group: {error}", error=exc)
+            await stats.record_error(
+                "telegram", f"Failed to send media group (bad request): {str(exc)}"
+            )
+            raise TelegramMediaError(
+                f"Failed to send media group (bad request): {str(exc)}"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - we want to log unexpected errors
+            logger.error("Unexpected error sending media group: {error}", error=exc)
+            await stats.record_error(
+                "telegram", f"Unexpected error sending media group: {str(exc)}"
+            )
+            raise TelegramMediaError(
+                f"Unexpected error sending media group: {str(exc)}"
+            ) from exc
+
+    logger.error(
+        "Failed to send media group after {max_retries} retries", max_retries=max_retries
+    )
+    await stats.record_error(
+        "telegram",
+        f"Failed to send media group after {max_retries} retries: {str(last_error)}",
+    )
+    raise TelegramMediaError(
+        f"Failed to send media group after {max_retries} retries: {str(last_error)}"
+    )
+
+
 async def send_group_media(
     bot: Bot, chat_ids: Iterable[int | str] | int | str, items: List[dict], caption: str
 ) -> None:
@@ -498,6 +559,17 @@ async def send_group_media(
         chat_ids = [chat_ids]
 
     if not items:
+        return
+
+    if len(items) == 1:
+        item = items[0]
+        await send_media_to_telegram(
+            bot,
+            chat_ids,
+            item["temp_path"],
+            caption=caption,
+            supports_streaming=item.get("media_type") == "video",
+        )
         return
 
     for chat_id in chat_ids:
@@ -520,4 +592,5 @@ async def send_group_media(
                         caption=caption if is_first else None,
                     )
                 media_group.append(media)
-            await bot.send_media_group(chat_id=chat_id, media=media_group)
+
+            await _send_media_group_with_retry(bot, chat_id, media_group)
