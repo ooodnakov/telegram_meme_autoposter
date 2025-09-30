@@ -1,3 +1,4 @@
+import io
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -11,6 +12,7 @@ from telegram_auto_poster.utils.general import (
     extract_filename,
     extract_paths_from_message,
     get_file_extension,
+    send_group_media,
 )
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
@@ -158,3 +160,113 @@ async def test_download_from_minio_missing_object_records_error_and_cleanup(monk
     assert len(unlink_calls) == 1
     assert unlink_calls[0].endswith(".jpg")
     storage.client.get_object.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_send_group_media_batches_respect_limit(mocker):
+    bot = SimpleNamespace(send_media_group=mocker.AsyncMock())
+    items = []
+    seek_spies = []
+
+    for idx in range(13):
+        fh = io.BytesIO(b"data")
+        seek_spies.append(mocker.spy(fh, "seek"))
+        items.append(
+            {
+                "file_name": f"file{idx}.jpg",
+                "media_type": "photo",
+                "file_prefix": "photos/",
+                "path": f"photos/file{idx}.jpg",
+                "temp_path": f"/tmp/file{idx}.jpg",
+                "file_obj": fh,
+                "meta": None,
+            }
+        )
+
+    await send_group_media(bot, 123, items, "Caption")
+
+    assert bot.send_media_group.await_count == 2
+    first_call = bot.send_media_group.await_args_list[0].kwargs
+    second_call = bot.send_media_group.await_args_list[1].kwargs
+
+    assert len(first_call["media"]) == 10
+    assert len(second_call["media"]) == 3
+
+    assert first_call["read_timeout"] == 60
+    assert first_call["write_timeout"] == 60
+    assert second_call["read_timeout"] == 60
+    assert second_call["write_timeout"] == 60
+
+    assert first_call["media"][0].caption == "Caption"
+    for media in first_call["media"][1:]:
+        assert media.caption is None
+    for media in second_call["media"]:
+        assert media.caption is None
+
+    for spy in seek_spies:
+        assert spy.call_args_list[0].args == (0,)
+
+
+@pytest.mark.asyncio
+async def test_send_group_media_single_item_uses_single_send(mocker):
+    bot = SimpleNamespace(send_media_group=mocker.AsyncMock())
+    send_single = mocker.patch(
+        "telegram_auto_poster.utils.general.send_media_to_telegram",
+        new=mocker.AsyncMock(),
+    )
+
+    fh = io.BytesIO(b"data")
+    items = [
+        {
+            "file_name": "file.jpg",
+            "media_type": "photo",
+            "file_prefix": "photos/",
+            "path": "photos/file.jpg",
+            "temp_path": "/tmp/file.jpg",
+            "file_obj": fh,
+            "meta": None,
+        }
+    ]
+
+    await send_group_media(bot, 123, items, "Caption")
+
+    bot.send_media_group.assert_not_called()
+    send_single.assert_awaited_once_with(
+        bot,
+        [123],
+        "/tmp/file.jpg",
+        caption="Caption",
+        supports_streaming=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_group_media_single_video_enables_streaming(mocker):
+    bot = SimpleNamespace(send_media_group=mocker.AsyncMock())
+    send_single = mocker.patch(
+        "telegram_auto_poster.utils.general.send_media_to_telegram",
+        new=mocker.AsyncMock(),
+    )
+
+    fh = io.BytesIO(b"data")
+    items = [
+        {
+            "file_name": "file.mp4",
+            "media_type": "video",
+            "file_prefix": "videos/",
+            "path": "videos/file.mp4",
+            "temp_path": "/tmp/file.mp4",
+            "file_obj": fh,
+            "meta": None,
+        }
+    ]
+
+    await send_group_media(bot, 123, items, "Caption")
+
+    send_single.assert_awaited_once_with(
+        bot,
+        [123],
+        "/tmp/file.mp4",
+        caption="Caption",
+        supports_streaming=True,
+    )
