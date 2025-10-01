@@ -523,7 +523,9 @@ async def _send_media_group_with_retry(
             )
             await asyncio.sleep(wait_time)
         except BadRequest as exc:
-            logger.error("Bad request error when sending media group: {error}", error=exc)
+            logger.error(
+                "Bad request error when sending media group: {error}", error=exc
+            )
             await stats.record_error(
                 "telegram", f"Failed to send media group (bad request): {str(exc)}"
             )
@@ -540,7 +542,8 @@ async def _send_media_group_with_retry(
             ) from exc
 
     logger.error(
-        "Failed to send media group after {max_retries} retries", max_retries=max_retries
+        "Failed to send media group after {max_retries} retries",
+        max_retries=max_retries,
     )
     await stats.record_error(
         "telegram",

@@ -362,9 +362,7 @@ class MediaStats:
             approved = int(float(approved_scores[i] or 0))
             rejected = int(float(rejected_scores[i] or 0))
             decision_total = approved + rejected
-            acceptance = (
-                (approved / decision_total) * 100 if decision_total else 0.0
-            )
+            acceptance = (approved / decision_total) * 100 if decision_total else 0.0
             entries.append(
                 {
                     "source": source,

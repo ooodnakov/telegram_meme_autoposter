@@ -86,7 +86,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.language = lang
         set_locale(lang)
         path = request.url.path
-        if path.startswith("/static") or path in {"/login", "/auth", "/logout", "/language"}:
+        if path.startswith("/static") or path in {
+            "/login",
+            "/auth",
+            "/logout",
+            "/language",
+        }:
             return await call_next(request)
         user_id = request.session.get("user_id")
         logger.debug(
@@ -553,7 +558,9 @@ async def change_language(
     """Persist the selected language in the session and redirect back."""
 
     if lang not in LANGUAGES:
-        return JSONResponse({"status": "error", "detail": "invalid language"}, status_code=400)
+        return JSONResponse(
+            {"status": "error", "detail": "invalid language"}, status_code=400
+        )
     request.session["language"] = lang
     set_locale(lang)
     target = _safe_redirect_target(next_url)
