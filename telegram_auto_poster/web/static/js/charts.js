@@ -11,7 +11,9 @@
         if (canvas) {
             const ctx = canvas.getContext('2d');
             const chartConfig = chartConfigBuilder(canvas.dataset);
-            new Chart(ctx, chartConfig);
+            if (chartConfig) {
+                new Chart(ctx, chartConfig);
+            }
         }
     };
 
@@ -150,6 +152,143 @@
             },
             options: {
                 responsive: true,
+            },
+        };
+    });
+
+    createChartFromCanvas('source-acceptance', (dataset) => {
+        const sourcesRaw = dataset.sources ? JSON.parse(dataset.sources) : [];
+        if (sourcesRaw.length === 0) {
+            return null;
+        }
+        const labels = sourcesRaw.map((entry) => entry.source);
+        const acceptanceRates = sourcesRaw.map((entry) => Number(entry.acceptance_rate || 0));
+        return {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Acceptance %',
+                    data: acceptanceRates,
+                    backgroundColor: '#0d6efd',
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 100,
+                    },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            afterBody: (items) => {
+                                if (!items.length) {
+                                    return [];
+                                }
+                                const idx = items[0].dataIndex;
+                                const entry = sourcesRaw[idx];
+                                return [
+                                    `Submissions: ${entry.submissions}`,
+                                    `Approved: ${entry.approved}`,
+                                    `Rejected: ${entry.rejected}`,
+                                ];
+                            },
+                        },
+                    },
+                    legend: {
+                        display: false,
+                    },
+                },
+            },
+        };
+    });
+
+    createChartFromCanvas('processing-histogram', (dataset) => {
+        const histogram = dataset.histogram ? JSON.parse(dataset.histogram) : {};
+        const photoBuckets = histogram.photo || [];
+        const videoBuckets = histogram.video || [];
+        const labels = photoBuckets.length
+            ? photoBuckets.map((entry) => entry.label)
+            : videoBuckets.map((entry) => entry.label);
+        if (!labels.length) {
+            return null;
+        }
+        const photoMap = new Map(photoBuckets.map((entry) => [entry.label, entry.count]));
+        const videoMap = new Map(videoBuckets.map((entry) => [entry.label, entry.count]));
+        const photoCounts = labels.map((label) => Number(photoMap.get(label) || 0));
+        const videoCounts = labels.map((label) => Number(videoMap.get(label) || 0));
+        return {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Photos',
+                        data: photoCounts,
+                        backgroundColor: '#0d6efd',
+                    },
+                    {
+                        label: 'Videos',
+                        data: videoCounts,
+                        backgroundColor: '#6610f2',
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            callback: (value) => (Number.isInteger(value) ? value : null),
+                        },
+                    },
+                },
+            },
+        };
+    });
+
+    createChartFromCanvas('daily-post-counts', (dataset) => {
+        const postsRaw = dataset.posts ? JSON.parse(dataset.posts) : [];
+        if (!postsRaw.length) {
+            return null;
+        }
+        const labels = postsRaw.map((entry) => entry.date);
+        const counts = postsRaw.map((entry) => Number(entry.count || 0));
+        return {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Posts',
+                    data: counts,
+                    borderColor: '#198754',
+                    backgroundColor: 'rgba(25, 135, 84, 0.2)',
+                    tension: 0.3,
+                    fill: true,
+                }],
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1,
+                            callback: (value) => (Number.isInteger(value) ? value : null),
+                        },
+                    },
+                },
+                plugins: {
+                    legend: {
+                        display: false,
+                    },
+                },
             },
         };
     });

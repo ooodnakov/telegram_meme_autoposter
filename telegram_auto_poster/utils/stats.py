@@ -27,6 +27,12 @@ class MediaStats:
 
     _instance: "MediaStats" | None = None
 
+    processing_histogram_bounds: tuple[float, ...]
+    """Upper bounds (seconds) for processing time histogram buckets."""
+
+    processing_histogram_labels: tuple[str, ...]
+    """Human friendly labels for :attr:`processing_histogram_bounds`."""
+
     def __new__(cls) -> "MediaStats":  # pragma: no cover - singleton
         """Create or return the singleton instance."""
         if cls._instance is None:
@@ -53,6 +59,14 @@ class MediaStats:
                 "client_reconnects",
                 "rate_limit_drops",
             ]
+            cls._instance.processing_histogram_bounds = (1.0, 2.0, 5.0, 10.0)
+            cls._instance.processing_histogram_labels = (
+                "<1s",
+                "1-2s",
+                "2-5s",
+                "5-10s",
+                "≥10s",
+            )
             try:  # Initialise counters immediately
                 loop = asyncio.get_running_loop()
                 loop.create_task(cls._instance._init())
@@ -97,6 +111,7 @@ class MediaStats:
         await self._increment("media_processed")
         await self._increment("media_processed", scope="total")
         await self._record_duration(f"{media_type}_processing", processing_time)
+        await self._record_processing_histogram(media_type, processing_time)
         if media_type == "photo":
             await self._increment("photos_processed")
             await self._increment("photos_processed", scope="total")
@@ -119,6 +134,15 @@ class MediaStats:
         await self.r.incrby(hour_key, count)
         if source:
             await self.r.zincrby(_redis_key("leaderboard", "approved"), count, source)
+
+    async def record_post_published(
+        self, count: int = 1, *, timestamp: datetime.datetime | None = None
+    ) -> None:
+        """Record that ``count`` posts were published to the target channels."""
+
+        ts = timestamp or now_utc()
+        day_key = ts.strftime("%Y-%m-%d")
+        await self.r.incrby(_redis_key("posts", day_key), count)
 
     async def record_rejected(
         self, media_type: str, filename: str | None = None, source: str | None = None
@@ -208,6 +232,23 @@ class MediaStats:
             stats[name] = int(value)
         return stats
 
+    async def get_daily_post_counts(self, days: int = 14) -> list[dict[str, str | int]]:
+        """Return the number of posts published per day for the last ``days`` days."""
+
+        today = now_utc().date()
+        start = today - datetime.timedelta(days=days - 1)
+        dates = [start + datetime.timedelta(days=i) for i in range(days)]
+        keys = [_redis_key("posts", d.strftime("%Y-%m-%d")) for d in dates]
+        if keys:
+            raw_values = await self.r.mget(*keys)
+        else:  # pragma: no cover - empty range safeguard
+            raw_values = []
+        results: list[dict[str, str | int]] = []
+        for date_obj, value in zip(dates, raw_values):
+            count = int(value) if value else 0
+            results.append({"date": date_obj.isoformat(), "count": count})
+        return results
+
     async def _avg(self, base: str) -> float:
         """Return the average duration recorded for ``base``."""
         total = await self.r.get(_redis_key("perf", f"{base}_total")) or 0
@@ -289,6 +330,67 @@ class MediaStats:
             "approved": appr_sorted,
             "rejected": rej_sorted,
         }
+
+    async def get_source_acceptance(
+        self, limit: int = 8
+    ) -> list[dict[str, float | int | str]]:
+        """Return per-source acceptance and rejection counts and rates."""
+
+        subs_key = _redis_key("leaderboard", "submissions")
+        appr_key = _redis_key("leaderboard", "approved")
+        rej_key = _redis_key("leaderboard", "rejected")
+        top_sources = await self.r.zrevrange(subs_key, 0, limit - 1, withscores=True)
+        if not top_sources:
+            return []
+        sources = [
+            raw_source.decode() if isinstance(raw_source, bytes) else raw_source
+            for raw_source, _ in top_sources
+        ]
+        pipe = self.r.pipeline(transaction=False)
+        for source in sources:
+            pipe.zscore(appr_key, source)
+            pipe.zscore(rej_key, source)
+        scores = await pipe.execute()
+
+        approved_scores = scores[::2]
+        rejected_scores = scores[1::2]
+
+        entries: list[dict[str, float | int | str]] = []
+        for i, (_, raw_submissions) in enumerate(top_sources):
+            source = sources[i]
+            submissions = int(float(raw_submissions))
+            approved = int(float(approved_scores[i] or 0))
+            rejected = int(float(rejected_scores[i] or 0))
+            decision_total = approved + rejected
+            acceptance = (approved / decision_total) * 100 if decision_total else 0.0
+            entries.append(
+                {
+                    "source": source,
+                    "submissions": submissions,
+                    "approved": approved,
+                    "rejected": rejected,
+                    "acceptance_rate": acceptance,
+                }
+            )
+        return entries
+
+    async def get_processing_histogram(self) -> dict[str, list[dict[str, float | int]]]:
+        """Return histogram buckets for photo and video processing durations."""
+
+        result: dict[str, list[dict[str, float | int]]] = {}
+        for media_type in ("photo", "video"):
+            key = _redis_key("hist", f"{media_type}_processing")
+            raw = await self.r.hgetall(key) or {}
+            processed: list[dict[str, float | int]] = []
+            for label in self.processing_histogram_labels:
+                value = raw.get(label)
+                if value is None and isinstance(raw, dict):
+                    # aiovalkey may return bytes keys/values
+                    value = raw.get(label.encode())
+                count = int(value) if value else 0
+                processed.append({"label": label, "count": count})
+            result[media_type] = processed
+        return result
 
     async def generate_stats_report(self, reset_daily: bool = True) -> str:
         """Return a formatted statistics report for admins."""
@@ -402,6 +504,23 @@ class MediaStats:
             await self.r.save()
         except Exception:  # pragma: no cover - best effort
             pass
+
+    async def _record_processing_histogram(
+        self, media_type: str, duration: float
+    ) -> None:
+        """Record ``duration`` in the histogram for ``media_type`` processing."""
+
+        bucket = self._processing_histogram_bucket(duration)
+        key = _redis_key("hist", f"{media_type}_processing")
+        await self.r.hincrby(key, bucket, 1)
+
+    def _processing_histogram_bucket(self, duration: float) -> str:
+        """Return the histogram label bucket for ``duration`` seconds."""
+
+        for idx, bound in enumerate(self.processing_histogram_bounds):
+            if duration < bound:
+                return self.processing_histogram_labels[idx]
+        return self.processing_histogram_labels[-1]
 
 
 stats = MediaStats()

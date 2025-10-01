@@ -86,7 +86,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.language = lang
         set_locale(lang)
         path = request.url.path
-        if path.startswith("/static") or path in {"/login", "/auth", "/logout", "/language"}:
+        if path.startswith("/static") or path in {
+            "/login",
+            "/auth",
+            "/logout",
+            "/language",
+        }:
             return await call_next(request)
         user_id = request.session.get("user_id")
         logger.debug(
@@ -553,7 +558,9 @@ async def change_language(
     """Persist the selected language in the session and redirect back."""
 
     if lang not in LANGUAGES:
-        return JSONResponse({"status": "error", "detail": "invalid language"}, status_code=400)
+        return JSONResponse(
+            {"status": "error", "detail": "invalid language"}, status_code=400
+        )
     request.session["language"] = lang
     set_locale(lang)
     target = _safe_redirect_target(next_url)
@@ -850,6 +857,7 @@ async def _push_post(path: str) -> None:
             caption=caption or None,
             supports_streaming=media_type == "video",
         )
+        await stats.record_post_published(len(TARGET_CHANNELS))
         await _finalize_post(item, len(TARGET_CHANNELS))
     finally:
         cleanup_temp_file(temp_path)
@@ -860,6 +868,7 @@ async def _push_post_group(paths: list[str]) -> None:
     items, caption = await prepare_group_items(paths)
     try:
         await send_group_media(bot, TARGET_CHANNELS, items, caption)
+        await stats.record_post_published(len(TARGET_CHANNELS))
         for it in items:
             await _finalize_post(it, len(TARGET_CHANNELS))
     finally:
@@ -1088,11 +1097,22 @@ async def unschedule(request: Request, path: str = Form(...)) -> Response:
 )
 async def stats_view(request: Request) -> HTMLResponse:
     """Render statistics about bot usage and performance."""
-    daily, total, perf, busiest = await asyncio.gather(
+    (
+        daily,
+        total,
+        perf,
+        busiest,
+        source_acceptance,
+        processing_histogram,
+        daily_post_counts,
+    ) = await asyncio.gather(
         stats.get_daily_stats(reset_if_new_day=False),
         stats.get_total_stats(),
         stats.get_performance_metrics(),
         stats.get_busiest_hour(),
+        stats.get_source_acceptance(),
+        stats.get_processing_histogram(),
+        stats.get_daily_post_counts(),
     )
     busiest_hour, busiest_count = busiest
     approval_24h, approval_total, success_24h = await asyncio.gather(
@@ -1118,6 +1138,9 @@ async def stats_view(request: Request) -> HTMLResponse:
         "busiest_count": busiest_count,
         "daily_errors": daily_errors,
         "total_errors": total_errors,
+        "source_acceptance": source_acceptance,
+        "processing_histogram": processing_histogram,
+        "daily_post_counts": daily_post_counts,
     }
     return templates.TemplateResponse("stats.html", context)
 

@@ -358,6 +358,7 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await send_group_media(
             context.bot, target_channels, media_items, caption_to_send
         )
+        await stats.record_post_published(len(target_channels))
 
         # Post-send bookkeeping: dedup, delete, stats, notify
         for item in media_items:
