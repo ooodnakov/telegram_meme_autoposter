@@ -129,8 +129,51 @@
         </div>
     </div>
 </div>
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>{{ _('Per-Source Acceptance Rate') }}</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="source-acceptance"
+                    data-sources="{{ source_acceptance|tojson }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>{{ _('Processing Time Histogram') }}</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="processing-histogram"
+                    data-histogram="{{ processing_histogram|tojson }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>{{ _('Daily Posts') }}</h2>
+            </div>
+            <div class="card-body">
+                <canvas
+                    id="daily-post-counts"
+                    data-posts="{{ daily_post_counts|tojson }}"
+                ></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/charts.js?v5"></script>
+<script src="/static/js/charts.js?v6"></script>
 {% endblock %}

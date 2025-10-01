@@ -247,6 +247,8 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await storage.delete_file(PHOTOS_PATH + "/" + object_name, BUCKET_MAIN)
         logger.info("Created new post!")
 
+        await stats.record_post_published(len(target_channels))
+
         # Record stats
         media_type = "photo" if ext.lower() in [".jpg", ".jpeg", ".png"] else "video"
         meta = await storage.get_submission_metadata(object_name)
@@ -526,6 +528,8 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                         in [".mp4", ".avi", ".mov"]
                     ),
                 )
+
+                await stats.record_post_published(len(target_channels))
 
                 # Clean up
                 await storage.delete_file(file_path, BUCKET_MAIN)

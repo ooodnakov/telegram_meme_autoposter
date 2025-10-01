@@ -157,6 +157,18 @@ def test_stats_endpoint(mocker, auth_client: TestClient):
         "telegram_auto_poster.web.app.stats.get_success_rate_24h",
         new=mocker.AsyncMock(return_value=0.0),
     )
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.get_source_acceptance",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.get_processing_histogram",
+        new=mocker.AsyncMock(return_value={"photo": [], "video": []}),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.get_daily_post_counts",
+        new=mocker.AsyncMock(return_value=[]),
+    )
     resp = auth_client.get("/stats")
     assert resp.status_code == 200
 
