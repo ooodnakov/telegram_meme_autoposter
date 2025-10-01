@@ -232,7 +232,7 @@ class MediaStats:
             stats[name] = int(value)
         return stats
 
-    async def get_daily_post_counts(self, days: int = 14) -> list[dict[str, int]]:
+    async def get_daily_post_counts(self, days: int = 14) -> list[dict[str, str | int]]:
         """Return the number of posts published per day for the last ``days`` days."""
 
         today = now_utc().date()
@@ -243,7 +243,7 @@ class MediaStats:
             raw_values = await self.r.mget(*keys)
         else:  # pragma: no cover - empty range safeguard
             raw_values = []
-        results: list[dict[str, int]] = []
+        results: list[dict[str, str | int]] = []
         for date_obj, value in zip(dates, raw_values):
             count = int(value) if value else 0
             results.append({"date": date_obj.isoformat(), "count": count})
@@ -342,14 +342,25 @@ class MediaStats:
         top_sources = await self.r.zrevrange(subs_key, 0, limit - 1, withscores=True)
         if not top_sources:
             return []
+        sources = [
+            raw_source.decode() if isinstance(raw_source, bytes) else raw_source
+            for raw_source, _ in top_sources
+        ]
+        pipe = self.r.pipeline(transaction=False)
+        for source in sources:
+            pipe.zscore(appr_key, source)
+            pipe.zscore(rej_key, source)
+        scores = await pipe.execute()
+
+        approved_scores = scores[::2]
+        rejected_scores = scores[1::2]
+
         entries: list[dict[str, float | int | str]] = []
-        for raw_source, raw_submissions in top_sources:
-            source = raw_source.decode() if isinstance(raw_source, bytes) else raw_source
+        for i, (_, raw_submissions) in enumerate(top_sources):
+            source = sources[i]
             submissions = int(float(raw_submissions))
-            approved_raw = await self.r.zscore(appr_key, source)
-            rejected_raw = await self.r.zscore(rej_key, source)
-            approved = int(float(approved_raw or 0))
-            rejected = int(float(rejected_raw or 0))
+            approved = int(float(approved_scores[i] or 0))
+            rejected = int(float(rejected_scores[i] or 0))
             decision_total = approved + rejected
             acceptance = (
                 (approved / decision_total) * 100 if decision_total else 0.0

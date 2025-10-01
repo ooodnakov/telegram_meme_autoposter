@@ -217,14 +217,10 @@
         if (!labels.length) {
             return null;
         }
-        const photoCounts = labels.map((label) => {
-            const match = photoBuckets.find((entry) => entry.label === label);
-            return match ? Number(match.count) : 0;
-        });
-        const videoCounts = labels.map((label) => {
-            const match = videoBuckets.find((entry) => entry.label === label);
-            return match ? Number(match.count) : 0;
-        });
+        const photoMap = new Map(photoBuckets.map((entry) => [entry.label, entry.count]));
+        const videoMap = new Map(videoBuckets.map((entry) => [entry.label, entry.count]));
+        const photoCounts = labels.map((label) => Number(photoMap.get(label) || 0));
+        const videoCounts = labels.map((label) => Number(videoMap.get(label) || 0));
         return {
             type: 'bar',
             data: {
