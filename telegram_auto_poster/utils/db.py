@@ -7,15 +7,24 @@ from typing import TYPE_CHECKING, Any, cast
 
 from telegram_auto_poster.config import CONFIG
 
-if TYPE_CHECKING:  # pragma: no cover - imported only for type checking
-    from valkey import Valkey as ValkeyClient
-    from valkey.asyncio import Valkey as AsyncValkeyClient
-else:  # pragma: no cover - fall back to ``Any`` when dependency missing
-    ValkeyClient = Any  # type: ignore[misc]
-    AsyncValkeyClient = Any  # type: ignore[misc]
+if CONFIG.valkey.backend == "pogocache":  # pragma: no cover - backend decided at runtime
+    from telegram_auto_poster.utils.pogocache import (  # type: ignore[assignment]
+        AsyncValkey as AsyncValkeyClient,
+    )
+    from telegram_auto_poster.utils.pogocache import Valkey as ValkeyClient
 
-Valkey: Any | None = None
-AsyncValkey: Any | None = None
+    Valkey: Any | None = ValkeyClient
+    AsyncValkey: Any | None = AsyncValkeyClient
+else:
+    if TYPE_CHECKING:  # pragma: no cover - imported only for type checking
+        from valkey import Valkey as ValkeyClient
+        from valkey.asyncio import Valkey as AsyncValkeyClient
+    else:  # pragma: no cover - fall back to ``Any`` when dependency missing
+        ValkeyClient = Any  # type: ignore[misc]
+        AsyncValkeyClient = Any  # type: ignore[misc]
+
+    Valkey: Any | None = None
+    AsyncValkey: Any | None = None
 
 _redis_client: ValkeyClient | None = None
 _async_redis_client: AsyncValkeyClient | None = None
@@ -31,24 +40,26 @@ def get_redis_client() -> ValkeyClient:
     global _redis_client
     if _redis_client is None:
         global Valkey
-        if Valkey is None:  # Import here so monkeypatching works
-            from valkey import Valkey as _Valkey
+        if CONFIG.valkey.backend == "pogocache":
+            from telegram_auto_poster.utils.pogocache import Valkey as _Valkey
 
             Valkey = _Valkey
+            _redis_client = Valkey()
+        else:
+            if Valkey is None:  # Import here so monkeypatching works
+                from valkey import Valkey as _Valkey
 
-        valkey_host = CONFIG.valkey.host
-        valkey_port = CONFIG.valkey.port
-        valkey_pass = CONFIG.valkey.password.get_secret_value()
-        _redis_client = Valkey(
-            host=valkey_host,
-            port=valkey_port,
-            password=valkey_pass,
-            decode_responses=True,
-        )
-    else:
-        # When using fakeredis in tests, ensure a clean database for each call
-        if _redis_client.__class__.__module__.startswith("fakeredis"):
-            _redis_client.flushdb()
+                Valkey = _Valkey
+
+            valkey_host = CONFIG.valkey.host
+            valkey_port = CONFIG.valkey.port
+            valkey_pass = CONFIG.valkey.password.get_secret_value()
+            _redis_client = Valkey(
+                host=valkey_host,
+                port=valkey_port,
+                password=valkey_pass,
+                decode_responses=True,
+            )
     return _redis_client
 
 
@@ -57,21 +68,39 @@ def get_async_redis_client() -> AsyncValkeyClient:
     global _async_redis_client
     if _async_redis_client is None:
         global AsyncValkey
-        if AsyncValkey is None:  # Import here so monkeypatching works
-            from valkey.asyncio import Valkey as _AsyncValkey
+        if CONFIG.valkey.backend == "pogocache":
+            from telegram_auto_poster.utils.pogocache import AsyncValkey as _AsyncValkey
 
             AsyncValkey = _AsyncValkey
+            _async_redis_client = AsyncValkey()
+        else:
+            if AsyncValkey is None:  # Import here so monkeypatching works
+                from valkey.asyncio import Valkey as _AsyncValkey
 
-        valkey_host = CONFIG.valkey.host
-        valkey_port = CONFIG.valkey.port
-        valkey_pass = CONFIG.valkey.password.get_secret_value()
-        _async_redis_client = AsyncValkey(
-            host=valkey_host,
-            port=valkey_port,
-            password=valkey_pass,
-            decode_responses=True,
-        )
+                AsyncValkey = _AsyncValkey
+
+            valkey_host = CONFIG.valkey.host
+            valkey_port = CONFIG.valkey.port
+            valkey_pass = CONFIG.valkey.password.get_secret_value()
+            _async_redis_client = AsyncValkey(
+                host=valkey_host,
+                port=valkey_port,
+                password=valkey_pass,
+                decode_responses=True,
+            )
     return _async_redis_client
+
+
+def reset_cache_for_tests() -> None:
+    """Reset cached clients and the in-memory store when using pogo cache."""
+
+    global _redis_client, _async_redis_client
+    _redis_client = None
+    _async_redis_client = None
+    if CONFIG.valkey.backend == "pogocache":
+        from telegram_auto_poster.utils.pogocache import reset_store
+
+        reset_store()
 
 
 def _redis_prefix() -> str:

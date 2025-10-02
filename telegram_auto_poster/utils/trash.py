@@ -6,7 +6,6 @@ import os
 from datetime import datetime, timedelta
 
 from loguru import logger
-from miniopy_async.commonconfig import CopySource
 
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
@@ -20,7 +19,7 @@ from telegram_auto_poster.utils.db import (
     get_expired_trashed_posts,
     remove_trashed_post,
 )
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import CopySource, storage
 from telegram_auto_poster.utils.timezone import now_utc
 
 

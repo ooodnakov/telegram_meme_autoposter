@@ -1,35 +1,17 @@
 import importlib
 
-import fakeredis
-import fakeredis.aioredis
 import pytest
-import valkey
+
+from telegram_auto_poster.utils import db
+from telegram_auto_poster.utils.storage import reset_storage_for_tests
 
 
 @pytest.fixture
-def stats_module(monkeypatch, mocker):
-    """Prepare test environment with fake Redis."""
-
-    monkeypatch.setattr(
-        valkey, "Valkey", lambda *a, **k: fakeredis.FakeRedis(decode_responses=True)
-    )
-    monkeypatch.setattr(
-        valkey.asyncio,
-        "Valkey",
-        lambda *a, **k: fakeredis.aioredis.FakeRedis(decode_responses=True),
-    )
-    monkeypatch.setenv("VALKEY_HOST", "localhost")
-    monkeypatch.setenv("VALKEY_PORT", "6379")
-    monkeypatch.setenv("VALKEY_PASS", "redis")
-    monkeypatch.setenv("REDIS_PREFIX", "telegram_auto_poster_test")
-
-    import telegram_auto_poster.config as cfg
-
-    importlib.reload(cfg)
+def stats_module():
+    db.reset_cache_for_tests()
+    reset_storage_for_tests()
     import telegram_auto_poster.utils.stats as stats_module
-    import telegram_auto_poster.utils.storage as storage_module
 
-    importlib.reload(storage_module)
     importlib.reload(stats_module)
     return stats_module
 

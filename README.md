@@ -23,8 +23,8 @@ Follow these steps to get running fast. For expanded docs, see the Wiki.
    ```
 4. Fill in credentials and endpoints
    - Telegram Bot token and API ID/Hash
-   - MinIO endpoint, access/secret keys, bucket
-   - Valkey host/port
+   - MinIO endpoint, access/secret keys, bucket (or enable the Garage backend)
+   - Valkey host/port (or switch to the in-memory PogoCache backend)
    - Target channel and admin IDs in `config.ini`
 5. Run the app
    ```bash
@@ -42,6 +42,8 @@ Follow these steps to get running fast. For expanded docs, see the Wiki.
 - Configure attribution strings and the default suggestion caption under `[Branding]`.
 - Change watermark assets, relative size, and transparency for images via `[WatermarkImage]`.
 - Tune video watermark path, size range, and animation speed in `[WatermarkVideo]`.
+- Run without external services by setting `VALKEY_BACKEND=pogocache` and/or
+  `MINIO_BACKEND=garage` (use `GARAGE_ROOT` to choose a local storage path).
 
 Every option can also be overridden with environment variables (e.g. `BRANDING_ATTRIBUTION`,
 `WATERMARK_IMAGE_PATH`).

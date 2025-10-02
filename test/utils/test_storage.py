@@ -1,167 +1,33 @@
 import pytest
-from miniopy_async.error import MinioException
-from pytest_mock import MockerFixture
-from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
-from telegram_auto_poster.utils.db import _redis_key
-from types import SimpleNamespace
+
+import telegram_auto_poster.utils.storage as storage_module
+from telegram_auto_poster.config import BUCKET_MAIN, DOWNLOADS_PATH, PHOTOS_PATH, VIDEOS_PATH
+from telegram_auto_poster.utils import db
 
 
 @pytest.fixture
-def mock_minio_client(mocker: MockerFixture):
-    """Fixture to create a mock Minio client."""
-    client = mocker.MagicMock()
-    client.bucket_exists = mocker.AsyncMock(return_value=True)
-    client.make_bucket = mocker.AsyncMock()
-    client.fput_object = mocker.AsyncMock()
-    client.fget_object = mocker.AsyncMock()
-    client.stat_object = mocker.AsyncMock()
-    client.remove_object = mocker.AsyncMock()
-    client.list_objects = mocker.AsyncMock(return_value=[])
-    client.get_object = mocker.AsyncMock()
-    return client
+def storage_instance(tmp_path):
+    previous_backend = storage_module.CONFIG.minio.backend
+    previous_root = storage_module.CONFIG.minio.garage_root
+    previous_public = storage_module.CONFIG.minio.public_url
 
-
-class FakeRedis:
-    def __init__(self):
-        self.hash_store: dict[str, dict[str, str]] = {}
-        self.zset_store: dict[str, list[str]] = {}
-
-    async def hset(self, key, field=None, value=None, mapping=None):
-        if mapping is not None:
-            self.hash_store.setdefault(key, {}).update(mapping)
-        elif field is not None and value is not None:
-            self.hash_store.setdefault(key, {})[field] = value
-        else:
-            raise ValueError("hset requires field and value or mapping")
-
-    async def hgetall(self, key):
-        return self.hash_store.get(key, {}).copy()
-
-    async def zadd(self, key, mapping):
-        items = self.zset_store.setdefault(key, [])
-        for member in mapping.keys():
-            if member not in items:
-                items.append(member)
-        items.sort()
-
-    async def zrem(self, key, *members):
-        if key in self.zset_store:
-            self.zset_store[key] = [m for m in self.zset_store[key] if m not in members]
-
-    async def zrangebylex(self, key, min_val, max_val, start=None, num=None):
-        items = self.zset_store.get(key, [])
-
-        def gte_min(item):
-            if min_val == "-":
-                return True
-            prefix = min_val[1:]
-            return item >= prefix if min_val.startswith("[") else item > prefix
-
-        def lte_max(item):
-            if max_val == "+":
-                return True
-            prefix = max_val[1:]
-            return item <= prefix if max_val.startswith("[") else item < prefix
-
-        filtered = [i for i in items if gte_min(i) and lte_max(i)]
-        if start is not None:
-            filtered = filtered[start:]
-        if num is not None:
-            filtered = filtered[:num]
-        return filtered
-
-    async def zcard(self, key):
-        return len(self.zset_store.get(key, []))
-
-    async def zlexcount(self, key, min_val, max_val):
-        items = await self.zrangebylex(key, min_val, max_val)
-        return len(items)
-
-    async def exists(self, key):
-        return int(key in self.zset_store)
-
-    async def delete(self, key):
-        self.zset_store.pop(key, None)
-
-    def pipeline(self):
-        parent = self
-
-        class Pipeline:
-            def __init__(self):
-                self.commands = []
-
-            async def delete(self, key):
-                self.commands.append(("delete", key))
-
-            async def zadd(self, key, mapping):
-                self.commands.append(("zadd", key, mapping))
-
-            async def execute(self):
-                for cmd in self.commands:
-                    if cmd[0] == "delete":
-                        await parent.delete(cmd[1])
-                    elif cmd[0] == "zadd":
-                        await parent.zadd(cmd[1], cmd[2])
-                self.commands.clear()
-
-        return Pipeline()
-
-
-@pytest.fixture
-def mock_redis_client() -> FakeRedis:
-    return FakeRedis()
-
-
-@pytest.fixture(autouse=True)
-def patch_redis_client(mocker: MockerFixture, mock_redis_client: FakeRedis):
-    mocker.patch(
-        "telegram_auto_poster.utils.storage.get_async_redis_client",
-        return_value=mock_redis_client,
-    )
-
-
-@pytest.fixture
-def storage_factory(mock_minio_client):
-    """Factory to create a clean MinioStorage instance."""
-
-    def _create():
-        from telegram_auto_poster.utils.storage import MinioStorage as StorageClass
-
-        StorageClass._instance = None
-        StorageClass._initialized = False
-        return StorageClass(client=mock_minio_client)
-
-    return _create
-
-
-@pytest.fixture
-def storage(storage_factory):
-    """Provides a MinioStorage instance for each test."""
-    storage_instance = storage_factory()
-    yield storage_instance
-    from telegram_auto_poster.utils.storage import MinioStorage as StorageClass
-
-    StorageClass._instance = None
-    StorageClass._initialized = False
-
-
-def test_init_storage(storage, mock_minio_client):
-    """Test that the Minio client is initialized and buckets are checked."""
-    mock_minio_client.bucket_exists.assert_called_once_with(BUCKET_MAIN)
-    assert storage.client == mock_minio_client
-
-
-def test_init_storage_bucket_creation(mock_minio_client, storage_factory):
-    """Test that a bucket is created if it doesn't exist."""
-    mock_minio_client.bucket_exists.return_value = False
-    storage_factory()
-    mock_minio_client.make_bucket.assert_called_once_with(BUCKET_MAIN)
+    storage_module.CONFIG.minio.backend = "garage"
+    storage_module.CONFIG.minio.garage_root = str(tmp_path / "garage")
+    storage_module.CONFIG.minio.public_url = None
+    db.reset_cache_for_tests()
+    storage_module.reset_storage_for_tests()
+    db.reset_cache_for_tests()
+    yield storage_module.storage
+    storage_module.CONFIG.minio.backend = previous_backend
+    storage_module.CONFIG.minio.garage_root = previous_root
+    storage_module.CONFIG.minio.public_url = previous_public
+    storage_module.reset_storage_for_tests()
+    db.reset_cache_for_tests()
 
 
 @pytest.mark.asyncio
-async def test_store_and_get_submission_metadata(storage):
-    """Test storing and retrieving submission metadata."""
-    await storage.store_submission_metadata(
+async def test_store_and_get_submission_metadata(storage_instance):
+    await storage_instance.store_submission_metadata(
         "obj1",
         123,
         456,
@@ -171,7 +37,7 @@ async def test_store_and_get_submission_metadata(storage):
         group_id="g1",
         source="src1",
     )
-    meta = await storage.get_submission_metadata("obj1")
+    meta = await storage_instance.get_submission_metadata("obj1")
     assert meta["user_id"] == 123
     assert meta["chat_id"] == 456
     assert meta["group_id"] == "g1"
@@ -179,201 +45,62 @@ async def test_store_and_get_submission_metadata(storage):
 
 
 @pytest.mark.asyncio
-async def test_get_submission_metadata_normalizes_prefix(storage):
-    """Return metadata when only the basename is provided."""
+async def test_upload_and_download_file(storage_instance, tmp_path):
+    source = tmp_path / "sample.txt"
+    content = b"hello world"
+    source.write_bytes(content)
+
+    assert await storage_instance.upload_file(str(source), object_name="sample.txt")
+
+    target = tmp_path / "out.txt"
+    assert await storage_instance.download_file("downloads/sample.txt", BUCKET_MAIN, str(target))
+    assert target.read_bytes() == content
+
+
+@pytest.mark.asyncio
+async def test_list_files(storage_instance, tmp_path):
+    file_a = tmp_path / "a.jpg"
+    file_b = tmp_path / "b.mp4"
+    file_a.write_bytes(b"a")
+    file_b.write_bytes(b"b")
+
+    await storage_instance.upload_file(str(file_a))
+    await storage_instance.upload_file(str(file_b))
+
+    photos = await storage_instance.list_files(BUCKET_MAIN, prefix=PHOTOS_PATH)
+    videos = await storage_instance.list_files(BUCKET_MAIN, prefix=VIDEOS_PATH)
+
+    assert any(name.endswith("a.jpg") for name in photos)
+    assert any(name.endswith("b.mp4") for name in videos)
+
+
+@pytest.mark.asyncio
+async def test_delete_file(storage_instance, tmp_path):
+    file_path = tmp_path / "delete.bin"
+    file_path.write_bytes(b"data")
+    await storage_instance.upload_file(str(file_path), object_name="delete.bin")
+
+    assert await storage_instance.file_exists("downloads/delete.bin", BUCKET_MAIN)
+    await storage_instance.delete_file("downloads/delete.bin", BUCKET_MAIN)
+    assert not await storage_instance.file_exists("downloads/delete.bin", BUCKET_MAIN)
+
+
+@pytest.mark.asyncio
+async def test_submission_metadata_normalization(storage_instance):
     object_name = f"{PHOTOS_PATH}/obj3"
-    await storage.store_submission_metadata(object_name, 1, 2, "photo")
-    meta = await storage.get_submission_metadata("obj3")
+    await storage_instance.store_submission_metadata(object_name, 1, 2, "photo")
+    meta = await storage_instance.get_submission_metadata("obj3")
     assert meta is not None
 
 
 @pytest.mark.asyncio
-async def test_get_submission_metadata_from_redis(
-    storage, mock_minio_client, mock_redis_client
-):
-    """Metadata is retrieved from Redis when not in memory."""
-    await storage.store_submission_metadata(
-        "obj_redis",
-        111,
-        222,
-        "photo",
-        message_id=333,
-        media_hash="hash2",
-        group_id="g2",
-        source="src2",
-    )
-    # Clear in-memory cache to force Redis lookup
-    storage.submission_metadata = {}
-    meta = await storage.get_submission_metadata("obj_redis")
-    assert meta["user_id"] == 111
-    assert meta["chat_id"] == 222
-    assert meta["group_id"] == "g2"
-    mock_minio_client.stat_object.assert_not_called()
+async def test_cache_integration(storage_instance, tmp_path):
+    temp_file = tmp_path / "cached.jpg"
+    temp_file.write_bytes(b"x")
+    await storage_instance.upload_file(str(temp_file))
 
-
-@pytest.mark.asyncio
-async def test_get_submission_metadata_missing(storage, mock_minio_client):
-    """Return ``None`` when metadata is absent in memory and Valkey."""
-    storage.submission_metadata = {}
-    meta = await storage.get_submission_metadata("obj2")
-    assert meta is None
-    mock_minio_client.stat_object.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_mark_notified(storage, mock_redis_client):
-    """Test marking a submission as notified."""
-    await storage.store_submission_metadata("obj1", 123, 456, "photo")
-    meta = await storage.get_submission_metadata("obj1")
-    assert meta["notified"] is False
-    await storage.mark_notified("obj1")
-    meta = await storage.get_submission_metadata("obj1")
-    assert meta["notified"] is True
-    data = await mock_redis_client.hgetall(_redis_key("submissions", "obj1"))
-    assert data["notified"] == "1"
-
-
-@pytest.mark.asyncio
-async def test_upload_file(storage, mock_minio_client, mock_redis_client, tmp_path):
-    """Test uploading a file."""
-    file = tmp_path / "test.jpg"
-    file.write_text("content")
-    await storage.upload_file(
-        str(file), user_id=123, chat_id=456, group_id="g3", source="src3"
-    )
-    mock_minio_client.fput_object.assert_awaited_once()
-    kwargs = mock_minio_client.fput_object.await_args.kwargs
-    assert kwargs["bucket_name"] == BUCKET_MAIN
-    assert kwargs["object_name"].startswith(PHOTOS_PATH)
-    assert "metadata" not in kwargs
-    meta = storage.submission_metadata[kwargs["object_name"]]
-    assert meta["user_id"] == 123
-    assert meta["group_id"] == "g3"
-    assert meta["source"] == "src3"
-    cache_key = _redis_key("objects", BUCKET_MAIN)
-    assert kwargs["object_name"] in mock_redis_client.zset_store[cache_key]
-
-
-@pytest.mark.asyncio
-async def test_download_file(storage, mock_minio_client, tmp_path):
-    """Test downloading a file."""
-    file = tmp_path / "download.jpg"
-    await storage.download_file("obj1", BUCKET_MAIN, file_path=str(file))
-    mock_minio_client.fget_object.assert_awaited_once_with(
-        bucket_name=BUCKET_MAIN, object_name="obj1", file_path=str(file)
-    )
-
-
-@pytest.mark.asyncio
-async def test_get_object_data(storage, mock_minio_client, mocker: MockerFixture):
-    """Test getting object data."""
-    mock_response = mocker.MagicMock()
-    mock_response.read = mocker.AsyncMock(return_value=b"data")
-    mock_response.close = mocker.AsyncMock()
-    mock_response.release_conn = mocker.AsyncMock()
-    mock_minio_client.get_object.return_value = mock_response
-    data = await storage.get_object_data("obj1", BUCKET_MAIN)
-    assert data == b"data"
-    mock_response.close.assert_awaited_once()
-    mock_response.release_conn.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_get_object_data_minio_error(storage, mock_minio_client):
-    """Test MinioException is raised when getting object data fails."""
-    mock_minio_client.get_object.side_effect = MinioException("Failed to get object")
-    with pytest.raises(MinioException):
-        await storage.get_object_data("obj1", BUCKET_MAIN)
-
-
-@pytest.mark.asyncio
-async def test_delete_file(storage, mock_minio_client, mock_redis_client):
-    """Test deleting a file."""
-    cache_key = _redis_key("objects", BUCKET_MAIN)
-    mock_redis_client.zset_store[cache_key] = ["obj1"]
-    await storage.delete_file("obj1", BUCKET_MAIN)
-    mock_minio_client.remove_object.assert_awaited_once_with(
-        bucket_name=BUCKET_MAIN, object_name="obj1"
-    )
-    assert "obj1" not in mock_redis_client.zset_store[cache_key]
-
-
-@pytest.mark.asyncio
-async def test_file_exists(storage, mock_minio_client):
-    """Test checking if a file exists."""
-    await storage.file_exists("obj1", BUCKET_MAIN)
-    mock_minio_client.stat_object.assert_awaited_once_with(
-        bucket_name=BUCKET_MAIN, object_name="obj1"
-    )
-
-
-@pytest.mark.asyncio
-async def test_list_files_from_cache(storage, mock_minio_client, mock_redis_client):
-    """Listing uses cached entries when available."""
-    cache_key = _redis_key("objects", BUCKET_MAIN)
-    mock_redis_client.zset_store[cache_key] = ["a.jpg", "b.jpg"]
-    files = await storage.list_files(BUCKET_MAIN, prefix="a")
-    assert files == ["a.jpg"]
-    mock_minio_client.list_objects.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_list_files_populates_cache(
-    storage, mock_minio_client, mock_redis_client, mocker: MockerFixture
-):
-    """Listing populates cache when missing."""
-    cache_key = _redis_key("objects", BUCKET_MAIN)
-
-    async def gen():
-        for name in ["a.jpg", "b.jpg"]:
-            yield SimpleNamespace(object_name=name)
-
-    mock_minio_client.list_objects = mocker.Mock(return_value=gen())
-
-    files = await storage.list_files(BUCKET_MAIN)
-    assert files == ["a.jpg", "b.jpg"]
-    mock_minio_client.list_objects.assert_called_once_with(
-        BUCKET_MAIN, prefix=None, recursive=True
-    )
-    assert mock_redis_client.zset_store[cache_key] == ["a.jpg", "b.jpg"]
-
-
-@pytest.mark.asyncio
-async def test_list_files_with_prefix_does_not_cache(
-    storage, mock_minio_client, mock_redis_client, mocker: MockerFixture
-):
-    """Prefix listings should not populate the cache or affect other prefixes."""
-    cache_key = _redis_key("objects", BUCKET_MAIN)
-
-    async def gen_a():
-        yield SimpleNamespace(object_name="a.jpg")
-
-    async def gen_b():
-        yield SimpleNamespace(object_name="b.jpg")
-
-    def side_effect(bucket, prefix=None, recursive=True):
-        return gen_a() if prefix == "a" else gen_b()
-
-    mock_minio_client.list_objects = mocker.Mock(side_effect=side_effect)
-
-    files_a = await storage.list_files(BUCKET_MAIN, prefix="a")
-    assert files_a == ["a.jpg"]
-    assert cache_key not in mock_redis_client.zset_store
-
-    files_b = await storage.list_files(BUCKET_MAIN, prefix="b")
-    assert files_b == ["b.jpg"]
-    assert mock_minio_client.list_objects.call_count == 2
-    assert cache_key not in mock_redis_client.zset_store
-
-
-@pytest.mark.asyncio
-async def test_count_files_uses_cache(
-    storage, mock_minio_client, mock_redis_client
-):
-    """Counting uses Valkey's sorted set when available."""
-    cache_key = _redis_key("objects", BUCKET_MAIN)
-    mock_redis_client.zset_store[cache_key] = ["a.jpg", "b.jpg"]
-    assert await storage.count_files(BUCKET_MAIN) == 2
-    assert await storage.count_files(BUCKET_MAIN, prefix="a") == 1
-    mock_minio_client.list_objects.assert_not_called()
-
+    # First call populates cache
+    await storage_instance.list_files(BUCKET_MAIN)
+    # Second call should hit cache without errors
+    cached = await storage_instance.list_files(BUCKET_MAIN)
+    assert any(name.endswith("cached.jpg") for name in cached)

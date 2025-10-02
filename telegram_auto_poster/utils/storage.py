@@ -11,8 +11,6 @@ from urllib.parse import urlparse
 
 import telegram_auto_poster.utils.stats as stats_module
 from loguru import logger
-from miniopy_async import Minio
-from miniopy_async.error import MinioException, S3Error
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     CONFIG,
@@ -23,25 +21,48 @@ from telegram_auto_poster.config import (
 from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
 from telegram_auto_poster.utils.timezone import now_utc
 
-# Get MinIO configuration from centralized config
-MINIO_URL = CONFIG.minio.url
-MINIO_HOST = CONFIG.minio.host
-MINIO_PORT = CONFIG.minio.port
+MINIO_BACKEND = CONFIG.minio.backend
+
+if MINIO_BACKEND == "garage":
+    from telegram_auto_poster.utils.garage import GarageClient as Minio
+    from telegram_auto_poster.utils.garage import GarageCopySource as CopySource
+
+    class MinioException(Exception):
+        """Fallback exception used by the Garage backend."""
+
+    class S3Error(MinioException):
+        """Compatibility alias for Garage errors."""
+
+    MINIO_ENDPOINT = "garage"
+    MINIO_SECURE = False
+    MINIO_INTERNAL_URL = CONFIG.minio.public_url or ""
+else:
+    from miniopy_async import Minio
+    from miniopy_async.commonconfig import CopySource
+    from miniopy_async.error import MinioException, S3Error
+
+    # Get MinIO configuration from centralized config
+    MINIO_URL = CONFIG.minio.url
+    MINIO_HOST = CONFIG.minio.host
+    MINIO_PORT = CONFIG.minio.port
+    MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
+    MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
+
+    if MINIO_URL:
+        parsed = urlparse(MINIO_URL)
+        if not parsed.netloc:
+            # Ensure a scheme is present so ``urlparse`` extracts the host correctly
+            parsed = urlparse(f"http://{MINIO_URL}")
+        MINIO_ENDPOINT = parsed.netloc
+        MINIO_SECURE = parsed.scheme == "https"
+        MINIO_INTERNAL_URL = f"{parsed.scheme}://{MINIO_ENDPOINT}"
+    else:
+        MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
+        MINIO_SECURE = False
+        MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
+
 MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
 MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
-
-if MINIO_URL:
-    parsed = urlparse(MINIO_URL)
-    if not parsed.netloc:
-        # Ensure a scheme is present so ``urlparse`` extracts the host correctly
-        parsed = urlparse(f"http://{MINIO_URL}")
-    MINIO_ENDPOINT = parsed.netloc
-    MINIO_SECURE = parsed.scheme == "https"
-    MINIO_INTERNAL_URL = f"{parsed.scheme}://{MINIO_ENDPOINT}"
-else:
-    MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
-    MINIO_SECURE = False
-    MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
 
 
 def _to_int(value: str | None) -> int | None:
@@ -81,15 +102,20 @@ class MinioStorage:
             if client is not None:
                 self.client = client
             else:
-                logger.info(
-                    f"Initializing MinIO client for {MINIO_ENDPOINT} (secure={MINIO_SECURE})"
-                )
-                self.client = Minio(
-                    MINIO_ENDPOINT,
-                    access_key=MINIO_ACCESS_KEY,
-                    secret_key=MINIO_SECRET_KEY,
-                    secure=MINIO_SECURE,
-                )
+                if MINIO_BACKEND == "garage":
+                    garage_root = CONFIG.minio.garage_root
+                    logger.info(f"Initializing Garage client at {garage_root}")
+                    self.client = Minio(garage_root)
+                else:
+                    logger.info(
+                        f"Initializing MinIO client for {MINIO_ENDPOINT} (secure={MINIO_SECURE})"
+                    )
+                    self.client = Minio(
+                        MINIO_ENDPOINT,
+                        access_key=MINIO_ACCESS_KEY,
+                        secret_key=MINIO_SECRET_KEY,
+                        secure=MINIO_SECURE,
+                    )
 
             # Store metadata about submissions
             self.submission_metadata: dict[str, dict[str, object]] = {}
@@ -134,7 +160,9 @@ class MinioStorage:
 
             public_url = CONFIG.minio.public_url
             if public_url:
-                return internal_url.replace(MINIO_INTERNAL_URL, public_url)
+                if MINIO_INTERNAL_URL and MINIO_INTERNAL_URL in internal_url:
+                    return internal_url.replace(MINIO_INTERNAL_URL, public_url)
+                return f"{public_url.rstrip('/')}/{object_name}"
 
             return internal_url
         except Exception as e:
@@ -742,3 +770,11 @@ async def _stats_record_operation(name: str, duration: float) -> None:
 
 
 storage = MinioStorage()
+
+
+def reset_storage_for_tests() -> None:
+    """Reset the singleton storage instance. Intended for test suites."""
+
+    MinioStorage._instance = None  # type: ignore[attr-defined]
+    global storage
+    storage = MinioStorage()

@@ -6,7 +6,6 @@ import os
 from typing import IO, cast
 
 from loguru import logger
-from miniopy_async.commonconfig import CopySource
 from telegram import InputMediaDocument, InputMediaPhoto, InputMediaVideo, Update
 from telegram.ext import ContextTypes
 
@@ -36,7 +35,7 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.scheduler import get_due_posts
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import CopySource, storage
 from telegram_auto_poster.utils.trash import (
     move_to_trash,
     purge_expired_trash,
