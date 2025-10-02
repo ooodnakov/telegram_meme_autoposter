@@ -108,10 +108,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
 
 app = FastAPI(title="Telegram Autoposter Admin")
-app.add_middleware(AuthMiddleware)
 app.add_middleware(
     SessionMiddleware, secret_key=CONFIG.web.session_secret.get_secret_value()
 )
+app.add_middleware(AuthMiddleware)
 
 base_path = Path(__file__).parent
 templates = Jinja2Templates(directory=str(base_path / "templates"))
