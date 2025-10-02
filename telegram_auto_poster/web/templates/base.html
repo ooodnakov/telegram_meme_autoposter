@@ -104,18 +104,15 @@ document.addEventListener('submit', function(e) {
         btn.textContent = '{{ _('Done') }}';
         btn.classList.add('btn-success');
       }
-      const targetId = form.dataset.removeTarget;
-      if (targetId) {
-        const card = document.getElementById(targetId);
-        if (card) {
-          const grid = card.closest('[id$="-grid"]');
-          card.remove();
-          if (grid) {
-            const container = grid.querySelector('[data-grid-container]');
-            const emptyMessage = grid.querySelector('[data-empty-message]');
-            if (container && emptyMessage && container.querySelectorAll('[data-card]').length === 0) {
-              emptyMessage.classList.remove('d-none');
-            }
+      const card = form.closest('[data-card]');
+      if (card) {
+        const grid = card.closest('[id$="-grid"]');
+        card.remove();
+        if (grid) {
+          const container = grid.querySelector('[data-grid-container]');
+          const emptyMessage = grid.querySelector('[data-empty-message]');
+          if (container && emptyMessage && container.querySelectorAll('[data-card]').length === 0) {
+            emptyMessage.classList.remove('d-none');
           }
         }
       }

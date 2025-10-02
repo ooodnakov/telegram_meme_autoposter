@@ -13,7 +13,7 @@
         {% endif %}
         {% endfor %}
         <div class="mt-2 d-flex flex-wrap gap-1">
-            <form method="post" action="/action" data-bg="true" data-remove-target="{{ card_id }}">
+            <form method="post" action="/action" data-bg="true">
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
@@ -21,7 +21,7 @@
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <button class="btn btn-sm btn-success" type="submit">{{ _('Send to batch!') }}</button>
             </form>
-            <form method="post" action="/action" data-bg="true" data-remove-target="{{ card_id }}">
+            <form method="post" action="/action" data-bg="true">
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
@@ -29,7 +29,7 @@
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <button class="btn btn-sm btn-secondary" type="submit">{{ _('Schedule') }}</button>
             </form>
-            <form method="post" action="/action" data-bg="true" data-remove-target="{{ card_id }}">
+            <form method="post" action="/action" data-bg="true">
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
@@ -41,7 +41,6 @@
                 method="post"
                 action="/action"
                 data-bg="true"
-                data-remove-target="{{ card_id }}"
             >
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
