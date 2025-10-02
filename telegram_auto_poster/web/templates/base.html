@@ -94,15 +94,40 @@ document.addEventListener('submit', function(e) {
       method: 'POST',
       headers: { 'X-Background-Request': 'true' },
       body: new FormData(form)
+    }).then((response) => {
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
+      return response;
     }).then(() => {
       if (btn) {
         btn.textContent = '{{ _('Done') }}';
         btn.classList.add('btn-success');
       }
+      const targetId = form.dataset.removeTarget;
+      if (targetId) {
+        const card = document.getElementById(targetId);
+        if (card) {
+          const grid = card.closest('[id$="-grid"]');
+          card.remove();
+          if (grid) {
+            const container = grid.querySelector('[data-grid-container]');
+            const emptyMessage = grid.querySelector('[data-empty-message]');
+            if (container && emptyMessage && container.querySelectorAll('[data-card]').length === 0) {
+              emptyMessage.classList.remove('d-none');
+            }
+          }
+        }
+      }
     }).catch(() => {
       if (btn) {
         btn.textContent = '{{ _('Error') }}';
         btn.disabled = false;
+        if (btn.dataset.originalText) {
+          setTimeout(() => {
+            btn.textContent = btn.dataset.originalText;
+          }, 1500);
+        }
       }
     });
   }

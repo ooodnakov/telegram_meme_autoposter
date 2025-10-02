@@ -1,7 +1,7 @@
-{% if posts %}
-<div class="row g-3">
-    {% for p in posts %}
-    <div class="col-sm-6 col-md-4">
+<div class="row g-3" data-grid-container>
+    {% for p in posts or [] %}
+    {% set card_id = origin ~ '-card-' ~ loop.index0 %}
+    <div class="col-sm-6 col-md-4" id="{{ card_id }}" data-card>
         {% if p['items']|length > 1 %}
         <span class="badge bg-secondary mb-1">{{ _('Group of {n}').format(n=p['items']|length) }}</span>
         {% endif %}
@@ -13,7 +13,7 @@
         {% endif %}
         {% endfor %}
         <div class="mt-2 d-flex flex-wrap gap-1">
-            <form method="post" action="/action" data-bg="true">
+            <form method="post" action="/action" data-bg="true" data-remove-target="{{ card_id }}">
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
@@ -21,7 +21,7 @@
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <button class="btn btn-sm btn-success" type="submit">{{ _('Send to batch!') }}</button>
             </form>
-            <form method="post" action="/action" data-bg="true">
+            <form method="post" action="/action" data-bg="true" data-remove-target="{{ card_id }}">
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
@@ -29,7 +29,7 @@
                 <input type="hidden" name="origin" value="{{ origin }}" />
                 <button class="btn btn-sm btn-secondary" type="submit">{{ _('Schedule') }}</button>
             </form>
-            <form method="post" action="/action" data-bg="true">
+            <form method="post" action="/action" data-bg="true" data-remove-target="{{ card_id }}">
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
                 {% endfor %}
@@ -41,6 +41,7 @@
                 method="post"
                 action="/action"
                 data-bg="true"
+                data-remove-target="{{ card_id }}"
             >
                 {% for media in p['items'] %}
                 <input type="hidden" name="paths" value="{{ media.path }}" />
@@ -53,9 +54,7 @@
     </div>
     {% endfor %}
 </div>
-{% else %}
-<div class="alert alert-info" role="alert">{{ empty_message }}</div>
-{% endif %}
+<div class="alert alert-info{% if posts %} d-none{% endif %}" role="alert" data-empty-message>{{ empty_message }}</div>
 {% if total_pages > 1 %}
 <nav aria-label="Page navigation">
     <ul class="pagination justify-content-center mt-3">
