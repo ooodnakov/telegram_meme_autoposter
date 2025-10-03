@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import heapq
+from functools import wraps
 from typing import Optional
 
 from telegram_auto_poster.utils.db import (
@@ -14,6 +15,17 @@ from telegram_auto_poster.utils.db import (
     get_async_redis_client,
 )
 from telegram_auto_poster.utils.timezone import now_utc
+
+
+def _init_guard(func):
+    """Decorator ensuring the stats store is initialized before use."""
+
+    @wraps(func)
+    async def wrapper(self: "MediaStats", *args, **kwargs):
+        await self._ensure_initialized()
+        return await func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class MediaStats:
@@ -37,7 +49,6 @@ class MediaStats:
         """Create or return the singleton instance."""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance.r = get_async_redis_client()
             cls._instance.names = [
                 "media_received",
                 "media_processed",
@@ -67,34 +78,69 @@ class MediaStats:
                 "5-10s",
                 "≥10s",
             )
-            try:  # Initialise counters immediately
-                loop = asyncio.get_running_loop()
-                loop.create_task(cls._instance._init())
-            except RuntimeError:  # no running loop
-                asyncio.run(cls._instance._init())
+            cls._instance._init_done = False
+            cls._instance._init_tasks = {}
         return cls._instance
 
-    async def _init(self) -> None:
-        """Initialise counters in Valkey if they do not exist."""
+    @property
+    def r(self) -> AsyncValkeyClient:
+        """Return an async Valkey client tied to the current event loop."""
+
+        return get_async_redis_client()
+
+    async def _ensure_initialized(self) -> None:
+        """Ensure counters exist in Valkey before performing operations."""
+
+        if getattr(self, "_init_done", False):
+            return
+
+        loop = asyncio.get_running_loop()
+        tasks = getattr(self, "_init_tasks", None)
+        if tasks is None:
+            tasks = {}
+            self._init_tasks = tasks
+
+        loop_id = id(loop)
+        task = tasks.get(loop_id)
+        if task is None or task.cancelled():
+            task = loop.create_task(self._initialize())
+            tasks[loop_id] = task
+        elif task.done():
+            exc = task.exception()
+            if exc is not None:
+                task = loop.create_task(self._initialize())
+                tasks[loop_id] = task
+
+        await task
+
+    async def _initialize(self) -> None:
+        if getattr(self, "_init_done", False):
+            return
+
         for scope in ("daily", "total"):
             for name in self.names:
-                await self.r.setnx(_redis_key(scope, name), 0)
-        await self.r.setnx(_redis_meta_key(), now_utc().isoformat())
+                await self.r.set(_redis_key(scope, name), 0, nx=True)
+        await self.r.set(_redis_meta_key(), now_utc().isoformat(), nx=True)
+        self._init_done = True
 
+    @_init_guard
     async def _increment(self, name: str, scope: str = "daily", count: int = 1) -> None:
         """Increase a counter for ``name`` by ``count`` within ``scope``."""
         await self.r.incrby(_redis_key(scope, name), count)
 
+    @_init_guard
     async def _record_duration(self, base: str, duration: float) -> None:
         """Record a timing metric for ``base`` measured in seconds."""
         await self.r.incrbyfloat(_redis_key("perf", f"{base}_total"), duration)
         await self.r.incrby(_redis_key("perf", f"{base}_count"), 1)
 
+    @_init_guard
     async def record_submission(self, source: str) -> None:
         """Increase the submission count for ``source``."""
         if source:
             await self.r.zincrby(_redis_key("leaderboard", "submissions"), 1, source)
 
+    @_init_guard
     async def record_received(self, media_type: str) -> None:
         """Record that a piece of media of ``media_type`` was received."""
         await self._increment("media_received")
@@ -106,6 +152,7 @@ class MediaStats:
             await self._increment("videos_received")
             await self._increment("videos_received", scope="total")
 
+    @_init_guard
     async def record_processed(self, media_type: str, processing_time: float) -> None:
         """Record that media was processed and log its duration."""
         await self._increment("media_processed")
@@ -119,6 +166,7 @@ class MediaStats:
             await self._increment("videos_processed")
             await self._increment("videos_processed", scope="total")
 
+    @_init_guard
     async def record_approved(
         self,
         media_type: str,
@@ -135,6 +183,7 @@ class MediaStats:
         if source:
             await self.r.zincrby(_redis_key("leaderboard", "approved"), count, source)
 
+    @_init_guard
     async def record_post_published(
         self, count: int = 1, *, timestamp: datetime.datetime | None = None
     ) -> None:
@@ -144,6 +193,7 @@ class MediaStats:
         day_key = ts.strftime("%Y-%m-%d")
         await self.r.incrby(_redis_key("posts", day_key), count)
 
+    @_init_guard
     async def record_rejected(
         self, media_type: str, filename: str | None = None, source: str | None = None
     ) -> None:
@@ -156,6 +206,7 @@ class MediaStats:
         if source:
             await self.r.zincrby(_redis_key("leaderboard", "rejected"), 1, source)
 
+    @_init_guard
     async def record_added_to_batch(self, media_type: str) -> None:
         """Record that media was added to the batch queue."""
         name = (
@@ -166,21 +217,25 @@ class MediaStats:
         await self._increment(name)
         await self._increment(name, scope="total")
 
+    @_init_guard
     async def record_batch_sent(self, count: int) -> None:
         """Record that a batch of ``count`` items was sent."""
         await self._increment("batch_sent", count=count)
         await self._increment("batch_sent", scope="total", count=count)
 
+    @_init_guard
     async def record_client_reconnect(self) -> None:
         """Record that the Telegram client reconnected."""
         await self._increment("client_reconnects")
         await self._increment("client_reconnects", scope="total")
 
+    @_init_guard
     async def record_rate_limit_drop(self) -> None:
         """Record that an update was dropped due to rate limiting."""
         await self._increment("rate_limit_drops")
         await self._increment("rate_limit_drops", scope="total")
 
+    @_init_guard
     async def record_error(self, error_type: str, error_message: str) -> None:
         """Record an error occurrence by ``error_type``."""
         if error_type == "processing":
@@ -192,6 +247,7 @@ class MediaStats:
         await self._increment(name)
         await self._increment(name, scope="total")
 
+    @_init_guard
     async def record_storage_operation(
         self, operation_type: str, duration: float
     ) -> None:
@@ -203,6 +259,7 @@ class MediaStats:
             await self._increment("list_operations")
             await self._increment("list_operations", scope="total")
 
+    @_init_guard
     async def get_daily_stats(
         self, reset_if_new_day: bool = True
     ) -> dict[str, int | str]:
@@ -224,6 +281,7 @@ class MediaStats:
         stats["last_reset"] = last_reset.isoformat()
         return stats
 
+    @_init_guard
     async def get_total_stats(self) -> dict[str, int]:
         """Return all-time statistics."""
         stats: dict[str, int] = {}
@@ -232,6 +290,7 @@ class MediaStats:
             stats[name] = int(value)
         return stats
 
+    @_init_guard
     async def get_daily_post_counts(self, days: int = 14) -> list[dict[str, str | int]]:
         """Return the number of posts published per day for the last ``days`` days."""
 
@@ -249,12 +308,14 @@ class MediaStats:
             results.append({"date": date_obj.isoformat(), "count": count})
         return results
 
+    @_init_guard
     async def _avg(self, base: str) -> float:
         """Return the average duration recorded for ``base``."""
         total = await self.r.get(_redis_key("perf", f"{base}_total")) or 0
         count = await self.r.get(_redis_key("perf", f"{base}_count")) or 0
         return float(total) / int(count) if int(count) else 0.0
 
+    @_init_guard
     async def get_performance_metrics(self) -> dict[str, float]:
         """Return average processing and transfer times in seconds."""
         return {
@@ -264,12 +325,14 @@ class MediaStats:
             "avg_download_time": await self._avg("download"),
         }
 
+    @_init_guard
     async def get_approval_rate_24h(self, daily: dict[str, int | str]) -> float:
         """Return approval percentage for the last 24 hours."""
         processed = int(daily["photos_processed"]) + int(daily["videos_processed"])
         approved = int(daily["photos_approved"]) + int(daily["videos_approved"])
         return (approved / processed * 100) if processed else 0.0
 
+    @_init_guard
     async def get_approval_rate_total(self) -> float:
         """Return the all-time approval percentage."""
         ts = await self.get_total_stats()
@@ -277,6 +340,7 @@ class MediaStats:
         approved = ts["photos_approved"] + ts["videos_approved"]
         return (approved / processed * 100) if processed else 0.0
 
+    @_init_guard
     async def get_success_rate_24h(self, daily: dict[str, int | str]) -> float:
         """Return success percentage for the last 24 hours."""
         received = int(daily["media_received"])
@@ -287,6 +351,7 @@ class MediaStats:
         )
         return ((received - errors) / received * 100) if received else 100.0
 
+    @_init_guard
     async def get_busiest_hour(self) -> tuple[Optional[int], int]:
         """Return the hour with the most approved or rejected items."""
         max_count = 0
@@ -298,6 +363,7 @@ class MediaStats:
                 max_hour = hour
         return max_hour, max_count
 
+    @_init_guard
     async def get_leaderboard(self, limit: int = 10) -> dict[str, list[dict]]:
         """Return submission/approval/rejection leaderboards."""
         subs_key = _redis_key("leaderboard", "submissions")
@@ -331,6 +397,7 @@ class MediaStats:
             "rejected": rej_sorted,
         }
 
+    @_init_guard
     async def get_source_acceptance(
         self, limit: int = 8
     ) -> list[dict[str, float | int | str]]:
@@ -374,6 +441,7 @@ class MediaStats:
             )
         return entries
 
+    @_init_guard
     async def get_processing_histogram(self) -> dict[str, list[dict[str, float | int]]]:
         """Return histogram buckets for photo and video processing durations."""
 
@@ -392,6 +460,7 @@ class MediaStats:
             result[media_type] = processed
         return result
 
+    @_init_guard
     async def generate_stats_report(self, reset_daily: bool = True) -> str:
         """Return a formatted statistics report for admins."""
         daily = await self.get_daily_stats(reset_if_new_day=reset_daily)
@@ -488,6 +557,7 @@ class MediaStats:
             ]
         )
 
+    @_init_guard
     async def reset_daily_stats(self) -> str:
         """Reset daily statistics and hourly counters."""
         for name in self.names:
@@ -498,6 +568,7 @@ class MediaStats:
             await self.r.delete(_redis_key("hourly", str(hour)))
         return "Daily statistics have been reset."
 
+    @_init_guard
     async def force_save(self) -> None:
         """Force Valkey to persist data to disk."""
         try:
@@ -505,6 +576,7 @@ class MediaStats:
         except Exception:  # pragma: no cover - best effort
             pass
 
+    @_init_guard
     async def _record_processing_histogram(
         self, media_type: str, duration: float
     ) -> None:

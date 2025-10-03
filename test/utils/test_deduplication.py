@@ -1,7 +1,8 @@
 import os
 
+import os
+
 import pytest
-from fakeredis import FakeStrictRedis
 from loguru import logger
 from PIL import Image
 from telegram_auto_poster.utils.deduplication import (
@@ -12,12 +13,18 @@ from telegram_auto_poster.utils.deduplication import (
     check_and_add_hash,
     is_duplicate_hash,
 )
+from telegram_auto_poster.utils import db
 
 
 @pytest.fixture
-def fake_redis():
-    """Fixture to mock redis client"""
-    return FakeStrictRedis(decode_responses=True)
+def redis_client():
+    """Fixture providing a clean in-memory redis-like client."""
+
+    db.reset_cache_for_tests()
+    client = db.get_redis_client()
+    client.flushdb()
+    yield client
+    db.reset_cache_for_tests()
 
 
 @pytest.fixture
@@ -54,58 +61,58 @@ def test_calculate_video_hash(sample_video):
     assert len(video_hash) == 64  # sha256 is 64 chars
 
 
-def test_check_and_add_hash(fake_redis):
+def test_check_and_add_hash(redis_client):
     """Test adding a hash and checking for duplicates"""
     media_hash = "test_hash_atomic"
 
     # First time, it's not a duplicate, so it should be added and return True
-    assert check_and_add_hash(media_hash, redis_client=fake_redis) is True
+    assert check_and_add_hash(media_hash, redis_client=redis_client) is True
 
     # Second time, it is a duplicate, so it should not be added and return False
-    assert check_and_add_hash(media_hash, redis_client=fake_redis) is False
+    assert check_and_add_hash(media_hash, redis_client=redis_client) is False
 
 
-def test_check_and_add_with_empty_hash(fake_redis):
+def test_check_and_add_with_empty_hash(redis_client):
     """Test that check_and_add_hash returns True for empty hash"""
-    assert check_and_add_hash(None, redis_client=fake_redis) is True
-    assert check_and_add_hash("", redis_client=fake_redis) is True
+    assert check_and_add_hash(None, redis_client=redis_client) is True
+    assert check_and_add_hash("", redis_client=redis_client) is True
     # Ensure nothing was added to the set
-    assert fake_redis.scard(DEDUPLICATION_SET_KEY) == 0
+    assert redis_client.scard(DEDUPLICATION_SET_KEY) == 0
 
 
-def test_add_approved_hash(fake_redis):
+def test_add_approved_hash(redis_client):
     """Test adding a hash to the approved set"""
     media_hash = "test_hash_new"
     # First time, it's not a duplicate, so it should be added and return True
-    assert add_approved_hash(media_hash, redis_client=fake_redis) is True
+    assert add_approved_hash(media_hash, redis_client=redis_client) is True
     # Check that it was added
-    assert fake_redis.sismember(DEDUPLICATION_SET_KEY, media_hash)
+    assert redis_client.sismember(DEDUPLICATION_SET_KEY, media_hash)
     # Second time, it is a duplicate, so it should not be added and return False
-    assert add_approved_hash(media_hash, redis_client=fake_redis) is False
+    assert add_approved_hash(media_hash, redis_client=redis_client) is False
 
 
-def test_add_approved_hash_empty(fake_redis):
+def test_add_approved_hash_empty(redis_client):
     """Test adding an empty hash to the approved set"""
-    assert add_approved_hash(None, redis_client=fake_redis) is True
-    assert add_approved_hash("", redis_client=fake_redis) is True
-    assert fake_redis.scard(DEDUPLICATION_SET_KEY) == 0
+    assert add_approved_hash(None, redis_client=redis_client) is True
+    assert add_approved_hash("", redis_client=redis_client) is True
+    assert redis_client.scard(DEDUPLICATION_SET_KEY) == 0
 
 
-def test_is_duplicate_hash(fake_redis):
+def test_is_duplicate_hash(redis_client):
     """Test checking for a duplicate hash"""
     media_hash = "test_hash_duplicate"
     # Not a duplicate yet
-    assert is_duplicate_hash(media_hash, redis_client=fake_redis) is False
+    assert is_duplicate_hash(media_hash, redis_client=redis_client) is False
     # Add it
-    fake_redis.sadd(DEDUPLICATION_SET_KEY, media_hash)
+    redis_client.sadd(DEDUPLICATION_SET_KEY, media_hash)
     # Now it's a duplicate
-    assert is_duplicate_hash(media_hash, redis_client=fake_redis) is True
+    assert is_duplicate_hash(media_hash, redis_client=redis_client) is True
 
 
-def test_is_duplicate_hash_empty(fake_redis):
+def test_is_duplicate_hash_empty():
     """Test checking for an empty duplicate hash"""
-    assert is_duplicate_hash(None, redis_client=fake_redis) is False
-    assert is_duplicate_hash("", redis_client=fake_redis) is False
+    assert is_duplicate_hash(None) is False
+    assert is_duplicate_hash("") is False
 
 
 def test_is_duplicate_hash_redis_error(mocker):

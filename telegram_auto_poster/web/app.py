@@ -18,7 +18,6 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
-from miniopy_async.commonconfig import CopySource
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from telegram import Bot
@@ -55,7 +54,7 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.i18n import _, set_locale
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import CopySource, storage
 from telegram_auto_poster.utils.trash import (
     delete_from_trash,
     move_to_trash,

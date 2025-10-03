@@ -1,23 +1,21 @@
-import fakeredis.aioredis
 import pytest
 import pytest_asyncio
 
+from telegram_auto_poster.utils import db
 from telegram_auto_poster.utils.db import _redis_key, _redis_meta_key
 from telegram_auto_poster.utils.stats import MediaStats
 
 
 @pytest_asyncio.fixture
-async def stats_instance(mocker):
-    fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
-    mocker.patch(
-        "telegram_auto_poster.utils.stats.get_async_redis_client", return_value=fake
-    )
+async def stats_instance():
+    db.reset_cache_for_tests()
     MediaStats._instance = None
     inst = MediaStats()
     await inst.r.flushdb()
     yield inst
     await inst.r.flushdb()
     MediaStats._instance = None
+    db.reset_cache_for_tests()
 
 
 @pytest.mark.asyncio
@@ -102,9 +100,11 @@ async def test_reset_daily_stats_clears_counters(stats_instance):
 
 @pytest.mark.asyncio
 async def test_force_save_swallows_errors(stats_instance, mocker):
-    mock_save = mocker.AsyncMock(side_effect=Exception("boom"))
-    mocker.patch.object(stats_instance.r, "save", mock_save)
-
-    await stats_instance.force_save()
-
-    mock_save.assert_awaited_once()
+    if hasattr(stats_instance.r, "save"):
+        mock_save = mocker.AsyncMock(side_effect=Exception("boom"))
+        mocker.patch.object(stats_instance.r, "save", mock_save)
+        await stats_instance.force_save()
+        mock_save.assert_awaited_once()
+    else:
+        # Backend does not expose persistence; ensure no exceptions are raised.
+        await stats_instance.force_save()

@@ -1,25 +1,24 @@
-import fakeredis
 import pytest
 import pytest_asyncio
-from telegram_auto_poster.config import CONFIG
+
+import pytest
+import pytest_asyncio
+
 from telegram_auto_poster.utils import db
 
 
 @pytest_asyncio.fixture
-async def mock_async_redis(mocker):
-    mocker.patch(
-        "telegram_auto_poster.utils.db.AsyncValkey", fakeredis.aioredis.FakeRedis
-    )
-    mocker.patch.object(CONFIG.valkey.password, "get_secret_value", return_value=None)
-    db._async_redis_client = None
+async def redis_state():
+    db.reset_cache_for_tests()
     client = db.get_async_redis_client()
     await client.flushdb()
     yield client
     await client.flushdb()
+    db.reset_cache_for_tests()
 
 
 @pytest.mark.asyncio
-async def test_batch_counter(mock_async_redis):
+async def test_batch_counter(redis_state):
     assert await db.get_batch_count() == 0
     assert await db.increment_batch_count() == 1
     assert await db.increment_batch_count(2) == 3
@@ -28,33 +27,23 @@ async def test_batch_counter(mock_async_redis):
 
 
 @pytest.mark.asyncio
-async def test_decrement_batch_clamped_to_zero(mock_async_redis):
+async def test_decrement_batch_clamped_to_zero(redis_state):
     assert await db.get_batch_count() == 0
     assert await db.decrement_batch_count(5) == 0
 
 
-def test_get_redis_client_flushes_between_calls(mocker):
-    mocker.patch("telegram_auto_poster.utils.db.Valkey", fakeredis.FakeRedis)
-    mocker.patch.object(CONFIG.valkey.password, "get_secret_value", return_value=None)
-    db._redis_client = None
+def test_reset_cache_clears_values():
+    db.reset_cache_for_tests()
     client = db.get_redis_client()
     client.set("foo", "1")
+    assert client.get("foo") == "1"
+    db.reset_cache_for_tests()
     client = db.get_redis_client()
     assert client.get("foo") is None
 
 
-def test_get_redis_client_imports_valkey(mocker):
-    mocker.patch("valkey.Valkey", fakeredis.FakeRedis)
-    mocker.patch.object(CONFIG.valkey.password, "get_secret_value", return_value=None)
-    db._redis_client = None
-    mocker.patch.object(db, "Valkey", None)
-    client = db.get_redis_client()
-    assert isinstance(client, fakeredis.FakeRedis)
-
-
-def test_schedule_roundtrip(mocker):
-    fake = fakeredis.FakeRedis(decode_responses=True)
-    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+def test_schedule_roundtrip(monkeypatch):
+    db.reset_cache_for_tests()
     db.add_scheduled_post(100, "foo")
     assert db.get_scheduled_posts() == [("foo", 100.0)]
     assert db.get_scheduled_time("foo") == 100

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import configparser
 import os
-from typing import Any
+from typing import Any, Literal
 
 from loguru import logger
 from pydantic import BaseModel, SecretStr, model_validator
@@ -63,19 +63,22 @@ class TrashConfig(BaseModel):
 
 
 class MinioConfig(BaseModel):
-    """MinIO object storage connection settings."""
+    """MinIO/Garage object storage connection settings."""
 
+    backend: Literal["minio", "garage"] = "minio"
     host: str = "localhost"
     port: int = 9000
     url: str | None = None
     public_url: str | None = None
     access_key: SecretStr = SecretStr("minioadmin")
     secret_key: SecretStr = SecretStr("minioadmin")
+    region: str | None = None
 
 
 class ValkeyConfig(BaseModel):
     """Valkey (Redis) connection settings."""
 
+    backend: Literal["valkey", "pogocache"] = "valkey"
     host: str = "127.0.0.1"
     port: int = 6379
     password: SecretStr = SecretStr("redis")
@@ -200,10 +203,13 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "MINIO_PUBLIC_URL": ("minio", "public_url"),
     "MINIO_ACCESS_KEY": ("minio", "access_key"),
     "MINIO_SECRET_KEY": ("minio", "secret_key"),
+    "MINIO_REGION": ("minio", "region"),
+    "MINIO_BACKEND": ("minio", "backend"),
     "VALKEY_HOST": ("valkey", "host"),
     "VALKEY_PORT": ("valkey", "port"),
     "VALKEY_PASS": ("valkey", "password"),
     "REDIS_PREFIX": ("valkey", "prefix"),
+    "VALKEY_BACKEND": ("valkey", "backend"),
     "RATE_LIMIT_RATE": ("rate_limit", "rate"),
     "RATE_LIMIT_CAPACITY": ("rate_limit", "capacity"),
     "GEMINI_API_KEY": ("gemini", "api_key"),
