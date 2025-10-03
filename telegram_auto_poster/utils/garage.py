@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,7 +31,9 @@ class GarageClient:
         return await asyncio.to_thread(self._bucket_path(bucket_name).exists)
 
     async def make_bucket(self, bucket_name: str) -> None:
-        await asyncio.to_thread(self._bucket_path(bucket_name).mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            self._bucket_path(bucket_name).mkdir, parents=True, exist_ok=True
+        )
 
     # Object helpers ---------------------------------------------------------
     async def fput_object(
@@ -143,4 +146,4 @@ class GarageClient:
 
     @staticmethod
     def _copy_file(src: Path, dest: Path) -> None:
-        dest.write_bytes(src.read_bytes())
+        shutil.copyfile(src, dest)

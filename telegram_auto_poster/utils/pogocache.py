@@ -93,7 +93,7 @@ class AsyncPogoCachePipeline:
         return results
 
     def __getattr__(self, item: str) -> Any:  # pragma: no cover - passthrough
-        async def wrapper(*args: Any, **kwargs: Any) -> "AsyncPogoCachePipeline":
+        def wrapper(*args: Any, **kwargs: Any) -> "AsyncPogoCachePipeline":
             self._operations.append((item, args, kwargs))
             return self
 
@@ -209,7 +209,9 @@ class PogoCache:
         high = _normalize_bounds(max_score)
         items = [
             (member, score)
-            for member, score in sorted(target.items(), key=lambda item: (item[1], item[0]))
+            for member, score in sorted(
+                target.items(), key=lambda item: (item[1], item[0])
+            )
             if low <= score <= high
         ]
         if start is not None or num is not None:
@@ -241,25 +243,28 @@ class PogoCache:
         num: int | None = None,
     ) -> list[str]:
         items = sorted(self._store.sorted_sets.get(key, {}).keys())
-        lower = min_value[1:] if min_value.startswith("[") else min_value
-        if min_value.startswith("("):
-            lower = min_value[1:]
-        upper = max_value
-        inclusive_upper = True
-        if max_value.startswith("("):
-            upper = max_value[1:]
-            inclusive_upper = False
-        elif max_value.startswith("["):
-            upper = max_value[1:]
         filtered: list[str] = []
         for item in items:
-            if lower not in ("-", "") and item < lower:
-                continue
-            if upper not in ("+", ""):
-                if inclusive_upper and item > upper:
+            if min_value.startswith("["):
+                if item < min_value[1:]:
                     continue
-                if not inclusive_upper and item >= upper:
+            elif min_value.startswith("("):
+                if item <= min_value[1:]:
                     continue
+            elif min_value != "-":
+                if item < min_value:
+                    continue
+
+            if max_value.startswith("["):
+                if item > max_value[1:]:
+                    continue
+            elif max_value.startswith("("):
+                if item >= max_value[1:]:
+                    continue
+            elif max_value != "+":
+                if item > max_value:
+                    continue
+
             filtered.append(item)
         if start is not None or num is not None:
             start_idx = start or 0

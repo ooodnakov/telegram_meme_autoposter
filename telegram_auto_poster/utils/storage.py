@@ -45,9 +45,6 @@ else:
     MINIO_URL = CONFIG.minio.url
     MINIO_HOST = CONFIG.minio.host
     MINIO_PORT = CONFIG.minio.port
-    MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
-    MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
-
     if MINIO_URL:
         parsed = urlparse(MINIO_URL)
         if not parsed.netloc:
