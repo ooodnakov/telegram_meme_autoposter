@@ -31,6 +31,19 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Garage and PogoCache
+        run: |
+          cargo install garage --locked
+          cargo install pogocache --locked
+
       - name: Set up dependencies
         run: |
           uv sync --dev
@@ -42,7 +55,9 @@ jobs:
         run: uv run ruff check --diff
 
       - name: Run tests with coverage
-        run: uv run pytest -n auto --cov --cov-report=html
+        run: |
+          export VALKEY_SERVER_PATH="$HOME/.cargo/bin/pogocache"
+          uv run pytest -n auto --cov --cov-report=html
 
       - name: Upload HTML coverage report
         if: success()

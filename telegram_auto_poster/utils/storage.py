@@ -157,7 +157,11 @@ class MinioStorage:
             if self._public_url:
                 if self._internal_url and internal_url.startswith(self._internal_url):
                     return internal_url.replace(self._internal_url, self._public_url, 1)
-                return f"{self._public_url}/{object_name}"
+                logger.warning(
+                    "Could not replace internal URL with public URL for presigned URL. "
+                    "Returning original presigned URL."
+                )
+                return internal_url
 
             return internal_url
         except Exception as e:

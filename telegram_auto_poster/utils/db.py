@@ -81,13 +81,24 @@ def reset_cache_for_tests() -> None:
         try:
             if loop.is_closed():
                 continue
-            fut = asyncio.run_coroutine_threadsafe(client.close(), loop)
-            fut.result()
-        except RuntimeError:
+
+            close_coro = client.close()
             try:
-                asyncio.run(client.close())
-            except Exception as exc:  # pragma: no cover - best effort cleanup
-                logger.debug("Failed to close async redis client during reset: {}", exc)
+                fut = asyncio.run_coroutine_threadsafe(close_coro, loop)
+            except RuntimeError:
+                close_coro.close()
+                try:
+                    running_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    asyncio.run(client.close())
+                else:
+                    if running_loop is loop:
+                        running_loop.create_task(client.close())
+                    else:
+                        fut = asyncio.run_coroutine_threadsafe(client.close(), loop)
+                        fut.result()
+            else:
+                fut.result()
         except Exception as exc:  # pragma: no cover - best effort cleanup
             logger.debug("Failed to close async redis client during reset: {}", exc)
     _async_clients.clear()

@@ -237,13 +237,14 @@ def _start_garage() -> dict[str, object]:
             ("layout", "apply", "--version", "1"),
         ):
             last_error = ""
-            for attempt in range(1, 31):
+            max_attempts = 15
+            for attempt in range(1, max_attempts + 1):
                 result = _garage_cmd(binary, config_path, *command, check=False)
                 if result.returncode == 0:
                     break
 
                 last_error = (result.stdout + result.stderr).strip()
-                time.sleep(0.5 * attempt)
+                time.sleep(0.3 * attempt)
             else:
                 raise RuntimeError(
                     "Garage command failed after retries: "
