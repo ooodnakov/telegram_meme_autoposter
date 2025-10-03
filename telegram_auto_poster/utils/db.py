@@ -71,7 +71,10 @@ def reset_cache_for_tests() -> None:
 
     if _redis_client is not None:
         try:
-            _redis_client.flushdb()
+            try:
+                _redis_client.flushdb()
+            except Exception:
+                _redis_client.execute_command("FLUSH")
             _redis_client.close()
         except Exception as exc:  # pragma: no cover - best effort cleanup
             logger.debug("Failed to flush redis client during reset: {}", exc)
@@ -109,7 +112,10 @@ def reset_cache_for_tests() -> None:
         from valkey import Valkey as _Valkey
 
         temp_client = _Valkey(**_connection_kwargs())
-        temp_client.flushdb()
+        try:
+            temp_client.flushdb()
+        except Exception:
+            temp_client.execute_command("FLUSH")
     except Exception as exc:  # pragma: no cover - temporary store may be offline
         logger.debug("Unable to flush valkey backend during reset: {}", exc)
     finally:

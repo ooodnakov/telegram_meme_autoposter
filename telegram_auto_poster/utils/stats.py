@@ -79,7 +79,7 @@ class MediaStats:
                 "≥10s",
             )
             cls._instance._init_done = False
-            cls._instance._init_lock = None
+            cls._instance._init_tasks = {}
         return cls._instance
 
     @property
@@ -94,18 +94,34 @@ class MediaStats:
         if getattr(self, "_init_done", False):
             return
 
-        if getattr(self, "_init_lock", None) is None:
-            self._init_lock = asyncio.Lock()
+        loop = asyncio.get_running_loop()
+        tasks = getattr(self, "_init_tasks", None)
+        if tasks is None:
+            tasks = {}
+            self._init_tasks = tasks
 
-        async with self._init_lock:
-            if getattr(self, "_init_done", False):
-                return
+        loop_id = id(loop)
+        task = tasks.get(loop_id)
+        if task is None or task.cancelled():
+            task = loop.create_task(self._initialize())
+            tasks[loop_id] = task
+        elif task.done():
+            exc = task.exception()
+            if exc is not None:
+                task = loop.create_task(self._initialize())
+                tasks[loop_id] = task
 
-            for scope in ("daily", "total"):
-                for name in self.names:
-                    await self.r.set(_redis_key(scope, name), 0, nx=True)
-            await self.r.set(_redis_meta_key(), now_utc().isoformat(), nx=True)
-            self._init_done = True
+        await task
+
+    async def _initialize(self) -> None:
+        if getattr(self, "_init_done", False):
+            return
+
+        for scope in ("daily", "total"):
+            for name in self.names:
+                await self.r.set(_redis_key(scope, name), 0, nx=True)
+        await self.r.set(_redis_meta_key(), now_utc().isoformat(), nx=True)
+        self._init_done = True
 
     @_init_guard
     async def _increment(self, name: str, scope: str = "daily", count: int = 1) -> None:

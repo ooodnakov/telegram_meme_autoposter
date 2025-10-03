@@ -100,10 +100,29 @@ def _ensure_valkey_binary() -> Path:
         if candidate.exists():
             return candidate
 
+    backend = os.environ.get("VALKEY_BACKEND", "valkey")
+    if backend == "pogocache":
+        return _ensure_pogocache_binary()
+
     binary = shutil.which("valkey-server") or shutil.which("redis-server")
     if not binary:
         raise RuntimeError(
             "valkey-server binary not found. Install valkey-server or provide VALKEY_SERVER_PATH."
+        )
+    return Path(binary)
+
+
+def _ensure_pogocache_binary() -> Path:
+    env_path = os.environ.get("POGOCACHE_SERVER_PATH")
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.exists():
+            return candidate
+
+    binary = shutil.which("pogocache")
+    if not binary:
+        raise RuntimeError(
+            "pogocache binary not found. Install pogocache or provide POGOCACHE_SERVER_PATH."
         )
     return Path(binary)
 
@@ -175,9 +194,13 @@ def _garage_create_key(
 
 
 def _start_valkey() -> dict[str, object]:
+    backend = os.environ.get("VALKEY_BACKEND", "valkey")
     binary = _ensure_valkey_binary()
-    process = subprocess.Popen(
-        [
+
+    if backend == "pogocache":
+        args = [str(binary), "-h", VALKEY_HOST, "-p", str(VALKEY_PORT)]
+    else:
+        args = [
             str(binary),
             "--port",
             str(VALKEY_PORT),
@@ -189,7 +212,10 @@ def _start_valkey() -> dict[str, object]:
             "no",
             "--daemonize",
             "no",
-        ],
+        ]
+
+    process = subprocess.Popen(
+        args,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -325,7 +351,7 @@ else:
     from telegram_auto_poster.utils import db  # noqa: E402
     from telegram_auto_poster.utils.storage import reset_storage_for_tests  # noqa: E402
 
-    CONFIG.valkey.backend = "valkey"
+    CONFIG.valkey.backend = os.environ.get("VALKEY_BACKEND", "valkey")
     CONFIG.valkey.host = VALKEY_INFO["host"]
     CONFIG.valkey.port = VALKEY_INFO["port"]
     CONFIG.valkey.password = SecretStr("")
