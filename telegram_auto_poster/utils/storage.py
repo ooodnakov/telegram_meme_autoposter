@@ -6,13 +6,12 @@ import tempfile
 import time
 from datetime import timedelta
 from inspect import iscoroutinefunction
+from typing import Any, Awaitable
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 import telegram_auto_poster.utils.stats as stats_module
 from loguru import logger
-from miniopy_async import Minio
-from miniopy_async.error import MinioException, S3Error
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     CONFIG,
@@ -23,30 +22,38 @@ from telegram_auto_poster.config import (
 from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
 from telegram_auto_poster.utils.timezone import now_utc
 
-# Get MinIO configuration from centralized config
-MINIO_URL = CONFIG.minio.url
-MINIO_HOST = CONFIG.minio.host
-MINIO_PORT = CONFIG.minio.port
-MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
-MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
+from miniopy_async import Minio
+from miniopy_async.commonconfig import CopySource as MinioCopySource
+from miniopy_async.error import MinioException, S3Error
 
-if MINIO_URL:
-    parsed = urlparse(MINIO_URL)
-    if not parsed.netloc:
-        # Ensure a scheme is present so ``urlparse`` extracts the host correctly
-        parsed = urlparse(f"http://{MINIO_URL}")
-    MINIO_ENDPOINT = parsed.netloc
-    MINIO_SECURE = parsed.scheme == "https"
-    MINIO_INTERNAL_URL = f"{parsed.scheme}://{MINIO_ENDPOINT}"
-else:
-    MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
-    MINIO_SECURE = False
-    MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
+CopySource = MinioCopySource
+
+MINIO_BACKEND = CONFIG.minio.backend
 
 
 def _to_int(value: str | None) -> int | None:
     """Convert a string to ``int`` if not ``None``."""
     return int(value) if value is not None else None
+
+
+def _minio_connection_info() -> tuple[str, bool, str]:
+    """Resolve connection details for the configured object store."""
+
+    url = CONFIG.minio.url
+    host = CONFIG.minio.host
+    port = CONFIG.minio.port
+
+    if url:
+        parsed = urlparse(url if "://" in url else f"http://{url}")
+        endpoint = parsed.netloc
+        secure = parsed.scheme == "https"
+        internal_url = f"{parsed.scheme}://{endpoint}" if parsed.scheme else ""
+    else:
+        endpoint = f"{host}:{port}"
+        secure = False
+        internal_url = f"http://{endpoint}"
+
+    return endpoint, secure, internal_url
 
 
 class MinioStorage:
@@ -78,18 +85,33 @@ class MinioStorage:
             return
 
         try:
+            endpoint, secure, internal_url = _minio_connection_info()
+            access_key = CONFIG.minio.access_key.get_secret_value()
+            secret_key = CONFIG.minio.secret_key.get_secret_value()
+            region = CONFIG.minio.region
+
+            backend_label = "Garage" if MINIO_BACKEND == "garage" else "MinIO"
+            logger.info(
+                "Initializing {} client for {} (secure={})",
+                backend_label,
+                endpoint,
+                secure,
+            )
+
             if client is not None:
                 self.client = client
             else:
-                logger.info(
-                    f"Initializing MinIO client for {MINIO_ENDPOINT} (secure={MINIO_SECURE})"
-                )
                 self.client = Minio(
-                    MINIO_ENDPOINT,
-                    access_key=MINIO_ACCESS_KEY,
-                    secret_key=MINIO_SECRET_KEY,
-                    secure=MINIO_SECURE,
+                    endpoint,
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    secure=secure,
+                    region=region,
                 )
+
+            self._internal_url = internal_url.rstrip("/")
+            public_url = CONFIG.minio.public_url
+            self._public_url = public_url.rstrip("/") if public_url else None
 
             # Store metadata about submissions
             self.submission_metadata: dict[str, dict[str, object]] = {}
@@ -132,9 +154,10 @@ class MinioStorage:
                 response_headers={"response-content-disposition": "inline"},
             )
 
-            public_url = CONFIG.minio.public_url
-            if public_url:
-                return internal_url.replace(MINIO_INTERNAL_URL, public_url)
+            if self._public_url:
+                if self._internal_url and internal_url.startswith(self._internal_url):
+                    return internal_url.replace(self._internal_url, self._public_url, 1)
+                return f"{self._public_url}/{object_name}"
 
             return internal_url
         except Exception as e:
@@ -149,14 +172,38 @@ class MinioStorage:
 
         """
         try:
-            if not await self.client.bucket_exists(bucket_name):
-                await self.client.make_bucket(bucket_name)
-                logger.info(f"Created new bucket: {bucket_name}")
-        except Exception as e:
-            logger.error(f"Error creating bucket {bucket_name}: {e}")
-            await _stats_record_error(
-                "storage", f"Failed to create bucket {bucket_name}: {e}"
+            exists = await self.client.bucket_exists(bucket_name)
+        except S3Error as exc:
+            if exc.code == "AccessDenied":
+                logger.debug(
+                    "Bucket existence check denied for %s; assuming it already exists",
+                    bucket_name,
+                )
+                return
+            raise
+        except Exception as exc:
+            logger.error(
+                "Unexpected error checking bucket %s existence: %s", bucket_name, exc
             )
+            await _stats_record_error(
+                "storage", f"Failed to verify bucket {bucket_name}: {exc}"
+            )
+            raise
+
+        if exists:
+            return
+
+        try:
+            await self.client.make_bucket(bucket_name)
+            logger.info(f"Created new bucket: {bucket_name}")
+        except S3Error as exc:
+            if exc.code in {"BucketAlreadyOwnedByYou", "AccessDenied"}:
+                logger.debug(
+                    "Bucket creation skipped for %s due to %s; treating as pre-provisioned",
+                    bucket_name,
+                    exc.code,
+                )
+                return
             raise
 
     async def store_submission_metadata(
@@ -742,3 +789,46 @@ async def _stats_record_operation(name: str, duration: float) -> None:
 
 
 storage = MinioStorage()
+
+
+async def _clear_bucket(client: Minio, bucket: str) -> None:
+    """Remove all objects from ``bucket`` using the provided client."""
+
+    try:
+        async for obj in client.list_objects(bucket, recursive=True):
+            if obj is None:
+                continue
+            await client.remove_object(bucket, obj.object_name)
+    except Exception as exc:  # pragma: no cover - cleanup best effort
+        logger.debug("Failed to purge bucket {} during reset: {}", bucket, exc)
+
+
+def _run_async(coro: Awaitable[Any]) -> None:
+    """Execute ``coro`` regardless of whether an event loop is running."""
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(coro)
+        return
+
+    new_loop = asyncio.new_event_loop()
+    try:
+        new_loop.run_until_complete(coro)
+    finally:
+        new_loop.close()
+
+
+def reset_storage_for_tests() -> None:
+    """Reset the singleton storage instance. Intended for test suites."""
+
+    instance = MinioStorage._instance
+    if instance and hasattr(instance, "client"):
+        try:
+            _run_async(_clear_bucket(instance.client, BUCKET_MAIN))
+        except Exception as exc:  # pragma: no cover - cleanup best effort
+            logger.debug("Failed to clear bucket during reset: {}", exc)
+
+    MinioStorage._instance = None  # type: ignore[attr-defined]
+    global storage
+    storage = MinioStorage()

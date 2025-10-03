@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import TYPE_CHECKING, Any, cast
+
+from loguru import logger
 
 from telegram_auto_poster.config import CONFIG
 
@@ -18,7 +21,7 @@ Valkey: Any | None = None
 AsyncValkey: Any | None = None
 
 _redis_client: ValkeyClient | None = None
-_async_redis_client: AsyncValkeyClient | None = None
+_async_clients: dict[int, tuple[asyncio.AbstractEventLoop, AsyncValkeyClient]] = {}
 
 
 def get_redis_client() -> ValkeyClient:
@@ -36,42 +39,90 @@ def get_redis_client() -> ValkeyClient:
 
             Valkey = _Valkey
 
-        valkey_host = CONFIG.valkey.host
-        valkey_port = CONFIG.valkey.port
-        valkey_pass = CONFIG.valkey.password.get_secret_value()
-        _redis_client = Valkey(
-            host=valkey_host,
-            port=valkey_port,
-            password=valkey_pass,
-            decode_responses=True,
-        )
-    else:
-        # When using fakeredis in tests, ensure a clean database for each call
-        if _redis_client.__class__.__module__.startswith("fakeredis"):
-            _redis_client.flushdb()
+        _redis_client = Valkey(**_connection_kwargs())
     return _redis_client
 
 
 def get_async_redis_client() -> AsyncValkeyClient:
-    """Return a singleton instance of the async Valkey client."""
-    global _async_redis_client
-    if _async_redis_client is None:
+    """Return an async Valkey client bound to the current event loop."""
+
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+
+    entry = _async_clients.get(loop_id)
+    if entry is None:
         global AsyncValkey
-        if AsyncValkey is None:  # Import here so monkeypatching works
+        if AsyncValkey is None:  # Import lazily so monkeypatching works
             from valkey.asyncio import Valkey as _AsyncValkey
 
             AsyncValkey = _AsyncValkey
 
-        valkey_host = CONFIG.valkey.host
-        valkey_port = CONFIG.valkey.port
-        valkey_pass = CONFIG.valkey.password.get_secret_value()
-        _async_redis_client = AsyncValkey(
-            host=valkey_host,
-            port=valkey_port,
-            password=valkey_pass,
-            decode_responses=True,
-        )
-    return _async_redis_client
+        client = AsyncValkey(**_connection_kwargs())
+        _async_clients[loop_id] = (loop, client)
+        return client
+
+    return entry[1]
+
+
+def reset_cache_for_tests() -> None:
+    """Reset cached clients and flush the backing data store."""
+
+    global _redis_client
+
+    if _redis_client is not None:
+        try:
+            _redis_client.flushdb()
+            _redis_client.close()
+        except Exception as exc:  # pragma: no cover - best effort cleanup
+            logger.debug("Failed to flush redis client during reset: {}", exc)
+    _redis_client = None
+
+    for loop, client in list(_async_clients.values()):
+        try:
+            if loop.is_closed():
+                continue
+            fut = asyncio.run_coroutine_threadsafe(client.close(), loop)
+            fut.result()
+        except RuntimeError:
+            try:
+                asyncio.run(client.close())
+            except Exception as exc:  # pragma: no cover - best effort cleanup
+                logger.debug("Failed to close async redis client during reset: {}", exc)
+        except Exception as exc:  # pragma: no cover - best effort cleanup
+            logger.debug("Failed to close async redis client during reset: {}", exc)
+    _async_clients.clear()
+
+    # Ensure the external backend is cleared as well
+    temp_client: Any | None = None
+    try:
+        from valkey import Valkey as _Valkey
+
+        temp_client = _Valkey(**_connection_kwargs())
+        temp_client.flushdb()
+    except Exception as exc:  # pragma: no cover - temporary store may be offline
+        logger.debug("Unable to flush valkey backend during reset: {}", exc)
+    finally:
+        if temp_client is not None:
+            try:
+                temp_client.close()
+            except Exception as exc:  # pragma: no cover - best effort cleanup
+                logger.debug(
+                    "Failed to close temporary valkey client during reset: {}", exc
+                )
+
+
+def _connection_kwargs() -> dict[str, Any]:
+    """Return connection keyword arguments for Valkey clients."""
+
+    password = CONFIG.valkey.password.get_secret_value()
+    kwargs: dict[str, Any] = {
+        "host": CONFIG.valkey.host,
+        "port": CONFIG.valkey.port,
+        "decode_responses": True,
+    }
+    if password:
+        kwargs["password"] = password
+    return kwargs
 
 
 def _redis_prefix() -> str:

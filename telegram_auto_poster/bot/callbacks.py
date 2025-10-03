@@ -5,7 +5,6 @@ import os
 from typing import Any
 
 from loguru import logger
-from miniopy_async.commonconfig import CopySource
 from telegram import (
     Bot,
     CallbackQuery,
@@ -44,7 +43,7 @@ from telegram_auto_poster.utils.general import (
 )
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import CopySource, storage
 from telegram_auto_poster.utils.trash import (
     move_to_trash,
     purge_expired_trash,
