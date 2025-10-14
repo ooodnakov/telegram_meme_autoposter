@@ -15,6 +15,8 @@ from telegram_auto_poster.utils.db import (
 )
 from telegram_auto_poster.utils.timezone import now_utc
 
+LEADERBOARD_KEYS: tuple[str, ...] = ("submissions", "approved", "rejected")
+
 
 class MediaStats:
     """Collect and retrieve runtime statistics using Valkey only."""
@@ -94,8 +96,10 @@ class MediaStats:
         """Increase the submission count for ``source``."""
         if source:
             key = _redis_key("leaderboard", "submissions")
-            await self.r.zincrby(key, 1, source)
-            await self.r.persist(key)
+            pipe = self.r.pipeline(transaction=False)
+            pipe.zincrby(key, 1, source)
+            pipe.persist(key)
+            await pipe.execute()
 
     async def record_received(self, media_type: str) -> None:
         """Record that a piece of media of ``media_type`` was received."""
@@ -137,8 +141,10 @@ class MediaStats:
         await self.r.persist(hour_key)
         if source:
             appr_key = _redis_key("leaderboard", "approved")
-            await self.r.zincrby(appr_key, count, source)
-            await self.r.persist(appr_key)
+            pipe = self.r.pipeline(transaction=False)
+            pipe.zincrby(appr_key, count, source)
+            pipe.persist(appr_key)
+            await pipe.execute()
 
     async def record_post_published(
         self, count: int = 1, *, timestamp: datetime.datetime | None = None
@@ -161,8 +167,10 @@ class MediaStats:
         await self.r.persist(hour_key)
         if source:
             rej_key = _redis_key("leaderboard", "rejected")
-            await self.r.zincrby(rej_key, 1, source)
-            await self.r.persist(rej_key)
+            pipe = self.r.pipeline(transaction=False)
+            pipe.zincrby(rej_key, 1, source)
+            pipe.persist(rej_key)
+            await pipe.execute()
 
     async def record_added_to_batch(self, media_type: str) -> None:
         """Record that media was added to the batch queue."""
@@ -509,11 +517,7 @@ class MediaStats:
     async def reset_leaderboard(self) -> str:
         """Clear all per-source submission and decision statistics."""
 
-        keys = [
-            _redis_key("leaderboard", "submissions"),
-            _redis_key("leaderboard", "approved"),
-            _redis_key("leaderboard", "rejected"),
-        ]
+        keys = [_redis_key("leaderboard", key) for key in LEADERBOARD_KEYS]
         await self.r.delete(*keys)
         return "Leaderboard has been reset."
 

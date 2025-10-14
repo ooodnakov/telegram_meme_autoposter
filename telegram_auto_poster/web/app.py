@@ -9,7 +9,7 @@ import os
 import pydoc
 from pathlib import Path
 from pydoc import locate
-from typing import Awaitable, Callable, Sequence
+from typing import Awaitable, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, Request, Response, status
@@ -160,6 +160,26 @@ def _redirect_after_post(next_url: str | None, default: str) -> RedirectResponse
 
     destination = _safe_redirect_target(next_url or default)
     return RedirectResponse(url=destination, status_code=303)
+
+
+def _set_session_username(request: Request, data: Mapping[str, object]) -> None:
+    """Store the username from ``data`` in the session when present."""
+
+    username = data.get("username")
+    if isinstance(username, str) and username:
+        request.session["username"] = username
+
+
+async def _get_metas_for_paths(
+    paths: Sequence[str],
+) -> list[tuple[str, dict[str, object] | None]]:
+    """Fetch submission metadata for ``paths`` concurrently."""
+
+    if not paths:
+        return []
+    tasks = [storage.get_submission_metadata(os.path.basename(path)) for path in paths]
+    results = await asyncio.gather(*tasks)
+    return [(path, meta) for path, meta in zip(paths, results)]
 
 
 templates.env.globals["LANGUAGES"] = LANGUAGES
@@ -597,9 +617,7 @@ async def auth_post(request: Request) -> Response:
         logger.warning(f"Auth POST: user_id {user_id} not in admin_ids")
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
-    username = data.get("username")
-    if isinstance(username, str) and username:
-        request.session["username"] = username
+    _set_session_username(request, data)
     logger.info(f"Auth POST: Session set for user_id={user_id}")
     return JSONResponse({"status": "ok"})
 
@@ -630,9 +648,7 @@ async def auth_get(request: Request) -> Response:
         logger.warning(f"Auth GET: user_id {user_id} not in admin_ids")
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
-    username = data.get("username")
-    if isinstance(username, str) and username:
-        request.session["username"] = username
+    _set_session_username(request, data)
     logger.info(f"Auth GET: Session set for user_id={user_id}")
 
     # Return a success page that refreshes the opener and closes the popup
@@ -756,14 +772,17 @@ async def events_view(
                 display_timestamp = timestamp
         actor_label = entry.get("actor_username") or entry.get("actor_id")
         items: list[dict[str, object]] = []
-        for item in entry.get("items", []):
+        raw_items = entry.get("items")
+        for item in raw_items if isinstance(raw_items, list) else []:
             if not isinstance(item, dict):
                 continue
             path = item.get("path")
             items.append(
                 {
                     "path": path,
-                    "basename": os.path.basename(path) if isinstance(path, str) else path,
+                    "basename": os.path.basename(path)
+                    if isinstance(path, str)
+                    else path,
                     "media_type": item.get("media_type"),
                     "submitter": item.get("submitter"),
                 }
@@ -784,12 +803,15 @@ async def events_view(
 
 
 @app.post("/events/reset")
-async def reset_events_history(request: Request, next: str = Form("/events")) -> Response:
+async def reset_events_history(
+    request: Request, next: str = Form("/events")
+) -> Response:
     """Clear the stored administrative event history."""
 
     await clear_event_history()
     logger.info(
-        "Event history reset by user %s", request.session.get("user_id"),
+        "Event history reset by user %s",
+        request.session.get("user_id"),
     )
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
@@ -895,10 +917,7 @@ async def send_batch(request: Request) -> Response:
     event_items: list[tuple[str, dict[str, object] | None]] = []
     for post in posts:
         paths = [item["path"] for item in post["items"]]
-        for item_path in paths:
-            basename = os.path.basename(item_path)
-            meta = await storage.get_submission_metadata(basename)
-            event_items.append((item_path, meta))
+        event_items.extend(await _get_metas_for_paths(paths))
         try:
             await _push_post_group(paths)
             await decrement_batch_count(len(paths))
@@ -944,11 +963,8 @@ async def manual_schedule_batch(
         return RedirectResponse(url=f"/{origin}", status_code=303)
 
     next_ts = base_ts
-    metas: list[tuple[str, dict[str, object] | None]] = []
-    for item_path in all_paths:
-        basename = os.path.basename(item_path)
-        meta = await storage.get_submission_metadata(basename)
-        metas.append((item_path, meta))
+    metas = await _get_metas_for_paths(all_paths)
+    for item_path, _meta in metas:
         await _schedule_post_at(item_path, next_ts)
         next_ts += MANUAL_SCHEDULE_INTERVAL_SECONDS
 
@@ -979,11 +995,7 @@ async def handle_action(
     all_paths = paths or []
     if path:
         all_paths.append(path)
-    metas: list[tuple[str, dict[str, object] | None]] = []
-    for item_path in all_paths:
-        file_name = os.path.basename(item_path)
-        meta = await storage.get_submission_metadata(file_name)
-        metas.append((item_path, meta))
+    metas = await _get_metas_for_paths(all_paths)
     if action == "push":
         if len(all_paths) > 1:
             await _push_post_group(all_paths)

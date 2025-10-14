@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 
 from telegram_auto_poster.config import CONFIG
+from valkey.exceptions import ValkeyError
 
 if TYPE_CHECKING:  # pragma: no cover - imported only for type checking
     from valkey import Valkey as ValkeyClient
@@ -303,7 +304,7 @@ async def add_event_history_entry(
         payload = json.dumps(entry, default=str)
         await client.lpush(key, payload)
         await client.ltrim(key, 0, max_length - 1)
-    except Exception as exc:  # pragma: no cover - logging only
+    except (ValkeyError, TypeError) as exc:  # pragma: no cover - logging only
         logger.error(f"Failed to store event history entry: {exc}")
 
 
@@ -317,7 +318,7 @@ async def get_event_history(limit: int = 50) -> list[dict[str, object]]:
         client = get_async_redis_client()
         key = _redis_key("events", "history")
         raw_entries = await client.lrange(key, 0, limit - 1)
-    except Exception as exc:  # pragma: no cover - logging only
+    except ValkeyError as exc:  # pragma: no cover - logging only
         logger.error(f"Failed to read event history: {exc}")
         return []
 
@@ -339,5 +340,5 @@ async def clear_event_history() -> None:
         client = get_async_redis_client()
         key = _redis_key("events", "history")
         await client.delete(key)
-    except Exception as exc:  # pragma: no cover - logging only
+    except ValkeyError as exc:  # pragma: no cover - logging only
         logger.error(f"Failed to clear event history: {exc}")
