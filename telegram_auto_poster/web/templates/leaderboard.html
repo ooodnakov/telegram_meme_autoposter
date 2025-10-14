@@ -28,7 +28,15 @@
 </table>
 {% endmacro %}
 {% block content %}
-<h1>{{ _('Leaderboard') }}</h1>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+  <h1 class="m-0">{{ _('Leaderboard') }}</h1>
+  <form method="post" action="/leaderboard/reset" class="d-inline">
+    <input type="hidden" name="next" value="{{ request.url.path }}">
+    <button class="btn btn-outline-secondary btn-sm" type="submit">
+      {{ _('Reset leaderboard') }}
+    </button>
+  </form>
+</div>
 {{ render_table(_('Most Submissions'), submissions, [('submissions', _('Submissions')), ('approved', _('Approved')), ('rejected', _('Rejected'))]) }}
 {{ render_table(_('Most Approved'), approved, [('approved', _('Approved')), ('submissions', _('Submissions')), ('rejected', _('Rejected'))]) }}
 {{ render_table(_('Most Rejected'), rejected, [('rejected', _('Rejected')), ('submissions', _('Submissions')), ('approved', _('Approved'))]) }}

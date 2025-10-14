@@ -93,7 +93,9 @@ class MediaStats:
     async def record_submission(self, source: str) -> None:
         """Increase the submission count for ``source``."""
         if source:
-            await self.r.zincrby(_redis_key("leaderboard", "submissions"), 1, source)
+            key = _redis_key("leaderboard", "submissions")
+            await self.r.zincrby(key, 1, source)
+            await self.r.persist(key)
 
     async def record_received(self, media_type: str) -> None:
         """Record that a piece of media of ``media_type`` was received."""
@@ -132,8 +134,11 @@ class MediaStats:
         await self._increment(name, scope="total", count=count)
         hour_key = _redis_key("hourly", str(now_utc().hour))
         await self.r.incrby(hour_key, count)
+        await self.r.persist(hour_key)
         if source:
-            await self.r.zincrby(_redis_key("leaderboard", "approved"), count, source)
+            appr_key = _redis_key("leaderboard", "approved")
+            await self.r.zincrby(appr_key, count, source)
+            await self.r.persist(appr_key)
 
     async def record_post_published(
         self, count: int = 1, *, timestamp: datetime.datetime | None = None
@@ -153,8 +158,11 @@ class MediaStats:
         await self._increment(name, scope="total")
         hour_key = _redis_key("hourly", str(now_utc().hour))
         await self.r.incrby(hour_key, 1)
+        await self.r.persist(hour_key)
         if source:
-            await self.r.zincrby(_redis_key("leaderboard", "rejected"), 1, source)
+            rej_key = _redis_key("leaderboard", "rejected")
+            await self.r.zincrby(rej_key, 1, source)
+            await self.r.persist(rej_key)
 
     async def record_added_to_batch(self, media_type: str) -> None:
         """Record that media was added to the batch queue."""
@@ -497,6 +505,17 @@ class MediaStats:
         for hour in range(24):
             await self.r.delete(_redis_key("hourly", str(hour)))
         return "Daily statistics have been reset."
+
+    async def reset_leaderboard(self) -> str:
+        """Clear all per-source submission and decision statistics."""
+
+        keys = [
+            _redis_key("leaderboard", "submissions"),
+            _redis_key("leaderboard", "approved"),
+            _redis_key("leaderboard", "rejected"),
+        ]
+        await self.r.delete(*keys)
+        return "Leaderboard has been reset."
 
     async def force_save(self) -> None:
         """Force Valkey to persist data to disk."""

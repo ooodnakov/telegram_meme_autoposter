@@ -61,3 +61,29 @@ def test_schedule_roundtrip(mocker):
     db.remove_scheduled_post("foo")
     assert db.get_scheduled_posts() == []
     assert db.get_scheduled_time("foo") is None
+
+
+@pytest.mark.asyncio
+async def test_event_history_roundtrip(mock_async_redis):
+    entry_one = {"action": "ok", "timestamp": "2024-01-01T00:00:00+00:00"}
+    entry_two = {"action": "push", "timestamp": "2024-01-02T00:00:00+00:00"}
+
+    await db.add_event_history_entry(entry_one, max_length=2)
+    await db.add_event_history_entry(entry_two, max_length=2)
+
+    events = await db.get_event_history()
+    assert len(events) == 2
+    # Newest entry should come first
+    assert events[0]["action"] == "push"
+    assert events[1]["action"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_clear_event_history(mock_async_redis):
+    entry = {"action": "queued", "timestamp": "2024-01-01T00:00:00+00:00"}
+    await db.add_event_history_entry(entry)
+
+    await db.clear_event_history()
+
+    events = await db.get_event_history()
+    assert events == []

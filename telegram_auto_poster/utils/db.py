@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import TYPE_CHECKING, Any, cast
+
+from loguru import logger
 
 from telegram_auto_poster.config import CONFIG
 
@@ -19,6 +22,8 @@ AsyncValkey: Any | None = None
 
 _redis_client: ValkeyClient | None = None
 _async_redis_client: AsyncValkeyClient | None = None
+
+EVENT_HISTORY_LIMIT = 200
 
 
 def get_redis_client() -> ValkeyClient:
@@ -285,3 +290,54 @@ async def get_trashed_posts_count() -> int:
     key = _redis_key("trash", "expires")
     count = await r.zcard(key)
     return int(count) if count is not None else 0
+
+
+async def add_event_history_entry(
+    entry: dict[str, object], *, max_length: int = EVENT_HISTORY_LIMIT
+) -> None:
+    """Append ``entry`` to the persistent event history list."""
+
+    try:
+        client = get_async_redis_client()
+        key = _redis_key("events", "history")
+        payload = json.dumps(entry, default=str)
+        await client.lpush(key, payload)
+        await client.ltrim(key, 0, max_length - 1)
+    except Exception as exc:  # pragma: no cover - logging only
+        logger.error(f"Failed to store event history entry: {exc}")
+
+
+async def get_event_history(limit: int = 50) -> list[dict[str, object]]:
+    """Return the most recent event history entries."""
+
+    if limit <= 0:
+        return []
+
+    try:
+        client = get_async_redis_client()
+        key = _redis_key("events", "history")
+        raw_entries = await client.lrange(key, 0, limit - 1)
+    except Exception as exc:  # pragma: no cover - logging only
+        logger.error(f"Failed to read event history: {exc}")
+        return []
+
+    events: list[dict[str, object]] = []
+    for raw in raw_entries:
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):  # pragma: no cover - defensive
+            continue
+        if isinstance(parsed, dict):
+            events.append(parsed)
+    return events
+
+
+async def clear_event_history() -> None:
+    """Remove all stored event history entries from Valkey."""
+
+    try:
+        client = get_async_redis_client()
+        key = _redis_key("events", "history")
+        await client.delete(key)
+    except Exception as exc:  # pragma: no cover - logging only
+        logger.error(f"Failed to clear event history: {exc}")
