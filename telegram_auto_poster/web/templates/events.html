@@ -49,9 +49,10 @@
                 </td>
                 <td>{{ event.actor or _('System') }}</td>
                 <td>
-                    {% if event.items %}
+                    {% set event_items = event["items"] %}
+                    {% if event_items %}
                     <ul class="list-unstyled mb-0">
-                        {% for item in event.items %}
+                        {% for item in event_items %}
                         <li>
                             {% if item.media_type %}
                                 <span class="badge bg-secondary text-uppercase">{{ item.media_type }}</span>
