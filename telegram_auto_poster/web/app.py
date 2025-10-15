@@ -9,7 +9,7 @@ import os
 import pydoc
 from pathlib import Path
 from pydoc import locate
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, Request, Response, status
@@ -33,8 +33,12 @@ from telegram_auto_poster.config import (
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.db import (
+    EVENT_HISTORY_LIMIT,
+    add_event_history_entry,
     add_scheduled_post,
     decrement_batch_count,
+    clear_event_history,
+    get_event_history,
     get_scheduled_posts,
     get_scheduled_posts_count,
     increment_batch_count,
@@ -151,6 +155,33 @@ def _safe_redirect_target(target: str) -> str:
     return target
 
 
+def _redirect_after_post(next_url: str | None, default: str) -> RedirectResponse:
+    """Return a redirect response honoring ``next_url`` when safe."""
+
+    destination = _safe_redirect_target(next_url or default)
+    return RedirectResponse(url=destination, status_code=303)
+
+
+def _set_session_username(request: Request, data: Mapping[str, object]) -> None:
+    """Store the username from ``data`` in the session when present."""
+
+    username = data.get("username")
+    if isinstance(username, str) and username:
+        request.session["username"] = username
+
+
+async def _get_metas_for_paths(
+    paths: Sequence[str],
+) -> list[tuple[str, dict[str, object] | None]]:
+    """Fetch submission metadata for ``paths`` concurrently."""
+
+    if not paths:
+        return []
+    tasks = [storage.get_submission_metadata(os.path.basename(path)) for path in paths]
+    results = await asyncio.gather(*tasks)
+    return [(path, meta) for path, meta in zip(paths, results)]
+
+
 templates.env.globals["LANGUAGES"] = LANGUAGES
 templates.env.globals["DEFAULT_LANGUAGE"] = CONFIG.i18n.default
 templates.env.globals["cycle_language"] = _cycle_language
@@ -164,6 +195,7 @@ QUIET_START = CONFIG.schedule.quiet_hours_start
 QUIET_END = CONFIG.schedule.quiet_hours_end
 ITEMS_PER_PAGE = 30
 MANUAL_SCHEDULE_INTERVAL_SECONDS = 3600
+EVENT_HISTORY_PAGE_SIZE = 50
 
 BATCH_ITEM_PREFIXES = (
     f"{PHOTOS_PATH}/batch_",
@@ -177,6 +209,32 @@ def _is_batch_item(path: str) -> bool:
     return path.startswith(BATCH_ITEM_PREFIXES)
 
 
+def _extract_submitter(meta: dict[str, object] | None) -> dict[str, object] | None:
+    """Return structured submitter information for templates and logging."""
+
+    if not meta:
+        return None
+
+    raw_user_id = meta.get("user_id")
+    try:
+        user_id = int(raw_user_id) if raw_user_id is not None else None
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        user_id = None
+
+    source = meta.get("source")
+    admin_ids = tuple(CONFIG.bot.admin_ids or [])
+    is_admin = bool(user_id is not None and user_id in admin_ids)
+    submitter: dict[str, object] = {
+        "is_admin": is_admin,
+        "is_suggestion": user_id is not None,
+    }
+    if user_id is not None:
+        submitter["user_id"] = user_id
+    if source:
+        submitter["source"] = source
+    return submitter
+
+
 def _paginate(
     total: int, page: int, per_page: int = ITEMS_PER_PAGE
 ) -> tuple[int, int, int]:
@@ -185,6 +243,49 @@ def _paginate(
     page = max(1, min(page, total_pages))
     offset = (page - 1) * per_page
     return page, total_pages, offset
+
+
+async def _record_event(
+    action: str,
+    *,
+    origin: str | None = None,
+    request: Request | None = None,
+    items: Sequence[tuple[str, dict[str, object] | None]] | None = None,
+    extra: dict[str, object] | None = None,
+) -> None:
+    """Persist an admin action in the event history list."""
+
+    entry: dict[str, object] = {
+        "timestamp": now_utc().isoformat(),
+        "action": action,
+    }
+    if origin:
+        entry["origin"] = origin
+    if request is not None:
+        actor_id = request.session.get("user_id")
+        if actor_id is not None:
+            entry["actor_id"] = actor_id
+        actor_username = request.session.get("username")
+        if actor_username:
+            entry["actor_username"] = actor_username
+    if extra:
+        entry["extra"] = extra
+
+    event_items: list[dict[str, object]] = []
+    for path, meta in items or []:
+        item: dict[str, object] = {"path": path}
+        if path.startswith(f"{PHOTOS_PATH}/"):
+            item["media_type"] = "photo"
+        elif path.startswith(f"{VIDEOS_PATH}/"):
+            item["media_type"] = "video"
+        submitter = _extract_submitter(meta)
+        if submitter:
+            item["submitter"] = submitter
+        event_items.append(item)
+    if event_items:
+        entry["items"] = event_items
+
+    await add_event_history_entry(entry)
 
 
 async def _list_media(
@@ -257,7 +358,7 @@ async def _gather_posts(
     """Collect processed posts for rendering in the dashboard."""
     objects = await _list_media("processed", offset=offset, limit=limit)
     posts: list[dict] = []
-    grouped: dict[str, list[dict]] = {}
+    grouped: dict[str, dict[str, object]] = {}
     for obj in objects:
         file_name = os.path.basename(obj)
         meta = await storage.get_submission_metadata(file_name)
@@ -282,12 +383,23 @@ async def _gather_posts(
             "is_video": is_video,
             "is_image": is_image,
         }
+        submitter = _extract_submitter(meta)
         group_id = meta.get("group_id") if meta else None
         if group_id:
-            grouped.setdefault(group_id, []).append(item)
+            bucket = grouped.setdefault(group_id, {"items": [], "meta": {}})
+            bucket["items"].append(item)
+            if submitter and not bucket["meta"].get("submitter"):
+                bucket["meta"]["submitter"] = submitter
         else:
-            posts.append({"items": [item]})
-    posts.extend({"items": items} for items in grouped.values())
+            post_entry = {"items": [item]}
+            if submitter:
+                post_entry["meta"] = {"submitter": submitter}
+            posts.append(post_entry)
+    for bucket in grouped.values():
+        entry = {"items": bucket["items"]}
+        if bucket.get("meta"):
+            entry["meta"] = bucket["meta"]
+        posts.append(entry)
     return posts
 
 
@@ -505,6 +617,7 @@ async def auth_post(request: Request) -> Response:
         logger.warning(f"Auth POST: user_id {user_id} not in admin_ids")
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
+    _set_session_username(request, data)
     logger.info(f"Auth POST: Session set for user_id={user_id}")
     return JSONResponse({"status": "ok"})
 
@@ -535,6 +648,7 @@ async def auth_get(request: Request) -> Response:
         logger.warning(f"Auth GET: user_id {user_id} not in admin_ids")
         return Response(status_code=status.HTTP_403_FORBIDDEN, content="Unauthorized")
     request.session["user_id"] = user_id
+    _set_session_username(request, data)
     logger.info(f"Auth GET: Session set for user_id={user_id}")
 
     # Return a success page that refreshes the opener and closes the popup
@@ -634,6 +748,77 @@ async def posts_view(request: Request, page: int = 1) -> HTMLResponse:
 
 
 @app.get(
+    "/events",
+    response_class=HTMLResponse,
+)
+async def events_view(
+    request: Request, limit: int = EVENT_HISTORY_PAGE_SIZE
+) -> HTMLResponse:
+    """Render the recent administrative event history."""
+
+    clamped_limit = max(1, min(limit, EVENT_HISTORY_LIMIT))
+    history = await get_event_history(limit=clamped_limit)
+    events: list[dict[str, object]] = []
+    for entry in history:
+        timestamp = entry.get("timestamp")
+        display_timestamp = timestamp
+        if isinstance(timestamp, str):
+            try:
+                dt = datetime.datetime.fromisoformat(timestamp)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=UTC)
+                display_timestamp = format_display(dt)
+            except ValueError:  # pragma: no cover - defensive
+                display_timestamp = timestamp
+        actor_label = entry.get("actor_username") or entry.get("actor_id")
+        items: list[dict[str, object]] = []
+        raw_items = entry.get("items")
+        for item in raw_items if isinstance(raw_items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            items.append(
+                {
+                    "path": path,
+                    "basename": os.path.basename(path)
+                    if isinstance(path, str)
+                    else path,
+                    "media_type": item.get("media_type"),
+                    "submitter": item.get("submitter"),
+                }
+            )
+        events.append(
+            {
+                "timestamp": display_timestamp,
+                "action": entry.get("action"),
+                "origin": entry.get("origin"),
+                "actor": actor_label,
+                "items": items,
+                "extra": entry.get("extra", {}),
+            }
+        )
+
+    context = {"request": request, "events": events, "limit": clamped_limit}
+    return templates.TemplateResponse("events.html", context)
+
+
+@app.post("/events/reset")
+async def reset_events_history(
+    request: Request, next: str = Form("/events")
+) -> Response:
+    """Clear the stored administrative event history."""
+
+    await clear_event_history()
+    logger.info(
+        "Event history reset by user %s",
+        request.session.get("user_id"),
+    )
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok"})
+    return _redirect_after_post(next, "/events")
+
+
+@app.get(
     "/trash",
     response_class=HTMLResponse,
 )
@@ -724,13 +909,15 @@ async def batch_view(request: Request, page: int = 1) -> HTMLResponse:
 
 
 @app.post("/batch/send")
-async def send_batch() -> Response:
+async def send_batch(request: Request) -> Response:
     """Send all items currently in the batch to the target channel."""
     posts = await _gather_batch()
     if not posts:
         return RedirectResponse(url="/batch", status_code=303)
+    event_items: list[tuple[str, dict[str, object] | None]] = []
     for post in posts:
         paths = [item["path"] for item in post["items"]]
+        event_items.extend(await _get_metas_for_paths(paths))
         try:
             await _push_post_group(paths)
             await decrement_batch_count(len(paths))
@@ -739,6 +926,13 @@ async def send_batch() -> Response:
             # Error should be logged in _push_post_group. Here we prevent incorrect state changes.
             # A user-facing error message would be a good addition here.
             pass
+    if event_items:
+        await _record_event(
+            "batch_send",
+            origin="batch",
+            request=request,
+            items=event_items,
+        )
     return RedirectResponse(url="/batch", status_code=303)
 
 
@@ -769,9 +963,19 @@ async def manual_schedule_batch(
         return RedirectResponse(url=f"/{origin}", status_code=303)
 
     next_ts = base_ts
-    for item_path in all_paths:
+    metas = await _get_metas_for_paths(all_paths)
+    for item_path, _meta in metas:
         await _schedule_post_at(item_path, next_ts)
         next_ts += MANUAL_SCHEDULE_INTERVAL_SECONDS
+
+    if metas:
+        await _record_event(
+            "manual_schedule",
+            origin=origin,
+            request=request,
+            items=metas,
+            extra={"scheduled_at": scheduled_at},
+        )
 
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
@@ -791,6 +995,7 @@ async def handle_action(
     all_paths = paths or []
     if path:
         all_paths.append(path)
+    metas = await _get_metas_for_paths(all_paths)
     if action == "push":
         if len(all_paths) > 1:
             await _push_post_group(all_paths)
@@ -808,6 +1013,13 @@ async def handle_action(
     elif action == "remove_batch":
         for p in all_paths:
             await _remove_batch(p)
+    if metas:
+        await _record_event(
+            action,
+            origin=origin,
+            request=request,
+            items=metas,
+        )
     # If this is a background (AJAX) request, return JSON instead of redirect
     if request.headers.get("X-Background-Request", "").lower() == "true":
         return JSONResponse({"status": "ok"})
@@ -1145,12 +1357,48 @@ async def stats_view(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("stats.html", context)
 
 
+@app.post("/stats/reset")
+async def reset_stats(request: Request, next: str = Form("/stats")) -> Response:
+    """Reset daily statistics and persist the change."""
+
+    message = await stats.reset_daily_stats()
+    await stats.force_save()
+    await _record_event(
+        "stats_reset",
+        origin="stats",
+        request=request,
+        extra={"detail": message},
+    )
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok", "message": message})
+    return _redirect_after_post(next, "/stats")
+
+
 @app.get("/leaderboard", response_class=HTMLResponse)
 async def leaderboard(request: Request) -> HTMLResponse:
     """Display the leaderboard of top submitters."""
     data = await stats.get_leaderboard()
     context = {"request": request, **data}
     return templates.TemplateResponse("leaderboard.html", context)
+
+
+@app.post("/leaderboard/reset")
+async def reset_leaderboard_view(
+    request: Request, next: str = Form("/leaderboard")
+) -> Response:
+    """Clear leaderboard statistics and persist the change."""
+
+    message = await stats.reset_leaderboard()
+    await stats.force_save()
+    await _record_event(
+        "leaderboard_reset",
+        origin="leaderboard",
+        request=request,
+        extra={"detail": message},
+    )
+    if request.headers.get("X-Background-Request", "").lower() == "true":
+        return JSONResponse({"status": "ok", "message": message})
+    return _redirect_after_post(next, "/leaderboard")
 
 
 @app.get("/pydoc/{module:path}", response_class=HTMLResponse)

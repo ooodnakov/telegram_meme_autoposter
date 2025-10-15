@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+    <div>
+        <h1 class="m-0">{{ _('Event History') }}</h1>
+        <span class="text-muted small">{{ _('Showing last {n} events').format(n=limit) }}</span>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="/events/reset" class="d-inline">
+            <input type="hidden" name="next" value="{{ request.url.path }}">
+            <button class="btn btn-outline-danger btn-sm" type="submit">
+                {{ _('Reset events') }}
+            </button>
+        </form>
+        <form method="post" action="/stats/reset" class="d-inline">
+            <input type="hidden" name="next" value="{{ request.url.path }}">
+            <button class="btn btn-outline-warning btn-sm" type="submit">
+                {{ _('Reset stats') }}
+            </button>
+        </form>
+        <form method="post" action="/leaderboard/reset" class="d-inline">
+            <input type="hidden" name="next" value="{{ request.url.path }}">
+            <button class="btn btn-outline-secondary btn-sm" type="submit">
+                {{ _('Reset leaderboard') }}
+            </button>
+        </form>
+    </div>
+</div>
+<div class="table-responsive">
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th scope="col">{{ _('Timestamp') }}</th>
+                <th scope="col">{{ _('Action') }}</th>
+                <th scope="col">{{ _('Actor') }}</th>
+                <th scope="col">{{ _('Details') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if events %}
+            {% for event in events %}
+            <tr>
+                <td><span class="font-monospace">{{ event.timestamp }}</span></td>
+                <td>
+                    <div>{{ event.action or _('Unknown action') }}</div>
+                    {% if event.origin %}
+                    <div class="small text-muted">{{ _('Origin: {origin}').format(origin=event.origin) }}</div>
+                    {% endif %}
+                </td>
+                <td>{{ event.actor or _('System') }}</td>
+                <td>
+                    {% if event.items %}
+                    <ul class="list-unstyled mb-0">
+                        {% for item in event.items %}
+                        <li>
+                            {% if item.media_type %}
+                                <span class="badge bg-secondary text-uppercase">{{ item.media_type }}</span>
+                            {% endif %}
+                            {% if item.basename %}
+                                <code class="ms-1">{{ item.basename }}</code>
+                            {% endif %}
+                            {% set submitter = item.submitter %}
+                            {% if submitter %}
+                                <span class="text-muted ms-2">
+                                    {% if submitter.is_admin and submitter.source %}
+                                        @{{ submitter.source }}
+                                    {% elif submitter.user_id %}
+                                        {{ _('User #{id}').format(id=submitter.user_id) }}
+                                    {% endif %}
+                                </span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <span class="text-muted">{{ _('No items recorded') }}</span>
+                    {% endif %}
+                    {% if event.extra %}
+                    <div class="small text-muted mt-1">
+                        {% for key, value in event.extra.items() %}
+                            <div>{{ key }}: {{ value }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-center text-muted">{{ _('No events yet.') }}</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

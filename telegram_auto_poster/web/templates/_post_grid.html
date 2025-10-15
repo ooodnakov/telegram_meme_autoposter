@@ -50,6 +50,20 @@
                 <button class="btn btn-sm btn-danger" type="submit">{{ _('No!') }}</button>
             </form>
         </div>
+        {% if origin == 'suggestions' and p.meta and p.meta.submitter %}
+        {% set submitter = p.meta.submitter %}
+        <div class="mt-2 small text-muted">
+            {{ _('Suggested by:') }}
+            {% if submitter.is_admin and submitter.source %}
+                @{{ submitter.source }}
+                <span class="badge bg-info ms-1">{{ _('Admin') }}</span>
+            {% elif submitter.user_id %}
+                {{ _('User #{id}').format(id=submitter.user_id) }}
+            {% else %}
+                {{ _('Unknown') }}
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

@@ -108,3 +108,40 @@ async def test_force_save_swallows_errors(stats_instance, mocker):
     await stats_instance.force_save()
 
     mock_save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_suggestion_and_decision_stats_persist(stats_instance):
+    await stats_instance.record_submission("alice")
+    await stats_instance.record_approved("photo", source="alice")
+    await stats_instance.record_rejected("video", source="alice")
+
+    subs_key = _redis_key("leaderboard", "submissions")
+    appr_key = _redis_key("leaderboard", "approved")
+    rej_key = _redis_key("leaderboard", "rejected")
+
+    assert await stats_instance.r.zscore(subs_key, "alice") == 1.0
+    assert await stats_instance.r.zscore(appr_key, "alice") == 1.0
+    assert await stats_instance.r.zscore(rej_key, "alice") == 1.0
+
+    MediaStats._instance = None
+    new_instance = MediaStats()
+    assert await new_instance.r.zscore(subs_key, "alice") == 1.0
+    assert await new_instance.r.zscore(appr_key, "alice") == 1.0
+    assert await new_instance.r.zscore(rej_key, "alice") == 1.0
+
+
+@pytest.mark.asyncio
+async def test_reset_leaderboard_clears_data(stats_instance):
+    await stats_instance.record_submission("alice")
+    await stats_instance.record_approved("photo", source="alice")
+    await stats_instance.record_rejected("video", source="alice")
+
+    await stats_instance.reset_leaderboard()
+
+    for key in (
+        _redis_key("leaderboard", "submissions"),
+        _redis_key("leaderboard", "approved"),
+        _redis_key("leaderboard", "rejected"),
+    ):
+        assert await stats_instance.r.exists(key) == 0
