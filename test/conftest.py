@@ -31,6 +31,7 @@ class S3Error(Exception):
 class DummyMinio:
     def __init__(self, *a, **k):
         pass
+
     async def bucket_exists(self, *a, **k):
         return True
 
@@ -62,7 +63,8 @@ class DummyMinio:
         return SimpleNamespace(metadata={})
 
     async def list_objects(self, *a, **k):
-        return []
+        for x in []:
+            yield x
 
 
 # Expose the dummy client and error classes on the module
@@ -72,6 +74,7 @@ error_module.MinioException = MinioException
 error_module.S3Error = S3Error
 
 commonconfig_module = types.ModuleType("miniopy_async.commonconfig")
+
 
 class CopySource:
     def __init__(self, *a, **k):

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2025-09-26 21:05+0000\n"
+"POT-Creation-Date: 2025-11-20 08:05+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -84,30 +84,30 @@ msgstr ""
 msgid "Sorry, there was an error saving the statistics."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:289
+#: telegram_auto_poster/bot/commands.py:291
 msgid "No media paths found. Reply to a review message or include paths."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:300
+#: telegram_auto_poster/bot/commands.py:302
 #, python-brace-format
 msgid "Failed to move {path} to trash: {error}"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:335
+#: telegram_auto_poster/bot/commands.py:337
 #, python-brace-format
 msgid "Moved to trash until {time}"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:357
+#: telegram_auto_poster/bot/commands.py:360
 msgid "No trashed media paths found. Reply to a trash message or include paths."
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:368
+#: telegram_auto_poster/bot/commands.py:372
 #, python-brace-format
 msgid "Failed to restore {path}: {error}"
 msgstr ""
 
-#: telegram_auto_poster/bot/commands.py:374
+#: telegram_auto_poster/bot/commands.py:376
 msgid "Restored for review:"
 msgstr ""
 
@@ -147,7 +147,7 @@ msgid "Send to batch!"
 msgstr ""
 
 #: telegram_auto_poster/utils/ui.py:29
-#: telegram_auto_poster/web/templates/_batch_grid.html:30
+#: telegram_auto_poster/web/templates/_batch_grid.html:31
 #: telegram_auto_poster/web/templates/_post_grid.html:30
 msgid "Schedule"
 msgstr ""
@@ -162,12 +162,12 @@ msgid "Push to all"
 msgstr ""
 
 #: telegram_auto_poster/utils/ui.py:48 telegram_auto_poster/utils/ui.py:55
-#: telegram_auto_poster/web/templates/_post_grid.html:51
+#: telegram_auto_poster/web/templates/_post_grid.html:50
 msgid "No!"
 msgstr ""
 
 #: telegram_auto_poster/utils/ui.py:54
-#: telegram_auto_poster/web/templates/_batch_grid.html:22
+#: telegram_auto_poster/web/templates/_batch_grid.html:23
 #: telegram_auto_poster/web/templates/_post_grid.html:38
 msgid "Push!"
 msgstr ""
@@ -177,25 +177,40 @@ msgstr ""
 msgid "Restore"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_batch_grid.html:6
+#: telegram_auto_poster/web/templates/_batch_grid.html:7
 #: telegram_auto_poster/web/templates/_post_grid.html:6
 #: telegram_auto_poster/web/templates/_trash_grid.html:6
 #, python-brace-format
 msgid "Group of {n}"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_batch_grid.html:36
+#: telegram_auto_poster/web/templates/_batch_grid.html:41
+msgid "Manual Schedule"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/_batch_grid.html:47
 msgid "Remove from batch?"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_batch_grid.html:43
+#: telegram_auto_poster/web/templates/_batch_grid.html:54
 msgid "Remove"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_batch_grid.html:57
-#: telegram_auto_poster/web/templates/_batch_grid.html:63
-#: telegram_auto_poster/web/templates/_post_grid.html:65
-#: telegram_auto_poster/web/templates/_post_grid.html:71
+#: telegram_auto_poster/web/templates/_batch_grid.html:71
+#: telegram_auto_poster/web/templates/batch.html:52
+msgid "YYYY-MM-DD HH:MM"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/_batch_grid.html:73
+#: telegram_auto_poster/web/templates/batch.html:54
+#: telegram_auto_poster/web/templates/queue.html:30
+msgid "Save"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/_batch_grid.html:88
+#: telegram_auto_poster/web/templates/_batch_grid.html:94
+#: telegram_auto_poster/web/templates/_post_grid.html:76
+#: telegram_auto_poster/web/templates/_post_grid.html:82
 #: telegram_auto_poster/web/templates/_trash_grid.html:51
 #: telegram_auto_poster/web/templates/_trash_grid.html:57
 #: telegram_auto_poster/web/templates/queue.html:75
@@ -203,18 +218,18 @@ msgstr ""
 msgid "Previous"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_batch_grid.html:67
-#: telegram_auto_poster/web/templates/_post_grid.html:75
+#: telegram_auto_poster/web/templates/_batch_grid.html:98
+#: telegram_auto_poster/web/templates/_post_grid.html:86
 #: telegram_auto_poster/web/templates/_trash_grid.html:61
 #: telegram_auto_poster/web/templates/queue.html:81
 #, python-brace-format
 msgid "Page {page} of {total_pages}"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_batch_grid.html:71
-#: telegram_auto_poster/web/templates/_batch_grid.html:77
-#: telegram_auto_poster/web/templates/_post_grid.html:79
-#: telegram_auto_poster/web/templates/_post_grid.html:85
+#: telegram_auto_poster/web/templates/_batch_grid.html:102
+#: telegram_auto_poster/web/templates/_batch_grid.html:108
+#: telegram_auto_poster/web/templates/_post_grid.html:90
+#: telegram_auto_poster/web/templates/_post_grid.html:96
 #: telegram_auto_poster/web/templates/_trash_grid.html:65
 #: telegram_auto_poster/web/templates/_trash_grid.html:71
 #: telegram_auto_poster/web/templates/queue.html:85
@@ -222,8 +237,22 @@ msgstr ""
 msgid "Next"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/_post_grid.html:44
-msgid "Reject this item?"
+#: telegram_auto_poster/web/templates/_post_grid.html:56
+msgid "Suggested by:"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/_post_grid.html:59
+msgid "Admin"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/_post_grid.html:61
+#: telegram_auto_poster/web/templates/events.html:69
+#, python-brace-format
+msgid "User #{id}"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/_post_grid.html:63
+msgid "Unknown"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/_trash_grid.html:9
@@ -276,14 +305,6 @@ msgstr ""
 msgid "Telegram Autoposter"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/base.html:52
-msgid "Language:"
-msgstr ""
-
-#: telegram_auto_poster/web/templates/base.html:55
-msgid "Change language"
-msgstr ""
-
 #: telegram_auto_poster/web/templates/base.html:25
 msgid "Home"
 msgstr ""
@@ -318,28 +339,40 @@ msgid "Stats"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/base.html:46
-#: telegram_auto_poster/web/templates/leaderboard.html:31
+#: telegram_auto_poster/web/templates/leaderboard.html:32
 msgid "Leaderboard"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/base.html:51
+#: telegram_auto_poster/web/templates/base.html:49
+msgid "Events"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/base.html:54
+msgid "Language:"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/base.html:58
+msgid "Change language"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/base.html:62
 msgid "Logout"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/base.html:53
+#: telegram_auto_poster/web/templates/base.html:64
 #: telegram_auto_poster/web/templates/login.html:4
 msgid "Login"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/base.html:79
+#: telegram_auto_poster/web/templates/base.html:91
 msgid "Working..."
 msgstr ""
 
-#: telegram_auto_poster/web/templates/base.html:90
+#: telegram_auto_poster/web/templates/base.html:107
 msgid "Done"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/base.html:95
+#: telegram_auto_poster/web/templates/base.html:124
 msgid "Error"
 msgstr ""
 
@@ -351,20 +384,88 @@ msgstr ""
 msgid "Refresh"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/batch.html:12
+#: telegram_auto_poster/web/templates/batch.html:18
 msgid "Send whole batch?"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/batch.html:15
+#: telegram_auto_poster/web/templates/batch.html:21
 msgid "Send Batch"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/batch.html:21
+#: telegram_auto_poster/web/templates/batch.html:32
+msgid "Manual Schedule Batch"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/batch.html:45
+msgid "Start time"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/batch.html:61
 msgid "batch item"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/batch.html:22
+#: telegram_auto_poster/web/templates/batch.html:62
 msgid "Batch is empty."
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:5
+msgid "Event History"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:6
+#, python-brace-format
+msgid "Showing last {n} events"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:12
+msgid "Reset events"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:18
+#: telegram_auto_poster/web/templates/stats.html:8
+msgid "Reset stats"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:24
+#: telegram_auto_poster/web/templates/leaderboard.html:36
+msgid "Reset leaderboard"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:33
+msgid "Timestamp"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:34
+msgid "Action"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:35
+msgid "Actor"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:36
+msgid "Details"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:45
+msgid "Unknown action"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:47
+#, python-brace-format
+msgid "Origin: {origin}"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:50
+msgid "System"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:77
+msgid "No items recorded"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/events.html:91
+msgid "No events yet."
 msgstr ""
 
 #: telegram_auto_poster/web/templates/index.html:5
@@ -414,7 +515,7 @@ msgid "Activity in the Last 24 Hours"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/index.html:63
-#: telegram_auto_poster/web/templates/stats.html:12
+#: telegram_auto_poster/web/templates/stats.html:20
 msgid "Media Received"
 msgstr ""
 
@@ -430,33 +531,33 @@ msgstr ""
 msgid "Source"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/leaderboard.html:32
+#: telegram_auto_poster/web/templates/leaderboard.html:40
 msgid "Most Submissions"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/leaderboard.html:32
-#: telegram_auto_poster/web/templates/leaderboard.html:33
-#: telegram_auto_poster/web/templates/leaderboard.html:34
+#: telegram_auto_poster/web/templates/leaderboard.html:40
+#: telegram_auto_poster/web/templates/leaderboard.html:41
+#: telegram_auto_poster/web/templates/leaderboard.html:42
 msgid "Submissions"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/leaderboard.html:32
-#: telegram_auto_poster/web/templates/leaderboard.html:33
-#: telegram_auto_poster/web/templates/leaderboard.html:34
+#: telegram_auto_poster/web/templates/leaderboard.html:40
+#: telegram_auto_poster/web/templates/leaderboard.html:41
+#: telegram_auto_poster/web/templates/leaderboard.html:42
 msgid "Approved"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/leaderboard.html:32
-#: telegram_auto_poster/web/templates/leaderboard.html:33
-#: telegram_auto_poster/web/templates/leaderboard.html:34
+#: telegram_auto_poster/web/templates/leaderboard.html:40
+#: telegram_auto_poster/web/templates/leaderboard.html:41
+#: telegram_auto_poster/web/templates/leaderboard.html:42
 msgid "Rejected"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/leaderboard.html:33
+#: telegram_auto_poster/web/templates/leaderboard.html:41
 msgid "Most Approved"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/leaderboard.html:34
+#: telegram_auto_poster/web/templates/leaderboard.html:42
 msgid "Most Rejected"
 msgstr ""
 
@@ -488,10 +589,6 @@ msgstr ""
 msgid "Preview"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/queue.html:30
-msgid "Save"
-msgstr ""
-
 #: telegram_auto_poster/web/templates/queue.html:40
 msgid "Toggle Preview"
 msgstr ""
@@ -516,117 +613,129 @@ msgstr ""
 msgid "No media scheduled."
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:3
+#: telegram_auto_poster/web/templates/stats.html:4
 msgid "Analytics"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:8
+#: telegram_auto_poster/web/templates/stats.html:16
 msgid "Last 24 Hours"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:13
-#: telegram_auto_poster/web/templates/stats.html:50
+#: telegram_auto_poster/web/templates/stats.html:21
+#: telegram_auto_poster/web/templates/stats.html:58
 msgid "Photos Processed"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:14
-#: telegram_auto_poster/web/templates/stats.html:51
+#: telegram_auto_poster/web/templates/stats.html:22
+#: telegram_auto_poster/web/templates/stats.html:59
 msgid "Videos Processed"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:15
-#: telegram_auto_poster/web/templates/stats.html:52
+#: telegram_auto_poster/web/templates/stats.html:23
+#: telegram_auto_poster/web/templates/stats.html:60
 msgid "Photos Approved"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:16
-#: telegram_auto_poster/web/templates/stats.html:53
+#: telegram_auto_poster/web/templates/stats.html:24
+#: telegram_auto_poster/web/templates/stats.html:61
 msgid "Videos Approved"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:17
-#: telegram_auto_poster/web/templates/stats.html:54
+#: telegram_auto_poster/web/templates/stats.html:25
+#: telegram_auto_poster/web/templates/stats.html:62
 msgid "Photos Rejected"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:18
-#: telegram_auto_poster/web/templates/stats.html:55
+#: telegram_auto_poster/web/templates/stats.html:26
+#: telegram_auto_poster/web/templates/stats.html:63
 msgid "Videos Rejected"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:19
-#: telegram_auto_poster/web/templates/stats.html:56
+#: telegram_auto_poster/web/templates/stats.html:27
+#: telegram_auto_poster/web/templates/stats.html:64
 msgid "Batches Sent"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:20
-#: telegram_auto_poster/web/templates/stats.html:57
+#: telegram_auto_poster/web/templates/stats.html:28
+#: telegram_auto_poster/web/templates/stats.html:65
 msgid "Approval Rate"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:21
+#: telegram_auto_poster/web/templates/stats.html:29
 msgid "Success Rate"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:22
+#: telegram_auto_poster/web/templates/stats.html:30
 msgid "Errors"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:23
+#: telegram_auto_poster/web/templates/stats.html:31
 msgid "Busiest Hour"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:23
+#: telegram_auto_poster/web/templates/stats.html:31
 #, python-brace-format
 msgid "{} events"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:31
+#: telegram_auto_poster/web/templates/stats.html:39
 msgid "Performance"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:35
+#: telegram_auto_poster/web/templates/stats.html:43
 msgid "Avg Photo Processing"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:36
+#: telegram_auto_poster/web/templates/stats.html:44
 msgid "Avg Video Processing"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:37
+#: telegram_auto_poster/web/templates/stats.html:45
 msgid "Avg Upload"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:38
+#: telegram_auto_poster/web/templates/stats.html:46
 msgid "Avg Download"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:46
+#: telegram_auto_poster/web/templates/stats.html:54
 msgid "All-Time Totals"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:58
+#: telegram_auto_poster/web/templates/stats.html:66
 msgid "Total Errors"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:59
+#: telegram_auto_poster/web/templates/stats.html:67
 msgid "List Operations"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:69
+#: telegram_auto_poster/web/templates/stats.html:77
 msgid "Daily Approvals vs Rejections (24h)"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:85
+#: telegram_auto_poster/web/templates/stats.html:93
 msgid "Error Breakdown (24h)"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:102
+#: telegram_auto_poster/web/templates/stats.html:110
 msgid "Performance Metrics (Avg Seconds)"
 msgstr ""
 
-#: telegram_auto_poster/web/templates/stats.html:118
+#: telegram_auto_poster/web/templates/stats.html:126
 msgid "All-Time Activity"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/stats.html:144
+msgid "Per-Source Acceptance Rate"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/stats.html:157
+msgid "Processing Time Histogram"
+msgstr ""
+
+#: telegram_auto_poster/web/templates/stats.html:172
+msgid "Daily Posts"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/suggestions.html:4
