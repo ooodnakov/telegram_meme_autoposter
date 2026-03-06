@@ -7,11 +7,12 @@ import hashlib
 import imagehash
 from loguru import logger
 from PIL import Image
-from telegram_auto_poster.utils.db import ValkeyClient, get_redis_client
+from telegram_auto_poster.utils.db import ValkeyClient, _redis_key, get_redis_client
 
-DEDUPLICATION_SET_KEY = (
-    "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
-)
+
+def deduplication_set_key() -> str:
+    """Return the Redis set key that stores approved media hashes."""
+    return _redis_key("dedup", "media_hashes")
 
 
 def calculate_image_hash(file_path: str) -> str | None:
@@ -93,7 +94,7 @@ def is_duplicate_hash(
     if redis_client is None:
         redis_client = get_redis_client()
     try:
-        return bool(redis_client.sismember(DEDUPLICATION_SET_KEY, media_hash))
+        return bool(redis_client.sismember(deduplication_set_key(), media_hash))
     except Exception as e:
         logger.error(f"Could not check hash in deduplication set: {e}")
         # Fail open, treat as not duplicate if Redis check fails
@@ -119,7 +120,7 @@ def add_approved_hash(
     if redis_client is None:
         redis_client = get_redis_client()
     try:
-        return redis_client.sadd(DEDUPLICATION_SET_KEY, media_hash) == 1
+        return redis_client.sadd(deduplication_set_key(), media_hash) == 1
     except Exception as e:
         logger.error(f"Could not add hash to deduplication set: {e}")
         # Treat as not added on failure
