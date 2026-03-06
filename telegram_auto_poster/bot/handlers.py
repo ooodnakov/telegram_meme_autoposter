@@ -639,9 +639,16 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as e:
         logger.error(f"Error in handle_media: {e}")
         await stats.record_error("processing", f"Error handling media: {str(e)}")
-        await update.message.reply_text(
-            _(
-                "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже."
-            ),
-            do_quote=True,
+        error_text = _(
+            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже."
         )
+
+        if update.message is not None:
+            await update.message.reply_text(error_text, do_quote=True)
+        elif update.effective_chat is not None:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text)
+        else:
+            logger.warning(
+                "Cannot send error reply in handle_media: both update.message and "
+                "update.effective_chat are missing"
+            )
