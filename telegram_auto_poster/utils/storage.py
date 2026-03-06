@@ -268,6 +268,8 @@ class MinioStorage:
                         "review_chat_id": _to_int(data.get("review_chat_id")),
                         "review_message_id": _to_int(data.get("review_message_id")),
                         "group_id": data.get("group_id"),
+                        "caption": data.get("caption"),
+                        "source": data.get("source"),
                         "trashed_at": data.get("trashed_at"),
                         "trash_expires_at": data.get("trash_expires_at"),
                     }
