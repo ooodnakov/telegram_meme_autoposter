@@ -24,8 +24,9 @@ target_channels = @test
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
     sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
     with pytest.raises(ValidationError, match="(bot|web)"):
-        importlib.import_module("telegram_auto_poster.config")
+        config_module.get_config(refresh=True)
 
 
 def test_missing_field(tmp_path, monkeypatch):
@@ -51,8 +52,9 @@ session_secret = secret
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
     sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
     with pytest.raises(ValidationError, match="target_channels"):
-        importlib.import_module("telegram_auto_poster.config")
+        config_module.get_config(refresh=True)
 
 
 def test_valid_config(tmp_path, monkeypatch):
@@ -177,8 +179,9 @@ session_secret = secret
     monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
     monkeypatch.setenv("MINIO_PORT", "abc")
     sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
     with pytest.raises(ValidationError, match=r"minio.*port"):
-        importlib.import_module("telegram_auto_poster.config")
+        config_module.get_config(refresh=True)
 
 
 def test_env_override_precedence(tmp_path, monkeypatch):
@@ -334,3 +337,101 @@ session_secret = secret
     assert conf.watermark_image.size_ratio == 0.25
     assert conf.watermark_video.min_speed == 10
     assert conf.watermark_video.max_speed == 20
+
+
+def test_i18n_users_default_dict_is_independent():
+    from telegram_auto_poster.config import I18nConfig
+
+    first = I18nConfig()
+    second = I18nConfig()
+
+    first.users[1] = "en"
+    assert second.users == {}
+
+
+def test_i18n_users_env_override_unchanged(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    monkeypatch.setenv("I18N_USERS", "1:en, 2:ru")
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+
+    conf = config_module.get_config(refresh=True)
+    assert conf.i18n.users == {1: "en", 2: "ru"}
+
+
+def test_get_config_caching_semantics(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.ini"
+    write_config(
+        config_path,
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+
+    first = config_module.get_config(refresh=True)
+    second = config_module.get_config()
+    assert first is second
+
+    write_config(
+        config_path,
+        """
+[Telegram]
+api_id = 999
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+
+    cached = config_module.get_config()
+    refreshed = config_module.get_config(refresh=True)
+
+    assert cached.telegram.api_id == 123
+    assert refreshed.telegram.api_id == 999
+    assert refreshed is not first
