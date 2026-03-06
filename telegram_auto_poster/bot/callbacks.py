@@ -42,6 +42,7 @@ from telegram_auto_poster.utils.general import (
     send_group_media,
     send_media_to_telegram,
 )
+from telegram_auto_poster.utils.i18n import _ as i18n_
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
@@ -232,7 +233,10 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await _edit_message(query, summary)
     except Exception as e:
         logger.error(f"Error in schedule_callback: {e}")
-        await query.message.reply_text(f"An unexpected error occurred: {str(e)}")
+        await stats.record_error("processing", f"Error in schedule_callback: {str(e)}")
+        await query.message.reply_text(
+            i18n_("Sorry, an unexpected error occurred. Please try again later.")
+        )
 
 
 async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -326,7 +330,9 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     except Exception as e:
         logger.error(f"Unexpected error in ok_callback: {e}")
         await stats.record_error("processing", f"Error in ok_callback: {str(e)}")
-        await query.message.reply_text(f"An unexpected error occurred: {str(e)}")
+        await query.message.reply_text(
+            i18n_("Sorry, an unexpected error occurred. Please try again later.")
+        )
 
 
 async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
