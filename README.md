@@ -49,6 +49,9 @@ Follow these steps to get running fast. For expanded docs, see the Wiki.
 - Configure attribution strings and the default suggestion caption under `[Branding]`.
 - Change watermark assets, relative size, and transparency for images via `[WatermarkImage]`.
 - Tune video watermark path, size range, and animation speed in `[WatermarkVideo]`.
+- Update the list of source channels on the fly. The initial `[Chats].selected_chats`
+  list is mirrored to Valkey under the `telegram_auto_poster:config:selected_chats`
+  key and is reloaded periodically without restarting the bot.
 
 Every option can also be overridden with environment variables (e.g. `BRANDING_ATTRIBUTION`,
 `WATERMARK_IMAGE_PATH`).
