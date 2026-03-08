@@ -140,3 +140,14 @@ def test_deduplication_set_key_uses_config_prefix(monkeypatch):
 
     monkeypatch.setattr(CONFIG.valkey, "prefix", "")
     assert deduplication_set_key() == "dedup:media_hashes"
+
+
+def test_is_duplicate_hash_migrates_legacy_key(fake_redis, monkeypatch):
+    """Legacy deduplication data should be moved to the configured key."""
+    monkeypatch.setattr(CONFIG.valkey, "prefix", "custom_prefix")
+    legacy_key = "telegram_auto_poster:media_hashes"
+    fake_redis.sadd(legacy_key, "legacy_hash")
+
+    assert is_duplicate_hash("legacy_hash", redis_client=fake_redis) is True
+    assert fake_redis.sismember("custom_prefix:dedup:media_hashes", "legacy_hash")
+    assert not fake_redis.exists(legacy_key)
