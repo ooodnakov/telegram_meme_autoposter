@@ -9,7 +9,6 @@ from loguru import logger
 from PIL import Image
 from telegram_auto_poster.utils.db import ValkeyClient, _redis_key, get_redis_client
 
-
 LEGACY_DEDUPLICATION_SET_KEY = "telegram_auto_poster:media_hashes"
 
 

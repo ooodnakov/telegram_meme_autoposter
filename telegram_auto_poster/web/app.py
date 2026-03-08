@@ -9,7 +9,7 @@ import os
 import pydoc
 from pathlib import Path
 from pydoc import locate
-from typing import Any, Awaitable, Callable, Mapping, Sequence
+from typing import Awaitable, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request, Response, status
@@ -68,7 +68,6 @@ from telegram_auto_poster.utils.trash import (
     restore_from_trash,
 )
 from telegram_auto_poster.web.auth import validate_telegram_login
-
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = REPO_ROOT / "frontend"
@@ -353,9 +352,13 @@ def _media_kind(path: str, mime: str | None = None) -> str:
     """Return ``image`` or ``video`` based on object path and mime type."""
 
     guessed_mime = mime or mimetypes.guess_type(path)[0]
-    if path.startswith(f"{VIDEOS_PATH}/") or path.startswith(f"{TRASH_PATH}/{VIDEOS_PATH}/"):
+    if path.startswith(f"{VIDEOS_PATH}/") or path.startswith(
+        f"{TRASH_PATH}/{VIDEOS_PATH}/"
+    ):
         return "video"
-    if path.startswith(f"{PHOTOS_PATH}/") or path.startswith(f"{TRASH_PATH}/{PHOTOS_PATH}/"):
+    if path.startswith(f"{PHOTOS_PATH}/") or path.startswith(
+        f"{TRASH_PATH}/{PHOTOS_PATH}/"
+    ):
         return "image"
     if guessed_mime and guessed_mime.startswith("video/"):
         return "video"
@@ -398,11 +401,19 @@ def _group_payload(
     """Build a normalized media group payload."""
 
     first_caption = next(
-        (item["caption"] for item in items if isinstance(item.get("caption"), str) and item["caption"]),
+        (
+            item["caption"]
+            for item in items
+            if isinstance(item.get("caption"), str) and item["caption"]
+        ),
         None,
     )
     first_source = next(
-        (item["source"] for item in items if isinstance(item.get("source"), str) and item["source"]),
+        (
+            item["source"]
+            for item in items
+            if isinstance(item.get("source"), str) and item["source"]
+        ),
         None,
     )
     payload: dict[str, object] = {
@@ -575,7 +586,9 @@ async def _gather_posts(
     return posts
 
 
-async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[dict[str, object]]:
+async def _gather_batch(
+    *, offset: int = 0, limit: int | None = None
+) -> list[dict[str, object]]:
     """Collect batch items for display or processing."""
 
     objects = await _list_media("batch", offset=offset, limit=limit)
@@ -601,7 +614,9 @@ async def _gather_batch(*, offset: int = 0, limit: int | None = None) -> list[di
     return posts
 
 
-async def _gather_trash(*, offset: int = 0, limit: int | None = None) -> list[dict[str, object]]:
+async def _gather_trash(
+    *, offset: int = 0, limit: int | None = None
+) -> list[dict[str, object]]:
     """Collect trashed posts for display."""
 
     await purge_expired_trash()
@@ -616,7 +631,9 @@ async def _gather_trash(*, offset: int = 0, limit: int | None = None) -> list[di
             continue
 
         trashed_at = _parse_iso_timestamp(meta.get("trashed_at") if meta else None)
-        expires_at = _parse_iso_timestamp(meta.get("trash_expires_at") if meta else None)
+        expires_at = _parse_iso_timestamp(
+            meta.get("trash_expires_at") if meta else None
+        )
         item = _media_item(
             obj,
             url,
@@ -714,7 +731,9 @@ async def _get_trash_count() -> int:
     return len(photo_files) + len(video_files)
 
 
-async def _get_events_payload(limit: int = EVENT_HISTORY_PAGE_SIZE) -> dict[str, object]:
+async def _get_events_payload(
+    limit: int = EVENT_HISTORY_PAGE_SIZE,
+) -> dict[str, object]:
     """Return normalized administrative event history."""
 
     clamped_limit = max(1, min(limit, EVENT_HISTORY_LIMIT))
@@ -757,7 +776,9 @@ async def _get_queue_payload(
 
     count = await run_in_threadpool(get_scheduled_posts_count)
     page, total_pages, offset = _paginate(count, page, per_page)
-    raw_posts = await run_in_threadpool(get_scheduled_posts, offset=offset, limit=per_page)
+    raw_posts = await run_in_threadpool(
+        get_scheduled_posts, offset=offset, limit=per_page
+    )
     items: list[dict[str, object]] = []
     for path, ts in raw_posts:
         url = await storage.get_presigned_url(path)
@@ -1009,7 +1030,9 @@ async def _unschedule_queue_item(path: str) -> dict[str, object]:
     return {"status": "ok"}
 
 
-async def _restore_trash_items(path: str | None, paths: Sequence[str]) -> dict[str, object]:
+async def _restore_trash_items(
+    path: str | None, paths: Sequence[str]
+) -> dict[str, object]:
     """Restore one or more trashed posts."""
 
     all_paths = _normalize_paths(path, paths)
@@ -1018,7 +1041,9 @@ async def _restore_trash_items(path: str | None, paths: Sequence[str]) -> dict[s
     return {"status": "ok", "restored": len(all_paths)}
 
 
-async def _delete_trash_items(path: str | None, paths: Sequence[str]) -> dict[str, object]:
+async def _delete_trash_items(
+    path: str | None, paths: Sequence[str]
+) -> dict[str, object]:
     """Permanently delete one or more trashed posts."""
 
     all_paths = _normalize_paths(path, paths)
@@ -1310,8 +1335,7 @@ def _render_spa_shell() -> HTMLResponse:
             <div id="root">Frontend build missing. Run the frontend build first.</div>
           </body>
         </html>
-        """
-        .strip()
+        """.strip()
         % (CONFIG.bot.bot_username, CONFIG.i18n.default)
     )
 

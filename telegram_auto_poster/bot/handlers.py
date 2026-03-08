@@ -647,7 +647,9 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if update.message is not None:
             await update.message.reply_text(error_text, do_quote=True)
         elif update.effective_chat is not None:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=error_text)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, text=error_text
+            )
         else:
             logger.warning(
                 "Cannot send error reply in handle_media: both update.message and "

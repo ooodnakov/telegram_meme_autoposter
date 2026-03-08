@@ -47,24 +47,24 @@ from telegram_auto_poster.utils.i18n import _ as i18n_
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.trash import (
-    move_to_trash,
-    purge_expired_trash,
-    restore_from_trash,
-)
 from telegram_auto_poster.utils.timezone import (
     DISPLAY_TZ,
     UTC,
     format_display,
     now_utc,
 )
+from telegram_auto_poster.utils.trash import (
+    move_to_trash,
+    purge_expired_trash,
+    restore_from_trash,
+)
 from telegram_auto_poster.utils.ui import (
-    approval_keyboard,
     CALLBACK_NOTOK,
     CALLBACK_OK,
     CALLBACK_PUSH,
-    CALLBACK_SCHEDULE,
     CALLBACK_RESTORE,
+    CALLBACK_SCHEDULE,
+    approval_keyboard,
     trashed_keyboard,
 )
 
