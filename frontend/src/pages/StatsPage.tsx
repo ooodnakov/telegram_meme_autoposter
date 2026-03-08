@@ -1,9 +1,12 @@
+import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle2,
   Gauge,
   Inbox,
   Layers3,
+  RadioTower,
+  Sparkles,
   Send,
   ShieldCheck,
 } from "lucide-react";
@@ -26,6 +29,12 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
 import { api } from "@/lib/api";
@@ -96,12 +105,75 @@ const fallbackChartColors = [
   "hsl(var(--chart-5))",
 ];
 
+const telegramGraphPalettes: Record<string, string[]> = {
+  followers: ["#38bdf8", "#0ea5e9", "#0369a1"],
+  interactions: ["#f59e0b", "#ef4444", "#ec4899"],
+  top_hours: ["#22c55e", "#14b8a6", "#06b6d4"],
+  views_by_source: ["#8b5cf6", "#ec4899", "#f97316", "#eab308"],
+  members: ["#10b981", "#06b6d4", "#3b82f6"],
+  messages: ["#f97316", "#ef4444", "#f43f5e"],
+  weekdays: ["#8b5cf6", "#6366f1", "#3b82f6"],
+};
+
 function MetricRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2.5">
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="font-medium tabular-nums">{value}</span>
     </div>
+  );
+}
+
+function normalizeTelegramColor(color?: string | null): string | null {
+  if (!color) {
+    return null;
+  }
+  const normalized = color.replace(/\s+/g, "").toLowerCase();
+  if (
+    normalized === "#000" ||
+    normalized === "#000000" ||
+    normalized === "black" ||
+    normalized === "rgb(0,0,0)" ||
+    normalized === "rgba(0,0,0,1)"
+  ) {
+    return null;
+  }
+  return color;
+}
+
+function resolveTelegramSeriesColor(
+  graphKey: string,
+  color: string | null | undefined,
+  index: number,
+): string {
+  return (
+    normalizeTelegramColor(color) ??
+    telegramGraphPalettes[graphKey]?.[index % telegramGraphPalettes[graphKey].length] ??
+    fallbackChartColors[index % fallbackChartColors.length]
+  );
+}
+
+function SectionCard({
+  value,
+  title,
+  description,
+  children,
+}: {
+  value: string;
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <AccordionItem value={value} className="glass-card overflow-hidden border-none px-6">
+      <AccordionTrigger className="py-5 text-left hover:no-underline">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{title}</div>
+          {description ? <div className="mt-1 text-xs text-muted-foreground">{description}</div> : null}
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="pb-6 pt-1">{children}</AccordionContent>
+    </AccordionItem>
   );
 }
 
