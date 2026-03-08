@@ -47,9 +47,7 @@ def validate_telegram_login(
     try:
         auth_date_ts = int(auth_date)
         now = int(time.time())
-        if auth_date_ts < now - max_age:
-            return False
-        if auth_date_ts > now + allowed_clock_skew:
+        if auth_date_ts < now - max_age or auth_date_ts > now + allowed_clock_skew:
             return False
     except ValueError:
         return False

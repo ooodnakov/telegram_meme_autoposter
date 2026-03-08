@@ -37,3 +37,13 @@ def test_validate_telegram_login_rejects_far_future_payload(monkeypatch):
     payload = _signed_payload(now + 121)
 
     assert not validate_telegram_login(payload, BOT_TOKEN, allowed_clock_skew=120)
+
+
+def test_validate_telegram_login_rejects_non_integer_auth_date(monkeypatch):
+    now = 1_700_000_000
+    monkeypatch.setattr("telegram_auto_poster.web.auth.time.time", lambda: now)
+
+    payload: dict[str, int | str] = {"id": 123, "auth_date": "not-a-timestamp"}
+    payload["hash"] = sign_telegram_data(payload, BOT_TOKEN)
+
+    assert not validate_telegram_login(payload, BOT_TOKEN)
