@@ -37,6 +37,12 @@ class FakeRedis:
     async def hgetall(self, key):
         return self.hash_store.get(key, {}).copy()
 
+    async def hdel(self, key, *fields):
+        if key not in self.hash_store:
+            return
+        for field in fields:
+            self.hash_store[key].pop(field, None)
+
     async def zadd(self, key, mapping):
         items = self.zset_store.setdefault(key, [])
         for member in mapping.keys():
@@ -111,7 +117,7 @@ class FakeRedis:
                     elif cmd[0] == "hset":
                         await parent.hset(cmd[1], mapping=cmd[2])
                     elif cmd[0] == "hdel":
-                        parent.hash_store.get(cmd[1], {}).pop(cmd[2], None)
+                        await parent.hdel(cmd[1], cmd[2])
                 self.commands.clear()
 
         return Pipeline()
@@ -430,4 +436,3 @@ async def test_count_files_uses_cache(
     assert await storage.count_files(BUCKET_MAIN) == 2
     assert await storage.count_files(BUCKET_MAIN, prefix="a") == 1
     mock_minio_client.list_objects.assert_not_called()
-
