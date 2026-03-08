@@ -2,7 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 from pytest_mock import MockerFixture
-from telegram_auto_poster.bot.permissions import check_admin_rights
+from telegram_auto_poster.bot.permissions import (
+    check_admin_rights,
+    check_callback_admin_rights,
+)
 from telegram_auto_poster.config import (
     BotConfig,
     ChatsConfig,
@@ -128,3 +131,29 @@ async def test_check_admin_rights_exception(mocker, mock_update):
     mock_update.message.reply_text.assert_awaited_once_with(
         "Произошла ошибка при проверке прав доступа."
     )
+
+
+@pytest.mark.asyncio
+async def test_check_callback_admin_rights_bot_data(mocker):
+    query = SimpleNamespace(answer=mocker.AsyncMock())
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=123),
+        callback_query=query,
+    )
+    context = SimpleNamespace(bot_data={"admin_ids": [123]})
+
+    assert await check_callback_admin_rights(update, context) is True
+    query.answer.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_callback_admin_rights_no_permission(mocker):
+    query = SimpleNamespace(answer=mocker.AsyncMock())
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=456),
+        callback_query=query,
+    )
+    context = SimpleNamespace(bot_data={"admin_ids": [123]})
+
+    assert await check_callback_admin_rights(update, context) is False
+    query.answer.assert_awaited_once_with("У вас нет прав на это действие.", show_alert=True)

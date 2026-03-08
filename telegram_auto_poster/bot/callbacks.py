@@ -21,6 +21,7 @@ from telegram_auto_poster.bot.handlers import (
     get_user_friendly_error_message,
     notify_user,
 )
+from telegram_auto_poster.bot.permissions import check_callback_admin_rights
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     PHOTOS_PATH,
@@ -170,6 +171,8 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"Received {CALLBACK_SCHEDULE} callback from user {update.callback_query.from_user.id}"
     )
     query = update.callback_query
+    if not await check_callback_admin_rights(update, context):
+        return
     await query.answer()
 
     paths = extract_paths_from_message(query.message)
@@ -232,7 +235,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         await _edit_message(query, summary)
     except Exception as e:
-        logger.error(f"Error in schedule_callback: {e}")
+        logger.exception("Error in schedule_callback")
         await stats.record_error("processing", f"Error in schedule_callback: {str(e)}")
         await query.message.reply_text(
             i18n_("Sorry, an unexpected error occurred. Please try again later.")
@@ -247,6 +250,8 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     logger.debug(f"Callback data: {update.callback_query.data}")
 
     query = update.callback_query
+    if not await check_callback_admin_rights(update, context):
+        return
     await query.answer()
 
     paths = extract_paths_from_message(query.message)
@@ -328,7 +333,7 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         logger.error(f"Telegram error in ok_callback: {e}")
         await query.message.reply_text(get_user_friendly_error_message(e))
     except Exception as e:
-        logger.error(f"Unexpected error in ok_callback: {e}")
+        logger.exception("Unexpected error in ok_callback")
         await stats.record_error("processing", f"Error in ok_callback: {str(e)}")
         await query.message.reply_text(
             i18n_("Sorry, an unexpected error occurred. Please try again later.")

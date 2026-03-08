@@ -15,8 +15,11 @@ async def test_schedule_callback_hides_raw_exception_in_reply(mocker: MockerFixt
         answer=mocker.AsyncMock(),
         from_user=SimpleNamespace(id=1),
     )
-    update = SimpleNamespace(callback_query=query)
-    context = SimpleNamespace(application=SimpleNamespace(bot_data={}))
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=1),
+    )
+    context = SimpleNamespace(application=SimpleNamespace(bot_data={"admin_ids": [1]}))
 
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.extract_paths_from_message",
@@ -52,8 +55,11 @@ async def test_ok_callback_hides_raw_exception_in_reply(mocker: MockerFixture):
         from_user=SimpleNamespace(id=1),
         data="ok",
     )
-    update = SimpleNamespace(callback_query=query)
-    context = SimpleNamespace()
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=1),
+    )
+    context = SimpleNamespace(bot_data={"admin_ids": [1]})
 
     mocker.patch(
         "telegram_auto_poster.bot.callbacks.extract_paths_from_message",
@@ -75,3 +81,44 @@ async def test_ok_callback_hides_raw_exception_in_reply(mocker: MockerFixture):
     )
     assert "token-leak" not in reply_text.await_args.args[0]
     record_error.assert_awaited_once_with("processing", "Error in ok_callback: token-leak")
+
+
+@pytest.mark.asyncio
+async def test_schedule_callback_rejects_non_admin(mocker: MockerFixture):
+    reply_text = mocker.AsyncMock()
+    query = SimpleNamespace(
+        message=SimpleNamespace(reply_text=reply_text),
+        answer=mocker.AsyncMock(),
+        from_user=SimpleNamespace(id=2),
+    )
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=2),
+    )
+    context = SimpleNamespace(application=SimpleNamespace(bot_data={"admin_ids": [1]}))
+
+    await schedule_callback(update, context)
+
+    query.answer.assert_awaited_once_with("У вас нет прав на это действие.", show_alert=True)
+    reply_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ok_callback_rejects_non_admin(mocker: MockerFixture):
+    reply_text = mocker.AsyncMock()
+    query = SimpleNamespace(
+        message=SimpleNamespace(reply_text=reply_text),
+        answer=mocker.AsyncMock(),
+        from_user=SimpleNamespace(id=2),
+        data="ok",
+    )
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=2),
+    )
+    context = SimpleNamespace(bot_data={"admin_ids": [1]})
+
+    await ok_callback(update, context)
+
+    query.answer.assert_awaited_once_with("У вас нет прав на это действие.", show_alert=True)
+    reply_text.assert_not_called()
