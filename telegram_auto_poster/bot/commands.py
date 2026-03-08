@@ -256,7 +256,6 @@ async def ok_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             media_type,
             filename=object_name,
             source=meta.get("source") if meta else None,
-            count=len(target_channels),
         )
 
     except MinioError as e:
@@ -529,7 +528,22 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                     ),
                 )
 
-                await stats.record_post_published(len(target_channels))
+                file_name = os.path.basename(file_path)
+                media_type = (
+                    "video"
+                    if os.path.splitext(temp_path)[1].lower() in [".mp4", ".avi", ".mov"]
+                    else "photo"
+                )
+                meta = await storage.get_submission_metadata(file_name)
+                await stats.record_post_published(
+                    len(target_channels),
+                    scheduled_for=timestamp,
+                )
+                await stats.record_approved(
+                    media_type,
+                    filename=file_name,
+                    source=meta.get("source") if meta else None,
+                )
 
                 # Clean up
                 await storage.delete_file(file_path, BUCKET_MAIN)
@@ -578,6 +592,7 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await message.reply_text("Cannot determine file path")
         return
 
+    was_scheduled = path.startswith(f"{SCHEDULED_PATH}/")
     file_name = os.path.basename(path)
     if not path.startswith(f"{SCHEDULED_PATH}/"):
         source = CopySource(BUCKET_MAIN, path)
@@ -587,6 +602,7 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         path = new_path
 
     db.add_scheduled_post(utc_ts, path)
+    await stats.record_scheduled(utc_ts, is_reschedule=was_scheduled)
     await message.reply_text(
         f"Scheduled for {format_display(datetime.datetime.fromtimestamp(utc_ts, tz=UTC))}"
     )
@@ -711,6 +727,7 @@ async def send_batch_command(
         for i in range(0, len(media_info), 10):
             chunk = media_info[i : i + 10]
             media_group = [item["input_media"] for item in chunk]
+            delivered_channels = 0
             for channel in target_channels:
                 try:
                     # Reset file handles for each channel
@@ -720,12 +737,16 @@ async def send_batch_command(
                     await context.bot.send_media_group(
                         chat_id=channel, media=media_group
                     )
+                    delivered_channels += 1
                 except Exception as e:
                     logger.error(f"Error sending media group: {e}")
                     await stats.record_error(
                         "telegram", f"Failed to send media group: {str(e)}"
                     )
                     continue
+
+            if delivered_channels:
+                await stats.record_post_published(delivered_channels)
 
             for item in chunk:
                 file_path = item["file_path"]
@@ -740,7 +761,6 @@ async def send_batch_command(
                     media_type,
                     filename=base_name,
                     source=user_metadata.get("source") if user_metadata else None,
-                    count=len(target_channels),
                 )
                 if user_metadata and not user_metadata.get("notified"):
                     user_id = user_metadata.get("user_id")

@@ -1,11 +1,109 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Image, Inbox, Video, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  Gauge,
+  Inbox,
+  Layers3,
+  Send,
+  ShieldCheck,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import StatCard from "@/components/StatCard";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
 import { api } from "@/lib/api";
+import { formatDisplayDate } from "@/lib/datetime";
+import type { TranslationKey } from "@/lib/i18n";
+
+function sumMetric<T extends Record<string, number | string>>(
+  items: T[],
+  key: keyof T,
+): number {
+  return items.reduce((total, item) => total + Number(item[key] ?? 0), 0);
+}
+
+function percentDelta(current: number, previous: number): number {
+  if (previous === 0) {
+    return current === 0 ? 0 : 100;
+  }
+  return ((current - previous) / previous) * 100;
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
+}
+
+function formatHourLabel(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+function formatSeconds(value: number): string {
+  return `${value.toFixed(2)}s`;
+}
+
+function formatHours(value: number): string {
+  return `${value.toFixed(1)}h`;
+}
+
+function formatMinutes(value: number): string {
+  return `${value.toFixed(1)}m`;
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat().format(value);
+}
+
+function formatMetricValue(value: number): string {
+  if (Number.isInteger(value)) {
+    return formatNumber(value);
+  }
+  return value >= 100 ? formatNumber(Math.round(value)) : value.toFixed(1);
+}
+
+function truncateLabel(value: string, size = 16): string {
+  return value.length <= size ? value : `${value.slice(0, size - 1)}…`;
+}
+
+const fallbackChartColors = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+];
+
+function MetricRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-secondary/40 px-3 py-2.5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="font-medium tabular-nums">{value}</span>
+    </div>
+  );
+}
 
 const StatsPage = () => {
   const queryClient = useQueryClient();
@@ -39,37 +137,451 @@ const StatsPage = () => {
     );
   }
 
-  const daily = query.data.daily;
-  const histogram = query.data.processing_histogram;
+  const {
+    activity_series: activitySeries,
+    approval_24h: approval24h,
+    approval_total: approvalTotal,
+    current_batch_count: currentBatchCount,
+    current_scheduled_count: currentScheduledCount,
+    daily,
+    daily_errors: dailyErrors,
+    daily_post_counts: dailyPostCounts,
+    deliveries_per_post_24h: deliveriesPerPost,
+    error_rate_24h: errorRate24h,
+    hourly_activity: hourlyActivity,
+    performance,
+    processing_histogram: histogram,
+    publish_per_approval_24h: publishPerApproval,
+    rejection_rate_24h: rejectionRate24h,
+    schedule_delay_distribution: scheduleDelayDistribution,
+    schedule_health: scheduleHealth,
+    source_acceptance: rawSourceAcceptance,
+    success_24h: success24h,
+    total_errors: totalErrors,
+  } = query.data;
+
+  const sourceAcceptance = rawSourceAcceptance.map((entry) => ({
+    source: String(entry.source ?? t("unknown")),
+    acceptance_rate: Number(entry.acceptance_rate ?? 0),
+    submissions: Number(entry.submissions ?? 0),
+    approved: Number(entry.approved ?? 0),
+    rejected: Number(entry.rejected ?? 0),
+  }));
+
+  const currentWindow = activitySeries.slice(-7);
+  const previousWindow = activitySeries.slice(-14, -7);
+  const receivedTrend = percentDelta(
+    sumMetric(currentWindow, "received"),
+    sumMetric(previousWindow, "received"),
+  );
+  const approvedTrend = percentDelta(
+    sumMetric(currentWindow, "approved"),
+    sumMetric(previousWindow, "approved"),
+  );
+  const publishedTrend = percentDelta(
+    sumMetric(currentWindow, "published"),
+    sumMetric(previousWindow, "published"),
+  );
+  const currentApprovalWindow =
+    (sumMetric(currentWindow, "approved") / Math.max(1, sumMetric(currentWindow, "processed"))) *
+    100;
+  const previousApprovalWindow =
+    (sumMetric(previousWindow, "approved") / Math.max(1, sumMetric(previousWindow, "processed"))) *
+    100;
+  const currentSuccessWindow =
+    ((sumMetric(currentWindow, "received") - sumMetric(currentWindow, "errors")) /
+      Math.max(1, sumMetric(currentWindow, "received"))) *
+    100;
+  const previousSuccessWindow =
+    ((sumMetric(previousWindow, "received") - sumMetric(previousWindow, "errors")) /
+      Math.max(1, sumMetric(previousWindow, "received"))) *
+    100;
+  const queuePressure = currentBatchCount + currentScheduledCount;
+  const published14d = dailyPostCounts.reduce((total, item) => total + item.count, 0);
+  const busiestHourLabel =
+    query.data.busiest_hour === null ? "—" : formatHourLabel(query.data.busiest_hour);
+
+  const activityChartConfig = {
+    received: { label: t("mediaReceived"), color: "hsl(var(--chart-1))" },
+    approved: { label: t("approved"), color: "hsl(var(--chart-2))" },
+    published: { label: t("publications"), color: "hsl(var(--chart-3))" },
+    errors: { label: t("errors"), color: "hsl(var(--destructive))" },
+  };
+
+  const hourlyChartConfig = {
+    approved: { label: t("approvals"), color: "hsl(var(--chart-2))" },
+    rejected: { label: t("rejected"), color: "hsl(var(--chart-5))" },
+    published: { label: t("publications"), color: "hsl(var(--chart-1))" },
+  };
+
+  const sourceChartConfig = {
+    acceptance_rate: { label: t("acceptanceRate"), color: "hsl(var(--chart-4))" },
+  };
+  const telegramChannelAnalytics = query.data.telegram_channel_analytics;
+  const telegramMetricLabels: Record<string, TranslationKey> = {
+    followers: "followers",
+    viewsPerPost: "viewsPerPost",
+    sharesPerPost: "sharesPerPost",
+    reactionsPerPost: "reactionsPerPost",
+    enabledNotifications: "enabledNotifications",
+    members: "members",
+    messages: "messagesMetric",
+    viewers: "viewers",
+    posters: "posters",
+  };
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard title={t("mediaReceived")} value={Number(daily.media_received ?? 0)} icon={Inbox} />
-        <StatCard title={t("photosProcessed")} value={Number(daily.photos_processed ?? 0)} icon={Image} />
-        <StatCard title={t("videosProcessed")} value={Number(daily.videos_processed ?? 0)} icon={Video} />
-        <StatCard title={t("photosApproved")} value={Number(daily.photos_approved ?? 0)} icon={CheckCircle} />
-        <StatCard title={t("videosApproved")} value={Number(daily.videos_approved ?? 0)} icon={CheckCircle} />
-        <StatCard title={t("photosRejected")} value={Number(daily.photos_rejected ?? 0)} icon={XCircle} />
+        <StatCard
+          title={t("mediaReceived")}
+          value={formatNumber(Number(daily.media_received ?? 0))}
+          icon={Inbox}
+          description={`${t("decisions")}: ${formatNumber(query.data.decision_total_24h)}`}
+          trend={{
+            value: Number(receivedTrend.toFixed(1)),
+            positive: receivedTrend >= 0,
+          }}
+        />
+        <StatCard
+          title={t("approved")}
+          value={formatNumber(Number(daily.photos_approved ?? 0) + Number(daily.videos_approved ?? 0))}
+          icon={CheckCircle2}
+          description={`${t("rejected")}: ${formatNumber(Number(daily.photos_rejected ?? 0) + Number(daily.videos_rejected ?? 0))}`}
+          trend={{
+            value: Number(approvedTrend.toFixed(1)),
+            positive: approvedTrend >= 0,
+          }}
+        />
+        <StatCard
+          title={t("publishEvents")}
+          value={formatNumber(Number(daily.publish_events ?? 0))}
+          icon={Send}
+          description={`${t("channelDeliveries")}: ${formatNumber(Number(daily.channel_deliveries ?? 0))}`}
+          trend={{
+            value: Number(publishedTrend.toFixed(1)),
+            positive: publishedTrend >= 0,
+          }}
+        />
+        <StatCard
+          title={t("queuePressure")}
+          value={formatNumber(queuePressure)}
+          icon={Layers3}
+          description={`${t("batchQueue")}: ${currentBatchCount} · ${t("scheduledQueue")}: ${currentScheduledCount}`}
+        />
+        <StatCard
+          title={t("approvalRate24h")}
+          value={formatPercent(approval24h)}
+          icon={Gauge}
+          description={`${t("errorRate24h")}: ${formatPercent(errorRate24h)}`}
+          trend={{
+            value: Number((currentApprovalWindow - previousApprovalWindow).toFixed(1)),
+            positive: currentApprovalWindow >= previousApprovalWindow,
+          }}
+        />
+        <StatCard
+          title={t("successRate24h")}
+          value={formatPercent(success24h)}
+          icon={ShieldCheck}
+          description={`${t("onTimePublishRate")}: ${formatPercent(scheduleHealth.on_time_publish_rate)}`}
+          trend={{
+            value: Number((currentSuccessWindow - previousSuccessWindow).toFixed(1)),
+            positive: currentSuccessWindow >= previousSuccessWindow,
+          }}
+        />
+      </div>
+
+      <div className="glass-card p-6">
+        <div className="mb-5 flex flex-col gap-1">
+          <h3 className="text-sm font-semibold">{t("telegramAnalytics")}</h3>
+          <p className="text-xs text-muted-foreground">{t("telegramAnalyticsCached")}</p>
+          {telegramChannelAnalytics ? (
+            <p className="text-xs text-muted-foreground">
+              {formatDisplayDate(telegramChannelAnalytics.fetched_at)} · {t("cacheExpiresAt")}:{" "}
+              {formatDisplayDate(telegramChannelAnalytics.expires_at)}
+            </p>
+          ) : null}
+        </div>
+
+        {!telegramChannelAnalytics || telegramChannelAnalytics.channels.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("telegramAnalyticsUnavailable")}</p>
+        ) : (
+          <div className="space-y-6">
+            {telegramChannelAnalytics.channels.map((channel) => (
+              <div key={channel.peer} className="rounded-2xl border border-border/60 bg-secondary/15 p-5">
+                <div className="mb-4 flex flex-col gap-1">
+                  <h4 className="text-base font-semibold">{channel.title}</h4>
+                  <p className="text-xs text-muted-foreground">
+                    {channel.username ? `@${channel.username}` : channel.peer}
+                  </p>
+                  {channel.period?.start || channel.period?.end ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("telegramPeriod")}: {formatDisplayDate(channel.period?.start)} -{" "}
+                      {formatDisplayDate(channel.period?.end)}
+                    </p>
+                  ) : null}
+                </div>
+
+                {channel.error ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                    {t("telegramFetchError")}: {channel.error}
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                      {channel.summary_metrics.map((metric) => {
+                        const metricLabel = telegramMetricLabels[metric.key] ?? "unknown";
+                        return (
+                          <StatCard
+                            key={metric.key}
+                            title={t(metricLabel)}
+                            value={formatMetricValue(metric.current)}
+                            icon={Gauge}
+                            description={formatMetricValue(metric.previous)}
+                            trend={{
+                              value: Number(metric.delta_pct.toFixed(1)),
+                              positive: metric.delta >= 0,
+                            }}
+                          />
+                        );
+                      })}
+                      {channel.ratio_metrics.map((metric) => {
+                        const metricLabel = telegramMetricLabels[metric.key] ?? "unknown";
+                        return (
+                          <StatCard
+                            key={metric.key}
+                            title={t(metricLabel)}
+                            value={formatPercent(metric.percentage)}
+                            icon={ShieldCheck}
+                            description={`${formatMetricValue(metric.part)} / ${formatMetricValue(metric.total)}`}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    {channel.graphs.length > 0 ? (
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        {channel.graphs.map((graph) => {
+                          const series = graph.series ?? [];
+                          const points = graph.points ?? [];
+                          const graphConfig = Object.fromEntries(
+                            series.map((item, index) => [
+                              item.key,
+                              {
+                                label: item.label,
+                                color: item.color || fallbackChartColors[index % fallbackChartColors.length],
+                              },
+                            ]),
+                          );
+                          return (
+                            <div key={graph.key} className="rounded-xl bg-background/50 p-4">
+                              <div className="mb-3">
+                                <h5 className="text-sm font-medium">
+                                  {t(graph.title_key as TranslationKey)}
+                                </h5>
+                                {graph.error ? (
+                                  <p className="text-xs text-muted-foreground">{graph.error}</p>
+                                ) : null}
+                              </div>
+                              {points.length === 0 || series.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">{t("unknown")}</p>
+                              ) : (
+                                <ChartContainer config={graphConfig} className="h-[260px] w-full aspect-auto">
+                                  <ComposedChart data={points}>
+                                    <CartesianGrid vertical={false} />
+                                    <XAxis dataKey="label" minTickGap={24} />
+                                    <YAxis
+                                      allowDecimals={!graph.percentage}
+                                      tickFormatter={(value) =>
+                                        graph.percentage && typeof value === "number"
+                                          ? `${value}%`
+                                          : String(value)
+                                      }
+                                    />
+                                    <ChartTooltip content={<ChartTooltipContent />} />
+                                    <ChartLegend content={<ChartLegendContent />} />
+                                    {series.map((item) =>
+                                      item.type === "bar" ? (
+                                        <Bar
+                                          key={item.key}
+                                          dataKey={item.key}
+                                          fill={`var(--color-${item.key})`}
+                                          stackId={graph.stacked ? graph.key : undefined}
+                                          radius={[4, 4, 0, 0]}
+                                        />
+                                      ) : (
+                                        <Line
+                                          key={item.key}
+                                          type="monotone"
+                                          dataKey={item.key}
+                                          stroke={`var(--color-${item.key})`}
+                                          strokeWidth={2}
+                                          dot={false}
+                                        />
+                                      ),
+                                    )}
+                                  </ComposedChart>
+                                </ChartContainer>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-xl bg-background/50 p-4">
+                      <div className="mb-3">
+                        <h5 className="text-sm font-medium">{t("recentTopPosts")}</h5>
+                      </div>
+                      {channel.recent_posts.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">{t("noRecentTopPosts")}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {channel.recent_posts.map((post) => (
+                            <div
+                              key={post.message_id}
+                              className="flex items-center justify-between rounded-lg bg-secondary/30 px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                {post.link ? (
+                                  <a
+                                    href={post.link}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-sm font-medium text-primary hover:underline"
+                                  >
+                                    #{post.message_id}
+                                  </a>
+                                ) : (
+                                  <span className="text-sm font-medium">#{post.message_id}</span>
+                                )}
+                              </div>
+                              <div className="flex gap-4 text-xs text-muted-foreground">
+                                <span>V {formatNumber(post.views)}</span>
+                                <span>F {formatNumber(post.forwards)}</span>
+                                <span>R {formatNumber(post.reactions)}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="glass-card p-6 xl:col-span-2">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold">{t("activityTrend")}</h3>
+            <p className="text-xs text-muted-foreground">{t("analytics")}</p>
+          </div>
+          <ChartContainer config={activityChartConfig} className="h-[320px] w-full aspect-auto">
+            <ComposedChart data={activitySeries}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="date" tickFormatter={formatShortDate} minTickGap={24} />
+              <YAxis allowDecimals={false} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(value) =>
+                      typeof value === "string" ? formatShortDate(value) : String(value)
+                    }
+                  />
+                }
+              />
+              <ChartLegend content={<ChartLegendContent />} />
+              <Bar
+                dataKey="received"
+                fill="var(--color-received)"
+                radius={[6, 6, 0, 0]}
+                maxBarSize={28}
+              />
+              <Line
+                type="monotone"
+                dataKey="approved"
+                stroke="var(--color-approved)"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="published"
+                stroke="var(--color-published)"
+                strokeWidth={2}
+                dot={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="errors"
+                stroke="var(--color-errors)"
+                strokeDasharray="4 4"
+                strokeWidth={2}
+                dot={false}
+              />
+            </ComposedChart>
+          </ChartContainer>
+        </div>
+
+        <div className="glass-card p-6">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold">{t("hourlyRhythm")}</h3>
+            <p className="text-xs text-muted-foreground">
+              {t("busiestHour")}: {busiestHourLabel}
+            </p>
+          </div>
+          <ChartContainer config={hourlyChartConfig} className="h-[320px] w-full aspect-auto">
+            <BarChart data={hourlyActivity}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="hour" tickFormatter={formatHourLabel} interval={3} />
+              <YAxis allowDecimals={false} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(value) =>
+                      typeof value === "number" ? formatHourLabel(value) : String(value)
+                    }
+                  />
+                }
+              />
+              <ChartLegend content={<ChartLegendContent />} />
+              <Bar dataKey="approved" stackId="decisions" fill="var(--color-approved)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="rejected" stackId="decisions" fill="var(--color-rejected)" radius={[4, 4, 0, 0]} />
+              <Line
+                type="monotone"
+                dataKey="published"
+                stroke="var(--color-published)"
+                strokeWidth={2}
+                dot={false}
+              />
+            </BarChart>
+          </ChartContainer>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="glass-card p-6">
-          <h3 className="mb-4 text-sm font-semibold">{t("analytics")}</h3>
-          <div className="space-y-4">
-            {Object.entries(histogram).map(([kind, buckets]) => (
-              <div key={kind} className="space-y-2">
-                <p className="text-sm font-medium capitalize">{kind}</p>
-                {buckets.map((bucket) => {
-                  const maxCount = Math.max(
-                    1,
-                    ...buckets.map((entry) => entry.count),
-                  );
-                  return (
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold">{t("processingSpeed")}</h3>
+            <p className="text-xs text-muted-foreground">
+              {t("photosProcessed")} / {t("videosProcessed")}
+            </p>
+          </div>
+          <div className="space-y-5">
+            {Object.entries(histogram).map(([kind, buckets]) => {
+              const maxCount = Math.max(1, ...buckets.map((bucket) => bucket.count));
+              return (
+                <div key={kind} className="space-y-2">
+                  <p className="text-sm font-medium capitalize">{kind}</p>
+                  {buckets.map((bucket) => (
                     <div key={bucket.label}>
                       <div className="mb-1 flex justify-between text-xs text-muted-foreground">
                         <span>{bucket.label}</span>
-                        <span>{bucket.count}</span>
+                        <span>{formatNumber(bucket.count)}</span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-secondary">
                         <div
@@ -78,37 +590,168 @@ const StatsPage = () => {
                         />
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            ))}
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <MetricRow
+              label={t("avgPhotoProcessing")}
+              value={formatSeconds(performance.avg_photo_processing_time)}
+            />
+            <MetricRow
+              label={t("avgVideoProcessing")}
+              value={formatSeconds(performance.avg_video_processing_time)}
+            />
+            <MetricRow
+              label={t("avgUploadTime")}
+              value={formatSeconds(performance.avg_upload_time)}
+            />
+            <MetricRow
+              label={t("avgDownloadTime")}
+              value={formatSeconds(performance.avg_download_time)}
+            />
           </div>
         </div>
 
-        <div className="glass-card p-6 space-y-4">
-          <h3 className="text-sm font-semibold">{t("dashboard")}</h3>
-          <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-            <span className="text-sm">Approval 24h</span>
-            <span className="font-medium">{query.data.approval_24h.toFixed(1)}%</span>
+        <div className="glass-card p-6">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold">{t("scheduleHealth")}</h3>
+            <p className="text-xs text-muted-foreground">{t("trackedScheduledPublishes")}</p>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-            <span className="text-sm">Approval total</span>
-            <span className="font-medium">{query.data.approval_total.toFixed(1)}%</span>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MetricRow
+              label={t("avgScheduleLead")}
+              value={formatHours(scheduleHealth.avg_schedule_lead_hours)}
+            />
+            <MetricRow
+              label={t("avgScheduleDelay")}
+              value={formatMinutes(scheduleHealth.avg_schedule_delay_minutes)}
+            />
+            <MetricRow
+              label={t("onTimePublishRate")}
+              value={formatPercent(scheduleHealth.on_time_publish_rate)}
+            />
+            <MetricRow
+              label={t("trackedScheduledPublishes")}
+              value={formatNumber(scheduleHealth.scheduled_publish_count)}
+            />
+            <MetricRow
+              label={t("scheduledToday")}
+              value={formatNumber(Number(daily.scheduled_posts ?? 0))}
+            />
+            <MetricRow
+              label={t("rescheduledToday")}
+              value={formatNumber(Number(daily.rescheduled_posts ?? 0))}
+            />
+            <MetricRow
+              label={t("unscheduledToday")}
+              value={formatNumber(Number(daily.unscheduled_posts ?? 0))}
+            />
+            <MetricRow
+              label={t("scheduledQueue")}
+              value={formatNumber(currentScheduledCount)}
+            />
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-            <span className="text-sm">Success 24h</span>
-            <span className="font-medium">{query.data.success_24h.toFixed(1)}%</span>
+          <div className="mt-5 space-y-3">
+            {scheduleDelayDistribution.map((bucket) => {
+              const maxCount = Math.max(
+                1,
+                ...scheduleDelayDistribution.map((entry) => entry.count),
+              );
+              return (
+                <div key={bucket.label}>
+                  <div className="mb-1 flex justify-between text-xs text-muted-foreground">
+                    <span>{bucket.label}</span>
+                    <span>{formatNumber(bucket.count)}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        backgroundColor: "hsl(var(--chart-4))",
+                        width: `${(bucket.count / maxCount) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-            <span className="text-sm">Daily errors</span>
-            <span className="font-medium">{query.data.daily_errors}</span>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="glass-card p-6">
+          <div className="mb-4">
+            <h3 className="text-sm font-semibold">{t("sourceQuality")}</h3>
+            <p className="text-xs text-muted-foreground">{t("topSourcesByAcceptance")}</p>
           </div>
-          <div className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-            <span className="text-sm">Busiest hour</span>
-            <span className="font-medium">
-              {query.data.busiest_hour === null ? "—" : `${query.data.busiest_hour}:00`}
-            </span>
+          {sourceAcceptance.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("noSourceData")}</p>
+          ) : (
+            <ChartContainer config={sourceChartConfig} className="h-[320px] w-full aspect-auto">
+              <BarChart data={sourceAcceptance} layout="vertical" margin={{ left: 12 }}>
+                <CartesianGrid horizontal={false} />
+                <XAxis
+                  type="number"
+                  domain={[0, 100]}
+                  tickFormatter={(value) => `${value}%`}
+                />
+                <YAxis
+                  dataKey="source"
+                  type="category"
+                  width={110}
+                  tickFormatter={(value) => truncateLabel(String(value))}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      indicator="line"
+                      formatter={(value, _name, item) => (
+                        <div className="flex w-full items-center justify-between gap-4">
+                          <span className="text-muted-foreground">
+                            {truncateLabel(String(item.payload.source), 32)}
+                          </span>
+                          <span className="font-mono font-medium">
+                            {formatPercent(Number(value))}
+                          </span>
+                        </div>
+                      )}
+                    />
+                  }
+                />
+                <Bar dataKey="acceptance_rate" fill="var(--color-acceptance_rate)" radius={6} />
+              </BarChart>
+            </ChartContainer>
+          )}
+        </div>
+
+        <div className="glass-card p-6 space-y-3">
+          <div className="mb-1">
+            <h3 className="text-sm font-semibold">{t("operationalKpis")}</h3>
+            <p className="text-xs text-muted-foreground">{t("dashboard")}</p>
           </div>
+          <MetricRow label={t("approvalRate24h")} value={formatPercent(approval24h)} />
+          <MetricRow label={t("approvalTotal")} value={formatPercent(approvalTotal)} />
+          <MetricRow label={t("rejectionRate24h")} value={formatPercent(rejectionRate24h)} />
+          <MetricRow label={t("errorRate24h")} value={formatPercent(errorRate24h)} />
+          <MetricRow label={t("publishPerApproval")} value={formatPercent(publishPerApproval)} />
+          <MetricRow
+            label={t("deliveriesPerPost")}
+            value={deliveriesPerPost.toFixed(2)}
+          />
+          <MetricRow
+            label={t("channelDeliveries")}
+            value={formatNumber(Number(daily.channel_deliveries ?? 0))}
+          />
+          <MetricRow label={t("publishEvents")} value={formatNumber(Number(daily.publish_events ?? 0))} />
+          <MetricRow label={t("busiestHour")} value={busiestHourLabel} />
+          <MetricRow label={t("batchQueue")} value={formatNumber(currentBatchCount)} />
+          <MetricRow label={t("errors")} value={formatNumber(dailyErrors)} />
+          <MetricRow label={t("errorsTotal")} value={formatNumber(totalErrors)} />
+          <MetricRow label={t("posts14d")} value={formatNumber(published14d)} />
         </div>
       </div>
 

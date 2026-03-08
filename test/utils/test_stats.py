@@ -1,9 +1,12 @@
+import datetime
+
 import fakeredis.aioredis
 import pytest
 import pytest_asyncio
 
 from telegram_auto_poster.utils.db import _redis_key, _redis_meta_key
 from telegram_auto_poster.utils.stats import MediaStats
+from telegram_auto_poster.utils.timezone import now_utc
 
 
 @pytest_asyncio.fixture
@@ -145,3 +148,45 @@ async def test_reset_leaderboard_clears_data(stats_instance):
         _redis_key("leaderboard", "rejected"),
     ):
         assert await stats_instance.r.exists(key) == 0
+
+
+@pytest.mark.asyncio
+async def test_activity_series_and_schedule_metrics(stats_instance):
+    scheduled_for = now_utc() + datetime.timedelta(hours=2)
+
+    await stats_instance.record_received("photo")
+    await stats_instance.record_processed("photo", 1.5)
+    await stats_instance.record_approved("photo", source="alice")
+    await stats_instance.record_rejected("video", source="alice")
+    await stats_instance.record_scheduled(scheduled_for)
+    await stats_instance.record_scheduled(scheduled_for, is_reschedule=True)
+    await stats_instance.record_unscheduled()
+    await stats_instance.record_post_published(3, scheduled_for=scheduled_for)
+
+    activity = (await stats_instance.get_activity_series(days=1))[0]
+    assert activity["received"] == 1
+    assert activity["processed"] == 1
+    assert activity["approved"] == 1
+    assert activity["rejected"] == 1
+    assert activity["published"] == 1
+    assert activity["deliveries"] == 3
+    assert activity["scheduled"] == 1
+    assert activity["rescheduled"] == 1
+    assert activity["unscheduled"] == 1
+
+    hourly = await stats_instance.get_hourly_activity()
+    current_hour = now_utc().hour
+    assert hourly[current_hour]["approved"] == 1
+    assert hourly[current_hour]["rejected"] == 1
+    assert hourly[current_hour]["published"] == 1
+
+    posts = await stats_instance.get_daily_post_counts(days=1)
+    assert posts[0]["count"] == 1
+
+    schedule_health = await stats_instance.get_schedule_health()
+    assert schedule_health["avg_schedule_lead_hours"] > 0
+    assert schedule_health["scheduled_publish_count"] == 1
+    assert schedule_health["on_time_publish_rate"] == pytest.approx(100.0)
+
+    delay_distribution = await stats_instance.get_schedule_delay_distribution()
+    assert delay_distribution[0] == {"label": "<=5m", "count": 1}

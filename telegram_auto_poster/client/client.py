@@ -18,6 +18,10 @@ from telegram_auto_poster.bot.handlers import (
     process_video,
 )
 from telegram_auto_poster.config import Config
+from telegram_auto_poster.utils.channel_analytics import (
+    CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS,
+    refresh_channel_analytics_cache,
+)
 from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.general import RateLimiter, backoff_delay
 
@@ -65,6 +69,20 @@ class TelegramMemeClient:
             )
 
         logger.info("TelegramClient instance created")
+
+    async def _channel_analytics_refresh_loop(self) -> None:
+        """Refresh cached Telegram-provided channel analytics while connected."""
+
+        while self._running:
+            try:
+                await refresh_channel_analytics_cache(self.client, self.target_channels)
+            except asyncio.CancelledError:  # pragma: no cover - task cancellation
+                raise
+            except Exception as exc:  # pragma: no cover - network dependent
+                logger.warning(
+                    f"Failed to refresh Telegram channel analytics cache: {exc}"
+                )
+            await asyncio.sleep(CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS)
 
     async def _check_rate_limit(self, chat_id: int, log: "Logger") -> bool:
         """Acquire a token from the rate limiter for the given chat.
@@ -211,6 +229,9 @@ class TelegramMemeClient:
             try:
                 await self.client.start()
                 logger.info("TelegramClient started successfully")
+                analytics_task = asyncio.create_task(
+                    self._channel_analytics_refresh_loop()
+                )
                 # Resolve and log monitored channels after connecting
                 for ch in self.selected_chats:
                     try:
@@ -224,7 +245,11 @@ class TelegramMemeClient:
                     except Exception as e:  # pragma: no cover - network resolution
                         logger.warning(f"Failed to resolve channel {ch}: {e}")
                 retry = 0
-                await self.client.run_until_disconnected()
+                try:
+                    await self.client.run_until_disconnected()
+                finally:
+                    analytics_task.cancel()
+                    await asyncio.gather(analytics_task, return_exceptions=True)
             except asyncio.CancelledError:  # pragma: no cover - task cancellation
                 break
             except Exception as e:

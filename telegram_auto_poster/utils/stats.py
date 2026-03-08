@@ -16,6 +16,19 @@ from telegram_auto_poster.utils.db import (
 from telegram_auto_poster.utils.timezone import now_utc
 
 LEADERBOARD_KEYS: tuple[str, ...] = ("submissions", "approved", "rejected")
+ACTIVITY_SERIES_FIELDS: tuple[str, ...] = (
+    "received",
+    "processed",
+    "approved",
+    "rejected",
+    "published",
+    "deliveries",
+    "scheduled",
+    "rescheduled",
+    "unscheduled",
+    "errors",
+)
+HOURLY_ACTIVITY_FIELDS: tuple[str, ...] = ("approved", "rejected", "published")
 
 
 class MediaStats:
@@ -60,6 +73,11 @@ class MediaStats:
                 "list_operations",
                 "client_reconnects",
                 "rate_limit_drops",
+                "publish_events",
+                "channel_deliveries",
+                "scheduled_posts",
+                "rescheduled_posts",
+                "unscheduled_posts",
             ]
             cls._instance.processing_histogram_bounds = (1.0, 2.0, 5.0, 10.0)
             cls._instance.processing_histogram_labels = (
@@ -92,6 +110,35 @@ class MediaStats:
         await self.r.incrbyfloat(_redis_key("perf", f"{base}_total"), duration)
         await self.r.incrby(_redis_key("perf", f"{base}_count"), 1)
 
+    async def _record_activity(self, when: datetime.datetime, field: str, count: int) -> None:
+        """Increment a per-day activity field for ``when``."""
+
+        key = _redis_key("activity", when.strftime("%Y-%m-%d"))
+        await self.r.hincrby(key, field, count)
+
+    async def _record_hourly_activity(self, hour: int, field: str, count: int = 1) -> None:
+        """Increment an hourly activity field."""
+
+        key = _redis_key("hourly_activity", str(hour))
+        await self.r.hincrby(key, field, count)
+
+    async def _hash_count(self, key: str, field: str) -> int:
+        """Return an integer hash value from Valkey."""
+
+        value = await self.r.hget(key, field)
+        return int(value) if value else 0
+
+    def _coerce_datetime(
+        self, value: datetime.datetime | int | float | None
+    ) -> datetime.datetime | None:
+        """Normalize ``value`` into a UTC datetime."""
+
+        if value is None:
+            return None
+        if isinstance(value, datetime.datetime):
+            return value if value.tzinfo else value.replace(tzinfo=datetime.UTC)
+        return datetime.datetime.fromtimestamp(value, tz=datetime.UTC)
+
     async def record_submission(self, source: str) -> None:
         """Increase the submission count for ``source``."""
         if source:
@@ -105,6 +152,7 @@ class MediaStats:
         """Record that a piece of media of ``media_type`` was received."""
         await self._increment("media_received")
         await self._increment("media_received", scope="total")
+        await self._record_activity(now_utc(), "received", 1)
         if media_type == "photo":
             await self._increment("photos_received")
             await self._increment("photos_received", scope="total")
@@ -116,6 +164,7 @@ class MediaStats:
         """Record that media was processed and log its duration."""
         await self._increment("media_processed")
         await self._increment("media_processed", scope="total")
+        await self._record_activity(now_utc(), "processed", 1)
         await self._record_duration(f"{media_type}_processing", processing_time)
         await self._record_processing_histogram(media_type, processing_time)
         if media_type == "photo":
@@ -136,9 +185,12 @@ class MediaStats:
         name = "photos_approved" if media_type == "photo" else "videos_approved"
         await self._increment(name, count=count)
         await self._increment(name, scope="total", count=count)
-        hour_key = _redis_key("hourly", str(now_utc().hour))
+        ts = now_utc()
+        hour_key = _redis_key("hourly", str(ts.hour))
         await self.r.incrby(hour_key, count)
         await self.r.persist(hour_key)
+        await self._record_hourly_activity(ts.hour, "approved", count)
+        await self._record_activity(ts, "approved", count)
         if source:
             appr_key = _redis_key("leaderboard", "approved")
             pipe = self.r.pipeline(transaction=False)
@@ -147,13 +199,29 @@ class MediaStats:
             await pipe.execute()
 
     async def record_post_published(
-        self, count: int = 1, *, timestamp: datetime.datetime | None = None
+        self,
+        count: int = 1,
+        *,
+        timestamp: datetime.datetime | None = None,
+        scheduled_for: datetime.datetime | int | float | None = None,
     ) -> None:
         """Record that ``count`` posts were published to the target channels."""
 
         ts = timestamp or now_utc()
         day_key = ts.strftime("%Y-%m-%d")
-        await self.r.incrby(_redis_key("posts", day_key), count)
+        await self.r.incrby(_redis_key("posts", day_key), 1)
+        await self._increment("publish_events")
+        await self._increment("publish_events", scope="total")
+        await self._increment("channel_deliveries", count=count)
+        await self._increment("channel_deliveries", scope="total", count=count)
+        await self._record_hourly_activity(ts.hour, "published", 1)
+        await self._record_activity(ts, "published", 1)
+        await self._record_activity(ts, "deliveries", count)
+        scheduled_dt = self._coerce_datetime(scheduled_for)
+        if scheduled_dt is not None:
+            delay_seconds = max(0.0, (ts - scheduled_dt).total_seconds())
+            await self._record_duration("schedule_delay", delay_seconds)
+            await self._record_schedule_delay_histogram(delay_seconds)
 
     async def record_rejected(
         self, media_type: str, filename: str | None = None, source: str | None = None
@@ -162,15 +230,45 @@ class MediaStats:
         name = "photos_rejected" if media_type == "photo" else "videos_rejected"
         await self._increment(name)
         await self._increment(name, scope="total")
-        hour_key = _redis_key("hourly", str(now_utc().hour))
+        ts = now_utc()
+        hour_key = _redis_key("hourly", str(ts.hour))
         await self.r.incrby(hour_key, 1)
         await self.r.persist(hour_key)
+        await self._record_hourly_activity(ts.hour, "rejected", 1)
+        await self._record_activity(ts, "rejected", 1)
         if source:
             rej_key = _redis_key("leaderboard", "rejected")
             pipe = self.r.pipeline(transaction=False)
             pipe.zincrby(rej_key, 1, source)
             pipe.persist(rej_key)
             await pipe.execute()
+
+    async def record_scheduled(
+        self,
+        scheduled_for: datetime.datetime | int | float,
+        *,
+        created_at: datetime.datetime | None = None,
+        is_reschedule: bool = False,
+    ) -> None:
+        """Record that an item was scheduled or rescheduled."""
+
+        scheduled_dt = self._coerce_datetime(scheduled_for) or now_utc()
+        created_dt = created_at or now_utc()
+        name = "rescheduled_posts" if is_reschedule else "scheduled_posts"
+        field = "rescheduled" if is_reschedule else "scheduled"
+        await self._increment(name)
+        await self._increment(name, scope="total")
+        await self._record_activity(created_dt, field, 1)
+        lead_seconds = max(0.0, (scheduled_dt - created_dt).total_seconds())
+        await self._record_duration("schedule_lead", lead_seconds)
+
+    async def record_unscheduled(self) -> None:
+        """Record that a scheduled item was removed from the queue."""
+
+        ts = now_utc()
+        await self._increment("unscheduled_posts")
+        await self._increment("unscheduled_posts", scope="total")
+        await self._record_activity(ts, "unscheduled", 1)
 
     async def record_added_to_batch(self, media_type: str) -> None:
         """Record that media was added to the batch queue."""
@@ -207,6 +305,7 @@ class MediaStats:
             name = "telegram_errors"
         await self._increment(name)
         await self._increment(name, scope="total")
+        await self._record_activity(now_utc(), "errors", 1)
 
     async def record_storage_operation(
         self, operation_type: str, duration: float
@@ -278,6 +377,8 @@ class MediaStats:
             "avg_video_processing_time": await self._avg("video_processing"),
             "avg_upload_time": await self._avg("upload"),
             "avg_download_time": await self._avg("download"),
+            "avg_schedule_lead_time": await self._avg("schedule_lead"),
+            "avg_schedule_delay_time": await self._avg("schedule_delay"),
         }
 
     async def get_approval_rate_24h(self, daily: dict[str, int | str]) -> float:
@@ -390,6 +491,54 @@ class MediaStats:
             )
         return entries
 
+    async def get_activity_series(
+        self, days: int = 14
+    ) -> list[dict[str, str | int]]:
+        """Return per-day activity totals for the last ``days`` days."""
+
+        today = now_utc().date()
+        start = today - datetime.timedelta(days=days - 1)
+        dates = [start + datetime.timedelta(days=i) for i in range(days)]
+        pipe = self.r.pipeline(transaction=False)
+        for date_obj in dates:
+            pipe.hgetall(_redis_key("activity", date_obj.isoformat()))
+        raw_values = await pipe.execute() if dates else []
+
+        entries: list[dict[str, str | int]] = []
+        for date_obj, raw in zip(dates, raw_values):
+            entry: dict[str, str | int] = {"date": date_obj.isoformat()}
+            for field in ACTIVITY_SERIES_FIELDS:
+                value = raw.get(field)
+                if value is None and isinstance(raw, dict):
+                    value = raw.get(field.encode())
+                entry[field] = int(value) if value else 0
+            entries.append(entry)
+        return entries
+
+    async def get_hourly_activity(self) -> list[dict[str, int]]:
+        """Return approval, rejection, and publish counts by hour."""
+
+        pipe = self.r.pipeline(transaction=False)
+        for hour in range(24):
+            pipe.hgetall(_redis_key("hourly_activity", str(hour)))
+        raw_values = await pipe.execute()
+
+        entries: list[dict[str, int]] = []
+        for hour, raw in enumerate(raw_values):
+            approved = int(raw.get("approved") or raw.get(b"approved") or 0)
+            rejected = int(raw.get("rejected") or raw.get(b"rejected") or 0)
+            published = int(raw.get("published") or raw.get(b"published") or 0)
+            entries.append(
+                {
+                    "hour": hour,
+                    "approved": approved,
+                    "rejected": rejected,
+                    "published": published,
+                    "decisions": approved + rejected,
+                }
+            )
+        return entries
+
     async def get_processing_histogram(self) -> dict[str, list[dict[str, float | int]]]:
         """Return histogram buckets for photo and video processing durations."""
 
@@ -407,6 +556,40 @@ class MediaStats:
                 processed.append({"label": label, "count": count})
             result[media_type] = processed
         return result
+
+    async def get_schedule_delay_distribution(self) -> list[dict[str, int | str]]:
+        """Return histogram buckets for scheduled publish delays."""
+
+        key = _redis_key("hist", "schedule_delay")
+        raw = await self.r.hgetall(key) or {}
+        labels = ("<=5m", "5-30m", ">30m")
+        entries: list[dict[str, int | str]] = []
+        for label in labels:
+            value = raw.get(label)
+            if value is None and isinstance(raw, dict):
+                value = raw.get(label.encode())
+            entries.append({"label": label, "count": int(value) if value else 0})
+        return entries
+
+    async def get_schedule_health(self) -> dict[str, float | int]:
+        """Return lead-time and on-time publishing metrics."""
+
+        lead_seconds = await self._avg("schedule_lead")
+        delay_seconds = await self._avg("schedule_delay")
+        distribution = await self.get_schedule_delay_distribution()
+        on_time = 0
+        delayed = 0
+        for entry in distribution:
+            count = int(entry["count"])
+            if entry["label"] == "<=5m":
+                on_time += count
+            delayed += count
+        return {
+            "avg_schedule_lead_hours": lead_seconds / 3600,
+            "avg_schedule_delay_minutes": delay_seconds / 60,
+            "scheduled_publish_count": delayed,
+            "on_time_publish_rate": (on_time / delayed * 100) if delayed else 100.0,
+        }
 
     async def generate_stats_report(self, reset_daily: bool = True) -> str:
         """Return a formatted statistics report for admins."""
@@ -512,6 +695,7 @@ class MediaStats:
         await self.r.set(_redis_meta_key(), now)
         for hour in range(24):
             await self.r.delete(_redis_key("hourly", str(hour)))
+            await self.r.delete(_redis_key("hourly_activity", str(hour)))
         return "Daily statistics have been reset."
 
     async def reset_leaderboard(self) -> str:
@@ -537,6 +721,12 @@ class MediaStats:
         key = _redis_key("hist", f"{media_type}_processing")
         await self.r.hincrby(key, bucket, 1)
 
+    async def _record_schedule_delay_histogram(self, duration: float) -> None:
+        """Record ``duration`` in the schedule delay histogram."""
+
+        key = _redis_key("hist", "schedule_delay")
+        await self.r.hincrby(key, self._schedule_delay_bucket(duration), 1)
+
     def _processing_histogram_bucket(self, duration: float) -> str:
         """Return the histogram label bucket for ``duration`` seconds."""
 
@@ -544,6 +734,15 @@ class MediaStats:
             if duration < bound:
                 return self.processing_histogram_labels[idx]
         return self.processing_histogram_labels[-1]
+
+    def _schedule_delay_bucket(self, duration: float) -> str:
+        """Return the histogram label bucket for schedule delay ``duration``."""
+
+        if duration <= 300:
+            return "<=5m"
+        if duration <= 1800:
+            return "5-30m"
+        return ">30m"
 
 
 stats = MediaStats()

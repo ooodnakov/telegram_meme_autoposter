@@ -227,6 +227,7 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
             # 4. Add to database
             db.add_scheduled_post(int(next_slot.timestamp()), new_object_name)
+            await stats.record_scheduled(int(next_slot.timestamp()))
             scheduled_info.append((file_name, format_display(next_slot)))
 
         # 5. Update message (caption if media, otherwise text)
@@ -396,7 +397,6 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     media_type,
                     filename=file_name,
                     source=user_metadata.get("source") if user_metadata else None,
-                    count=len(target_channels),
                 )
                 sent_counts[media_type] += 1
 
@@ -549,6 +549,7 @@ async def unschedule_callback(
         file_path = scheduled_posts[idx][0]
         # Remove from DB first
         db.remove_scheduled_post(file_path)
+        await stats.record_unscheduled()
         # Attempt to remove object; ignore if already missing
         if await storage.file_exists(file_path, BUCKET_MAIN):
             await storage.delete_file(file_path, BUCKET_MAIN)
@@ -710,6 +711,7 @@ async def schedule_browser_callback(
                 await query.message.edit_text("No posts scheduled.")
                 return
             file_path = scheduled_posts[idx][0]
+            await stats.record_unscheduled()
             await _remove_post_and_show_next(query, context, idx, file_path)
             return
 
@@ -725,6 +727,7 @@ async def schedule_browser_callback(
                 await query.message.edit_text("No posts scheduled.")
                 return
             file_path = scheduled_posts[idx][0]
+            scheduled_ts = db.get_scheduled_time(file_path)
             temp_path = None
             try:
                 temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
@@ -741,6 +744,20 @@ async def schedule_browser_callback(
                         temp_path,
                         caption=None,
                         supports_streaming=_is_streaming_video(temp_path),
+                    )
+                    file_name = os.path.basename(file_path)
+                    media_type = (
+                        "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
+                    )
+                    meta = await storage.get_submission_metadata(file_name)
+                    await stats.record_post_published(
+                        len(target_channels),
+                        scheduled_for=scheduled_ts,
+                    )
+                    await stats.record_approved(
+                        media_type,
+                        filename=file_name,
+                        source=meta.get("source") if meta else None,
                     )
             finally:
                 cleanup_temp_file(temp_path)

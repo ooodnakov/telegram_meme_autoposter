@@ -39,11 +39,14 @@ from telegram_auto_poster.utils.db import (
     clear_event_history,
     decrement_batch_count,
     get_event_history,
+    get_batch_count,
     get_scheduled_posts,
     get_scheduled_posts_count,
+    get_scheduled_time,
     increment_batch_count,
     remove_scheduled_post,
 )
+from telegram_auto_poster.utils.channel_analytics import get_cached_channel_analytics
 from telegram_auto_poster.utils.deduplication import (
     add_approved_hash,
     calculate_image_hash,
@@ -820,6 +823,13 @@ async def _get_stats_payload() -> dict[str, object]:
         source_acceptance,
         processing_histogram,
         daily_post_counts,
+        activity_series,
+        hourly_activity,
+        schedule_health,
+        schedule_delay_distribution,
+        batch_count,
+        scheduled_count,
+        telegram_channel_analytics,
     ) = await asyncio.gather(
         stats.get_daily_stats(reset_if_new_day=False),
         stats.get_total_stats(),
@@ -828,6 +838,13 @@ async def _get_stats_payload() -> dict[str, object]:
         stats.get_source_acceptance(),
         stats.get_processing_histogram(),
         stats.get_daily_post_counts(),
+        stats.get_activity_series(),
+        stats.get_hourly_activity(),
+        stats.get_schedule_health(),
+        stats.get_schedule_delay_distribution(),
+        get_batch_count(),
+        run_in_threadpool(get_scheduled_posts_count),
+        get_cached_channel_analytics(),
     )
     approval_24h, approval_total, success_24h = await asyncio.gather(
         stats.get_approval_rate_24h(daily),
@@ -843,6 +860,11 @@ async def _get_stats_payload() -> dict[str, object]:
     total_errors = (
         total["processing_errors"] + total["storage_errors"] + total["telegram_errors"]
     )
+    approved_today = int(daily["photos_approved"]) + int(daily["videos_approved"])
+    rejected_today = int(daily["photos_rejected"]) + int(daily["videos_rejected"])
+    published_today = int(daily.get("publish_events", 0))
+    deliveries_today = int(daily.get("channel_deliveries", 0))
+    decision_total = approved_today + rejected_today
     return {
         "daily": daily,
         "total": total,
@@ -857,6 +879,26 @@ async def _get_stats_payload() -> dict[str, object]:
         "source_acceptance": source_acceptance,
         "processing_histogram": processing_histogram,
         "daily_post_counts": daily_post_counts,
+        "activity_series": activity_series,
+        "hourly_activity": hourly_activity,
+        "schedule_health": schedule_health,
+        "schedule_delay_distribution": schedule_delay_distribution,
+        "current_batch_count": batch_count,
+        "current_scheduled_count": scheduled_count,
+        "decision_total_24h": decision_total,
+        "rejection_rate_24h": (rejected_today / decision_total * 100)
+        if decision_total
+        else 0.0,
+        "error_rate_24h": (daily_errors / int(daily["media_received"]) * 100)
+        if int(daily["media_received"])
+        else 0.0,
+        "publish_per_approval_24h": (published_today / approved_today * 100)
+        if approved_today
+        else 0.0,
+        "deliveries_per_post_24h": (deliveries_today / published_today)
+        if published_today
+        else 0.0,
+        "telegram_channel_analytics": telegram_channel_analytics,
     }
 
 
@@ -1014,7 +1056,9 @@ async def _schedule_queue_item(path: str, scheduled_at: str) -> dict[str, object
         ts = parse_to_utc_timestamp(scheduled_at)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid_datetime") from exc
+    existing_ts = await run_in_threadpool(get_scheduled_time, path)
     await run_in_threadpool(add_scheduled_post, ts, path)
+    await stats.record_scheduled(ts, is_reschedule=existing_ts is not None)
     return {"status": "ok"}
 
 
@@ -1022,6 +1066,7 @@ async def _unschedule_queue_item(path: str) -> dict[str, object]:
     """Remove a post from the scheduled queue."""
 
     await run_in_threadpool(remove_scheduled_post, path)
+    await stats.record_unscheduled()
     try:
         if await storage.file_exists(path, BUCKET_MAIN):
             await storage.delete_file(path, BUCKET_MAIN)
@@ -1093,6 +1138,7 @@ async def _push_post(path: str) -> None:
 
     file_name = os.path.basename(path)
     media_type = "photo" if _media_kind(path) == "image" else "video"
+    scheduled_ts = await run_in_threadpool(get_scheduled_time, path)
     caption = ""
     meta = await storage.get_submission_metadata(file_name)
     if meta and meta.get("user_id"):
@@ -1132,7 +1178,10 @@ async def _push_post(path: str) -> None:
             caption=caption or None,
             supports_streaming=media_type == "video",
         )
-        await stats.record_post_published(len(TARGET_CHANNELS))
+        await stats.record_post_published(
+            len(TARGET_CHANNELS),
+            scheduled_for=scheduled_ts,
+        )
         await _finalize_post(item, len(TARGET_CHANNELS))
     finally:
         cleanup_temp_file(temp_path)
@@ -1142,9 +1191,19 @@ async def _push_post_group(paths: list[str]) -> None:
     """Publish a group of media items in a single post."""
 
     items, caption = await prepare_group_items(paths)
+    scheduled_values = await asyncio.gather(
+        *[run_in_threadpool(get_scheduled_time, path) for path in paths]
+    )
+    scheduled_ts = min(
+        (value for value in scheduled_values if value is not None),
+        default=None,
+    )
     try:
         await send_group_media(bot, TARGET_CHANNELS, items, caption)
-        await stats.record_post_published(len(TARGET_CHANNELS))
+        await stats.record_post_published(
+            len(TARGET_CHANNELS),
+            scheduled_for=scheduled_ts,
+        )
         for item in items:
             await _finalize_post(item, len(TARGET_CHANNELS))
     finally:
@@ -1179,7 +1238,6 @@ async def _finalize_post(item: dict[str, object], dest_count: int) -> None:
         media_type,
         filename=file_name,
         source=meta.get("source") if isinstance(meta, dict) else None,
-        count=dest_count,
     )
 
     review = await storage.get_review_message(file_name)
@@ -1202,6 +1260,7 @@ async def _schedule_post_at(path: str, scheduled_ts: int) -> None:
     await storage.client.copy_object(BUCKET_MAIN, new_object_name, source)
     await storage.delete_file(path, BUCKET_MAIN)
     await run_in_threadpool(add_scheduled_post, scheduled_ts, new_object_name)
+    await stats.record_scheduled(scheduled_ts)
     if _is_batch_item(path):
         await decrement_batch_count(1)
     review = await storage.get_review_message(file_name)

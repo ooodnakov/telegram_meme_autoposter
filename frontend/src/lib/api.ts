@@ -112,6 +112,90 @@ export interface StatsPayload {
     Array<{ label: string; count: number }>
   >;
   daily_post_counts: Array<{ date: string; count: number }>;
+  activity_series: Array<{
+    date: string;
+    received: number;
+    processed: number;
+    approved: number;
+    rejected: number;
+    published: number;
+    deliveries: number;
+    scheduled: number;
+    rescheduled: number;
+    unscheduled: number;
+    errors: number;
+  }>;
+  hourly_activity: Array<{
+    hour: number;
+    approved: number;
+    rejected: number;
+    published: number;
+    decisions: number;
+  }>;
+  schedule_health: {
+    avg_schedule_lead_hours: number;
+    avg_schedule_delay_minutes: number;
+    scheduled_publish_count: number;
+    on_time_publish_rate: number;
+  };
+  schedule_delay_distribution: Array<{ label: string; count: number }>;
+  current_batch_count: number;
+  current_scheduled_count: number;
+  decision_total_24h: number;
+  rejection_rate_24h: number;
+  error_rate_24h: number;
+  publish_per_approval_24h: number;
+  deliveries_per_post_24h: number;
+  telegram_channel_analytics?: {
+    fetched_at: string;
+    expires_at: string;
+    channels: Array<{
+      peer: string;
+      id?: number | null;
+      title: string;
+      username?: string | null;
+      kind: string;
+      error?: string;
+      period?: {
+        start?: string | null;
+        end?: string | null;
+      };
+      summary_metrics: Array<{
+        key: string;
+        current: number;
+        previous: number;
+        delta: number;
+        delta_pct: number;
+      }>;
+      ratio_metrics: Array<{
+        key: string;
+        part: number;
+        total: number;
+        percentage: number;
+      }>;
+      graphs: Array<{
+        key: string;
+        title_key: string;
+        error?: string;
+        stacked?: boolean;
+        percentage?: boolean;
+        series?: Array<{
+          key: string;
+          label: string;
+          color?: string | null;
+          type: string;
+        }>;
+        points?: Array<Record<string, string | number | null>>;
+      }>;
+      recent_posts: Array<{
+        message_id: number;
+        views: number;
+        forwards: number;
+        reactions: number;
+        link?: string | null;
+      }>;
+    }>;
+  } | null;
 }
 
 export interface LeaderboardEntry {
