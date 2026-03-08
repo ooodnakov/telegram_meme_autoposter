@@ -60,6 +60,114 @@ def test_queue_api_lists_posts(mocker, auth_client: TestClient):
     assert payload["items"][0]["caption"] == "caption"
 
 
+def test_posts_api_filters_items_and_returns_filter_metadata(
+    mocker, auth_client: TestClient
+):
+    mocker.patch(
+        "telegram_auto_poster.web.app._gather_posts",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "items": [
+                        {
+                            "path": "photos/processed_cat.jpg",
+                            "name": "processed_cat.jpg",
+                            "kind": "image",
+                            "caption": "Funny cat",
+                            "source": "@cats",
+                        }
+                    ],
+                    "count": 1,
+                    "is_group": False,
+                    "caption": "Funny cat",
+                    "source": "@cats",
+                },
+                {
+                    "items": [
+                        {
+                            "path": "videos/processed_dog.mp4",
+                            "name": "processed_dog.mp4",
+                            "kind": "video",
+                            "caption": "Loud dog",
+                            "source": "@dogs",
+                        },
+                        {
+                            "path": "videos/processed_dog_2.mp4",
+                            "name": "processed_dog_2.mp4",
+                            "kind": "video",
+                            "caption": "Loud dog 2",
+                            "source": "@dogs",
+                        },
+                    ],
+                    "count": 2,
+                    "is_group": True,
+                    "caption": "Loud dog",
+                    "source": "@dogs",
+                },
+            ]
+        ),
+    )
+
+    resp = auth_client.get(
+        "/api/posts",
+        params={
+            "q": "dog",
+            "kind": "video",
+            "layout": "group",
+            "source": "@dogs",
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total_items"] == 1
+    assert [item["source"] for item in payload["items"]] == ["@dogs"]
+    assert payload["filters"] == {
+        "q": "dog",
+        "kind": "video",
+        "layout": "group",
+        "source": "@dogs",
+        "sources": ["@cats", "@dogs"],
+    }
+
+
+def test_posts_api_ignores_invalid_filter_values(mocker, auth_client: TestClient):
+    mocker.patch(
+        "telegram_auto_poster.web.app._gather_posts",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "items": [
+                        {
+                            "path": "photos/processed_cat.jpg",
+                            "name": "processed_cat.jpg",
+                            "kind": "image",
+                            "caption": "Funny cat",
+                            "source": "@cats",
+                        }
+                    ],
+                    "count": 1,
+                    "is_group": False,
+                    "caption": "Funny cat",
+                    "source": "@cats",
+                }
+            ]
+        ),
+    )
+
+    resp = auth_client.get(
+        "/api/posts",
+        params={"kind": "bad", "layout": "bad", "source": "all"},
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total_items"] == 1
+    assert payload["filters"]["kind"] == "all"
+    assert payload["filters"]["layout"] == "all"
+    assert payload["filters"]["source"] == "all"
+
+
 def test_action_api_push_group(mocker, auth_client: TestClient):
     group = mocker.patch(
         "telegram_auto_poster.web.app._push_post_group",

@@ -58,6 +58,21 @@ export interface PaginatedResponse<T> {
   total_items: number;
 }
 
+export interface PostsFilters {
+  q: string;
+  kind: "all" | "image" | "video";
+  layout: "all" | "single" | "group";
+  source: string;
+}
+
+export interface PostsFiltersPayload extends PostsFilters {
+  sources: string[];
+}
+
+export interface PostsResponse extends PaginatedResponse<MediaGroup> {
+  filters: PostsFiltersPayload;
+}
+
 export interface DashboardSummary {
   suggestions_count: number;
   batch_count: number;
@@ -262,8 +277,22 @@ export const api = {
   getDashboard: () => apiRequest<DashboardSummary>("/api/dashboard"),
   getSuggestions: (page: number) =>
     apiRequest<PaginatedResponse<MediaGroup>>(`/api/suggestions?page=${page}`),
-  getPosts: (page: number) =>
-    apiRequest<PaginatedResponse<MediaGroup>>(`/api/posts?page=${page}`),
+  getPosts: (page: number, filters?: Partial<PostsFilters>) => {
+    const params = new URLSearchParams({ page: String(page) });
+    if (filters?.q) {
+      params.set("q", filters.q);
+    }
+    if (filters?.kind && filters.kind !== "all") {
+      params.set("kind", filters.kind);
+    }
+    if (filters?.layout && filters.layout !== "all") {
+      params.set("layout", filters.layout);
+    }
+    if (filters?.source && filters.source !== "all") {
+      params.set("source", filters.source);
+    }
+    return apiRequest<PostsResponse>(`/api/posts?${params.toString()}`);
+  },
   getBatch: (page: number) =>
     apiRequest<PaginatedResponse<MediaGroup>>(`/api/batch?page=${page}`),
   getTrash: (page: number) =>

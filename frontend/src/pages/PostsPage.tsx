@@ -1,21 +1,51 @@
-import { useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import MediaGroupCard from "@/components/MediaGroupCard";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSession } from "@/components/SessionProvider";
-import { api } from "@/lib/api";
+import { api, type PostsFilters } from "@/lib/api";
 
 const PostsPage = () => {
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState<PostsFilters>({
+    q: "",
+    kind: "all",
+    layout: "all",
+    source: "all",
+  });
   const queryClient = useQueryClient();
   const { t } = useSession();
+  const deferredQuery = useDeferredValue(filters.q.trim());
+  const activeFilters =
+    deferredQuery.length > 0 ||
+    filters.kind !== "all" ||
+    filters.layout !== "all" ||
+    filters.source !== "all";
+
+  useEffect(() => {
+    setPage(1);
+  }, [deferredQuery, filters.kind, filters.layout, filters.source]);
 
   const query = useQuery({
-    queryKey: ["posts", page],
-    queryFn: () => api.getPosts(page),
+    queryKey: ["posts", page, deferredQuery, filters.kind, filters.layout, filters.source],
+    queryFn: () =>
+      api.getPosts(page, {
+        q: deferredQuery,
+        kind: filters.kind,
+        layout: filters.layout,
+        source: filters.source,
+      }),
   });
 
   const mutation = useMutation({
@@ -49,17 +79,133 @@ const PostsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("totalItems", { count: query.data.total_items })}
-        </p>
-        <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-          {t("refresh")}
-        </Button>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              {activeFilters
+                ? t("filteredItems", { count: query.data.total_items })
+                : t("totalItems", { count: query.data.total_items })}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setFilters({
+                  q: "",
+                  kind: "all",
+                  layout: "all",
+                  source: "all",
+                })
+              }
+              disabled={!activeFilters}
+            >
+              {t("clearFilters")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t("refresh")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="glass-card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("search")}
+            </span>
+            <Input
+              value={filters.q}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  q: event.target.value,
+                }))
+              }
+              placeholder={t("searchPostsPlaceholder")}
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("source")}
+            </span>
+            <Select
+              value={filters.source}
+              onValueChange={(value) =>
+                setFilters((current) => ({
+                  ...current,
+                  source: value,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t("allSources")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allSources")}</SelectItem>
+                {query.data.filters.sources.map((source) => (
+                  <SelectItem key={source} value={source}>
+                    {source}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("mediaType")}
+            </span>
+            <Select
+              value={filters.kind}
+              onValueChange={(value: PostsFilters["kind"]) =>
+                setFilters((current) => ({
+                  ...current,
+                  kind: value,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t("allMedia")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allMedia")}</SelectItem>
+                <SelectItem value="image">{t("imageOnly")}</SelectItem>
+                <SelectItem value="video">{t("videoOnly")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("layout")}
+            </span>
+            <Select
+              value={filters.layout}
+              onValueChange={(value: PostsFilters["layout"]) =>
+                setFilters((current) => ({
+                  ...current,
+                  layout: value,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t("allLayouts")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allLayouts")}</SelectItem>
+                <SelectItem value="single">{t("singlePosts")}</SelectItem>
+                <SelectItem value="group">{t("groupedPosts")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+        </div>
       </div>
 
       {query.data.items.length === 0 ? (
-        <LoadingState label={t("noPosts")} />
+        <LoadingState label={activeFilters ? t("noPostsMatchFilters") : t("noPosts")} />
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {query.data.items.map((group) => (

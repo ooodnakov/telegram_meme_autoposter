@@ -434,6 +434,100 @@ def _group_payload(
     return payload
 
 
+def _sanitize_posts_kind(value: str) -> str:
+    """Return a supported posts media-kind filter."""
+
+    if value in {"image", "video"}:
+        return value
+    return "all"
+
+
+def _sanitize_posts_layout(value: str) -> str:
+    """Return a supported posts layout filter."""
+
+    if value in {"single", "group"}:
+        return value
+    return "all"
+
+
+def _normalize_posts_source(value: str) -> str | None:
+    """Return a normalized exact-match source filter."""
+
+    normalized = value.strip()
+    if not normalized or normalized == "all":
+        return None
+    return normalized
+
+
+def _group_matches_posts_filters(
+    group: Mapping[str, object],
+    *,
+    query: str,
+    kind: str,
+    layout: str,
+    source: str | None,
+) -> bool:
+    """Return whether ``group`` matches the requested posts filters."""
+
+    items = group.get("items")
+    group_items = items if isinstance(items, list) else []
+
+    if source and group.get("source") != source:
+        return False
+
+    is_group = bool(group.get("is_group"))
+    if layout == "single" and is_group:
+        return False
+    if layout == "group" and not is_group:
+        return False
+
+    if kind != "all":
+        if not any(
+            isinstance(item, dict) and item.get("kind") == kind for item in group_items
+        ):
+            return False
+
+    normalized_query = query.strip().casefold()
+    if not normalized_query:
+        return True
+
+    haystacks: list[str] = []
+    for candidate in (group.get("caption"), group.get("source")):
+        if isinstance(candidate, str) and candidate:
+            haystacks.append(candidate)
+    for item in group_items:
+        if not isinstance(item, dict):
+            continue
+        for candidate in (item.get("caption"), item.get("name"), item.get("source")):
+            if isinstance(candidate, str) and candidate:
+                haystacks.append(candidate)
+
+    return any(normalized_query in value.casefold() for value in haystacks)
+
+
+def _filter_posts_groups(
+    groups: Sequence[dict[str, object]],
+    *,
+    query: str,
+    kind: str,
+    layout: str,
+    source: str | None,
+) -> list[dict[str, object]]:
+    """Return posts filtered by the dashboard controls."""
+
+    return [
+        group
+        for group in groups
+        if _group_matches_posts_filters(
+            group,
+            query=query,
+            kind=kind,
+            layout=layout,
+            source=source,
+        )
+    ]
+
+
 async def _get_metas_for_paths(
     paths: Sequence[str],
 ) -> list[tuple[str, dict[str, object] | None]]:
@@ -1536,12 +1630,39 @@ async def api_suggestions(page: int = 1) -> JSONResponse:
 
 
 @app.get("/api/posts")
-async def api_posts(page: int = 1) -> JSONResponse:
+async def api_posts(
+    page: int = 1,
+    q: str = "",
+    kind: str = "all",
+    layout: str = "all",
+    source: str = "all",
+) -> JSONResponse:
     """Return paginated processed posts awaiting publication."""
 
-    count = await _get_posts_count()
+    sanitized_kind = _sanitize_posts_kind(kind)
+    sanitized_layout = _sanitize_posts_layout(layout)
+    normalized_source = _normalize_posts_source(source)
+    normalized_query = q.strip()
+
+    posts = await _gather_posts(False)
+    sources = sorted(
+        {
+            source_name
+            for post in posts
+            for source_name in [post.get("source")]
+            if isinstance(source_name, str) and source_name
+        }
+    )
+    filtered_posts = _filter_posts_groups(
+        posts,
+        query=normalized_query,
+        kind=sanitized_kind,
+        layout=sanitized_layout,
+        source=normalized_source,
+    )
+    count = len(filtered_posts)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = await _gather_posts(False, offset=offset, limit=ITEMS_PER_PAGE)
+    items = filtered_posts[offset : offset + ITEMS_PER_PAGE]
     return JSONResponse(
         {
             "items": items,
@@ -1549,6 +1670,13 @@ async def api_posts(page: int = 1) -> JSONResponse:
             "per_page": ITEMS_PER_PAGE,
             "total_pages": total_pages,
             "total_items": count,
+            "filters": {
+                "q": normalized_query,
+                "kind": sanitized_kind,
+                "layout": sanitized_layout,
+                "source": normalized_source or "all",
+                "sources": sources,
+            },
         }
     )
 
