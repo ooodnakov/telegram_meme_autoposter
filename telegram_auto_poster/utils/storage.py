@@ -81,10 +81,12 @@ class MinioStorage:
             return
 
         try:
+            endpoint, secure, self.internal_base_url, access_key, secret_key = (
+                _minio_connection_params()
+            )
             if client is not None:
                 self.client = client
             else:
-                endpoint, secure, _, access_key, secret_key = _minio_connection_params()
                 logger.info(
                     f"Initializing MinIO client for {endpoint} (secure={secure})"
                 )
@@ -137,9 +139,8 @@ class MinioStorage:
             )
 
             public_url = get_config().minio.public_url
-            if public_url:
-                _, _, internal_base_url, _, _ = _minio_connection_params()
-                return internal_url.replace(internal_base_url, public_url)
+            if public_url and self.internal_base_url:
+                return internal_url.replace(self.internal_base_url, public_url)
 
             return internal_url
         except Exception as e:

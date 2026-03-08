@@ -91,6 +91,38 @@ session_secret = secret
     assert conf.rate_limit.capacity == 5
 
 
+def test_config_proxy_repr_does_not_expose_secrets(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+
+    config_module.get_config(refresh=True)
+
+    proxy_repr = repr(config_module.CONFIG)
+    assert proxy_repr == "<_ConfigProxy(cached=True)>"
+    assert "aaa" not in proxy_repr
+
+
 def test_custom_schedule_config(tmp_path, monkeypatch):
     write_config(
         tmp_path / "config.ini",

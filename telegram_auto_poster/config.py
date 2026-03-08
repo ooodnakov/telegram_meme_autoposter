@@ -394,7 +394,7 @@ class _ConfigProxy:
         return getattr(get_config(), item)
 
     def __repr__(self) -> str:
-        return repr(get_config())
+        return f"<_ConfigProxy(cached={_CONFIG_CACHE is not None})>"
 
 
 # Backward-compatible global configuration accessor
