@@ -51,6 +51,12 @@
     --sidebar-border: 220 12% 14%;
     --sidebar-ring: 210 100% 52%;
 
+    --chart-1: 197 92% 55%;
+    --chart-2: 153 67% 48%;
+    --chart-3: 38 92% 58%;
+    --chart-4: 332 84% 62%;
+    --chart-5: 262 83% 68%;
+
     --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
   }

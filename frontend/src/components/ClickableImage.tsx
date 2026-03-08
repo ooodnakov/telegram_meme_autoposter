@@ -1,4 +1,11 @@
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface ClickableImageProps {
   src: string;
@@ -7,8 +14,10 @@ interface ClickableImageProps {
 }
 
 const ClickableImage = ({ src, alt, className }: ClickableImageProps) => {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -18,7 +27,14 @@ const ClickableImage = ({ src, alt, className }: ClickableImageProps) => {
           <img src={src} alt={alt} className={className} />
         </button>
       </DialogTrigger>
-      <DialogContent className="w-[95vw] max-w-[95vw] border-none bg-transparent p-0 shadow-none sm:rounded-none">
+      <DialogContent
+        className="w-[95vw] max-w-[95vw] cursor-zoom-out border-none bg-transparent p-0 shadow-none sm:rounded-none"
+        onClick={() => setOpen(false)}
+      >
+        <DialogTitle className="sr-only">{alt}</DialogTitle>
+        <DialogDescription className="sr-only">
+          Click anywhere on the preview to close it.
+        </DialogDescription>
         <img
           src={src}
           alt={alt}
