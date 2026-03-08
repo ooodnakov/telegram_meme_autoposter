@@ -128,7 +128,10 @@ function normalizeTelegramColor(color?: string | null): string | null {
   if (!color) {
     return null;
   }
-  const normalized = color.replace(/\s+/g, "").toLowerCase();
+  const compact = color.replace(/\s+/g, "");
+  const hexMatch = compact.match(/#(?:[0-9a-fA-F]{3,8})/);
+  const candidate = hexMatch ? hexMatch[0] : compact;
+  const normalized = candidate.toLowerCase();
   if (
     normalized === "#000" ||
     normalized === "#000000" ||
@@ -138,7 +141,7 @@ function normalizeTelegramColor(color?: string | null): string | null {
   ) {
     return null;
   }
-  return color;
+  return candidate;
 }
 
 function resolveTelegramSeriesColor(

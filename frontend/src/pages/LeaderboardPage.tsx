@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/PageState";
-import StatCard from "@/components/StatCard";
 import { useSession } from "@/components/SessionProvider";
 import {
   AlertDialog,
@@ -88,7 +87,7 @@ function RankBadge({ rank, className }: { rank: number; className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex h-8 min-w-8 items-center justify-center rounded-full border border-border/70 bg-background/70 px-2 text-xs font-semibold text-muted-foreground",
+        "inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-border/70 bg-background/70 px-2 text-[11px] font-semibold text-muted-foreground sm:h-8 sm:min-w-8 sm:text-xs",
         rank === 1 && "border-primary/40 bg-primary/10 text-primary",
         rank === 2 && "border-success/40 bg-success/10 text-success",
         rank === 3 && "border-warning/40 bg-warning/10 text-warning",
@@ -117,22 +116,59 @@ function LeaderboardSpotlight({
 }) {
   return (
     <Card className="glass-card h-full overflow-hidden border-border/60">
-      <CardContent className="flex h-full flex-col gap-4 p-5">
+      <CardContent className="flex h-full flex-col gap-3 p-4 sm:gap-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:text-xs sm:tracking-[0.18em]">
               {title}
             </p>
-            <p className="mt-2 text-lg font-semibold text-foreground">
+            <p className="mt-1.5 text-base font-semibold text-foreground sm:mt-2 sm:text-lg">
               {source ?? "—"}
             </p>
           </div>
-          <div className={cn("rounded-2xl p-3", accentClassName)}>
-            <Icon className="h-5 w-5" />
+          <div className={cn("rounded-xl p-2.5 sm:rounded-2xl sm:p-3", accentClassName)}>
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
         </div>
-        <div className="text-3xl font-semibold tracking-tight">{value}</div>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <div className="text-2xl font-semibold tracking-tight sm:text-3xl">{value}</div>
+        <p className="text-xs text-muted-foreground sm:text-sm">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CompactStatCard({
+  title,
+  value,
+  icon: Icon,
+  description,
+}: {
+  title: string;
+  value: string;
+  icon: LucideIcon;
+  description?: string;
+}) {
+  return (
+    <Card className="glass-card border-border/60">
+      <CardContent className="p-3 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground sm:text-xs">
+              {title}
+            </p>
+            <p className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+              {value}
+            </p>
+          </div>
+          <div className="rounded-xl bg-primary/10 p-2 text-primary sm:rounded-2xl sm:p-2.5">
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+          </div>
+        </div>
+        {description ? (
+          <p className="mt-2 truncate text-xs text-muted-foreground sm:mt-3 sm:text-sm">
+            {description}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -234,8 +270,8 @@ function LeaderboardTable({
   const totalMetric = sumEntries(rows, config.metric);
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-3">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="hidden gap-4 md:grid lg:grid-cols-3">
         {rows.slice(0, 3).map((entry, index) => (
           <PodiumCard
             key={`${config.key}-${entry.source}`}
@@ -249,59 +285,59 @@ function LeaderboardTable({
         ))}
       </div>
 
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-2.5 md:hidden">
         {rows.map((entry, index) => {
           const metricValue = entry[config.metric];
           const share = getMetricShare(metricValue, totalMetric);
 
           return (
             <Card key={`${config.key}-mobile-${entry.source}`} className="glass-card border-border/60">
-              <CardContent className="space-y-4 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
+              <CardContent className="p-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="pt-0.5">
                     <RankBadge rank={index + 1} />
-                    <p className="mt-3 truncate text-base font-semibold text-foreground">
-                      {entry.source}
-                    </p>
                   </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-semibold tracking-tight">
-                      {formatNumber(metricValue)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{config.label}</p>
-                  </div>
-                </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="truncate pr-2 text-sm font-semibold text-foreground">
+                        {entry.source}
+                      </p>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xl font-semibold tracking-tight">
+                          {formatNumber(metricValue)}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {config.label}
+                        </p>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-xl bg-secondary/50 px-3 py-2.5">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      {shareLabel}
-                    </p>
-                    <p className="mt-1 font-medium tabular-nums">{formatPercent(share)}</p>
-                  </div>
-                  <div className="rounded-xl bg-secondary/50 px-3 py-2.5">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      {acceptanceLabel}
-                    </p>
-                    <p className="mt-1 font-medium tabular-nums">
-                      {formatPercent(entry.approved_pct)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-secondary/50 px-3 py-2.5">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      {approvedLabel}
-                    </p>
-                    <p className="mt-1 font-medium tabular-nums">
-                      {formatNumber(entry.approved)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-secondary/50 px-3 py-2.5">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                      {rejectedLabel}
-                    </p>
-                    <p className="mt-1 font-medium tabular-nums">
-                      {formatNumber(entry.rejected)}
-                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <Badge
+                        variant="outline"
+                        className="h-7 border-border/60 bg-secondary/40 px-2 text-[11px] font-medium"
+                      >
+                        {shareLabel} {formatPercent(share)}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="h-7 border-border/60 bg-secondary/40 px-2 text-[11px] font-medium"
+                      >
+                        {acceptanceLabel} {formatPercent(entry.approved_pct)}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="h-7 border-success/20 bg-success/10 px-2 text-[11px] font-medium text-success"
+                      >
+                        {approvedLabel} {formatNumber(entry.approved)}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className="h-7 border-destructive/20 bg-destructive/10 px-2 text-[11px] font-medium text-destructive"
+                      >
+                        {rejectedLabel} {formatNumber(entry.rejected)}
+                      </Badge>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -446,23 +482,23 @@ const LeaderboardPage = () => {
   ];
 
   return (
-    <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[28px] border border-primary/20 bg-[radial-gradient(circle_at_top_left,_hsl(var(--primary)/0.18),_transparent_36%),linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--card)/0.88)_100%)] px-6 py-6 shadow-[0_24px_80px_-40px_hsl(var(--primary)/0.45)]">
+    <div className="space-y-4 sm:space-y-6">
+      <section className="relative overflow-hidden rounded-[24px] border border-primary/20 bg-[radial-gradient(circle_at_top_left,_hsl(var(--primary)/0.18),_transparent_36%),linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--card)/0.88)_100%)] px-4 py-4 shadow-[0_24px_80px_-40px_hsl(var(--primary)/0.45)] sm:rounded-[28px] sm:px-6 sm:py-6">
         <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,_hsl(var(--chart-2)/0.16),_transparent_60%)] lg:block" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="relative flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
               {t("leaderboard")}
             </Badge>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-foreground">
+            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground sm:mt-4 sm:text-3xl">
               {t("leaderboard")}
             </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
+            <p className="mt-2 max-w-xl text-xs leading-5 text-muted-foreground sm:mt-3 sm:text-sm sm:leading-6">
               {t("leaderboardSubtitle")}
             </p>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="grid grid-cols-2 gap-2 sm:flex">
             <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
               <RefreshCw className="h-4 w-4" />
               {t("refresh")}
@@ -496,26 +532,26 @@ const LeaderboardPage = () => {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
+        <CompactStatCard
           title={t("trackedSources")}
           value={formatNumber(totalSources)}
           icon={Users}
           description={t("totalItems", { count: totalSubmissions })}
         />
-        <StatCard
+        <CompactStatCard
           title={t("submissions")}
           value={formatNumber(totalSubmissions)}
           icon={Trophy}
           description={topSource ? `${t("source")}: ${topSource.source}` : undefined}
         />
-        <StatCard
+        <CompactStatCard
           title={t("overallApprovalRate")}
           value={formatPercent(overallApprovalRate)}
           icon={CheckCircle2}
           description={`${t("approved")}: ${formatNumber(totalApproved)}`}
         />
-        <StatCard
+        <CompactStatCard
           title={t("overallRejectionRate")}
           value={formatPercent(overallRejectionRate)}
           icon={ShieldAlert}
@@ -523,7 +559,7 @@ const LeaderboardPage = () => {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-2.5 sm:gap-4 xl:grid-cols-3">
         <LeaderboardSpotlight
           title={t("topSource")}
           source={topSource?.source}
@@ -566,8 +602,8 @@ const LeaderboardPage = () => {
         />
       </div>
 
-      <Tabs defaultValue="submissions" className="space-y-4">
-        <TabsList className="h-auto flex-wrap gap-2 rounded-2xl bg-secondary/60 p-1">
+      <Tabs defaultValue="submissions" className="space-y-3 sm:space-y-4">
+        <TabsList className="h-auto flex-wrap gap-1.5 rounded-2xl bg-secondary/60 p-1">
           {categories.map((category) => {
             const count = query.data[category.key].length;
 
@@ -575,7 +611,7 @@ const LeaderboardPage = () => {
               <TabsTrigger
                 key={category.key}
                 value={category.key}
-                className="rounded-xl px-4 py-2.5 data-[state=active]:bg-background"
+                className="rounded-xl px-3 py-2 text-xs data-[state=active]:bg-background sm:px-4 sm:py-2.5 sm:text-sm"
               >
                 <span className="flex items-center gap-2">
                   <category.icon className="h-4 w-4" />
@@ -594,10 +630,12 @@ const LeaderboardPage = () => {
 
         {categories.map((category) => (
           <TabsContent key={category.key} value={category.key} className="space-y-4">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-foreground">{category.label}</h2>
-                <p className="text-sm text-muted-foreground">
+                <h2 className="text-base font-semibold text-foreground sm:text-lg">
+                  {category.label}
+                </h2>
+                <p className="text-xs text-muted-foreground sm:text-sm">
                   {t("totalItems", { count: query.data[category.key].length })}
                 </p>
               </div>
