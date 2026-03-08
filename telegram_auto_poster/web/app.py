@@ -63,7 +63,7 @@ from telegram_auto_poster.utils.i18n import set_locale
 from telegram_auto_poster.utils.jobs import job_manager
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import build_submission_search_text, storage
 from telegram_auto_poster.utils.timezone import UTC, now_utc, parse_to_utc_timestamp
 from telegram_auto_poster.utils.trash import (
     delete_from_trash,
@@ -284,6 +284,7 @@ async def startup_event() -> None:
 
     await job_manager.initialize()
 
+
 bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())
 TARGET_CHANNELS = CONFIG.telegram.target_channels
 QUIET_START = CONFIG.schedule.quiet_hours_start
@@ -499,18 +500,26 @@ def _group_matches_posts_filters(
     if not normalized_query:
         return True
 
+    group_search_text = group.get("_search_text")
+    if isinstance(group_search_text, str) and group_search_text:
+        return normalized_query in group_search_text
+
     haystacks: list[str] = []
     for candidate in (group.get("caption"), group.get("source")):
         if isinstance(candidate, str) and candidate:
-            haystacks.append(candidate)
+            haystacks.append(candidate.casefold())
     for item in group_items:
         if not isinstance(item, dict):
             continue
+        item_search_text = item.get("_search_text")
+        if isinstance(item_search_text, str) and item_search_text:
+            haystacks.append(item_search_text)
+            continue
         for candidate in (item.get("caption"), item.get("name"), item.get("source")):
             if isinstance(candidate, str) and candidate:
-                haystacks.append(candidate)
+                haystacks.append(candidate.casefold())
 
-    return any(normalized_query in value.casefold() for value in haystacks)
+    return any(normalized_query in value for value in haystacks)
 
 
 def _filter_posts_groups(
@@ -534,6 +543,133 @@ def _filter_posts_groups(
             source=source,
         )
     ]
+
+
+def _search_text_for_post(path: str, meta: Mapping[str, object] | None) -> str:
+    """Return normalized searchable text for one post item."""
+
+    stored = meta.get("search_text") if meta else None
+    if isinstance(stored, str) and stored:
+        return stored
+    return build_submission_search_text(path, meta)
+
+
+def _build_post_summary_item(
+    path: str, meta: Mapping[str, object] | None
+) -> dict[str, object]:
+    """Build a lightweight item payload for filtering before URL generation."""
+
+    mime, _ = mimetypes.guess_type(path)
+    return {
+        "path": path,
+        "name": os.path.basename(path),
+        "mime_type": mime,
+        "kind": _media_kind(path, mime),
+        "caption": meta.get("caption") if meta else None,
+        "source": meta.get("source") if meta else None,
+        "group_id": meta.get("group_id") if meta else None,
+        "_search_text": _search_text_for_post(path, meta),
+    }
+
+
+def _build_post_summary_group(
+    items: list[dict[str, object]], meta: Mapping[str, object] | None = None
+) -> dict[str, object]:
+    """Build a lightweight group payload for filtering and pagination."""
+
+    payload = _group_payload(items, dict(meta) if meta else None)
+    payload["_search_text"] = " ".join(
+        item["_search_text"]
+        for item in items
+        if isinstance(item.get("_search_text"), str) and item["_search_text"]
+    )
+    return payload
+
+
+async def _collect_post_summary_groups(
+    only_suggestions: bool,
+) -> list[dict[str, object]]:
+    """Collect post groups without generating presigned URLs."""
+
+    objects = await _list_media("processed")
+    meta_items = await _get_metas_for_paths(objects)
+    posts: list[dict[str, object]] = []
+    grouped: dict[str, dict[str, object]] = {}
+
+    for path, meta in meta_items:
+        is_suggestion = bool(meta and meta.get("user_id"))
+        if only_suggestions and not is_suggestion:
+            continue
+        if not only_suggestions and is_suggestion:
+            continue
+
+        item = _build_post_summary_item(path, meta)
+        group_id = meta.get("group_id") if meta else None
+        if group_id:
+            bucket = grouped.setdefault(str(group_id), {"items": [], "meta": meta})
+            bucket["items"].append(item)
+        else:
+            posts.append(_build_post_summary_group([item], meta))
+
+    for bucket in grouped.values():
+        posts.append(
+            _build_post_summary_group(
+                bucket["items"],
+                bucket.get("meta"),  # type: ignore[arg-type]
+            )
+        )
+    return posts
+
+
+async def _hydrate_post_groups(
+    groups: Sequence[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Attach presigned URLs to the selected groups only."""
+
+    hydrated_groups: list[dict[str, object]] = []
+    for group in groups:
+        raw_items = group.get("items")
+        group_items = raw_items if isinstance(raw_items, list) else []
+        urls = await asyncio.gather(
+            *[
+                storage.get_presigned_url(str(item["path"]))
+                for item in group_items
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
+            ]
+        )
+
+        hydrated_items: list[dict[str, object]] = []
+        for item, url in zip(group_items, urls):
+            if not isinstance(item, dict) or not url:
+                continue
+            hydrated_items.append(
+                {
+                    "path": item["path"],
+                    "name": item["name"],
+                    "url": url,
+                    "mime_type": item.get("mime_type"),
+                    "kind": item["kind"],
+                    "caption": item.get("caption"),
+                    "source": item.get("source"),
+                    "group_id": item.get("group_id"),
+                }
+            )
+
+        if not hydrated_items:
+            continue
+
+        hydrated_groups.append(
+            {
+                "items": hydrated_items,
+                "count": len(hydrated_items),
+                "is_group": len(hydrated_items) > 1,
+                "caption": group.get("caption"),
+                "source": group.get("source"),
+                "submitter": group.get("submitter"),
+                "group_id": group.get("group_id"),
+            }
+        )
+    return hydrated_groups
 
 
 async def _get_metas_for_paths(
@@ -1652,7 +1788,7 @@ async def api_posts(
     normalized_source = _normalize_posts_source(source)
     normalized_query = q.strip()
 
-    posts = await _gather_posts(False)
+    posts = await _collect_post_summary_groups(False)
     sources = sorted(
         {
             source_name
@@ -1670,7 +1806,7 @@ async def api_posts(
     )
     count = len(filtered_posts)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = filtered_posts[offset : offset + ITEMS_PER_PAGE]
+    items = await _hydrate_post_groups(filtered_posts[offset : offset + ITEMS_PER_PAGE])
     return JSONResponse(
         {
             "items": items,
@@ -1771,6 +1907,46 @@ async def api_jobs_run(request: Request, job_name: str) -> JSONResponse:
         extra={"job_name": job_name},
     )
     return JSONResponse(job, status_code=status.HTTP_202_ACCEPTED)
+
+
+@app.post("/api/jobs/{job_name}/pause")
+async def api_jobs_pause(request: Request, job_name: str) -> JSONResponse:
+    """Pause a running administrative job."""
+
+    try:
+        job = await job_manager.pause_job(job_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown job") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await _record_event(
+        "job_pause",
+        origin="jobs",
+        request=request,
+        extra={"job_name": job_name},
+    )
+    return JSONResponse(job)
+
+
+@app.post("/api/jobs/{job_name}/resume")
+async def api_jobs_resume(request: Request, job_name: str) -> JSONResponse:
+    """Resume a paused administrative job."""
+
+    try:
+        job = await job_manager.resume_job(job_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown job") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await _record_event(
+        "job_resume",
+        origin="jobs",
+        request=request,
+        extra={"job_name": job_name},
+    )
+    return JSONResponse(job)
 
 
 @app.get("/api/leaderboard")

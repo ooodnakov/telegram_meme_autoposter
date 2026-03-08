@@ -107,6 +107,84 @@ def test_jobs_api_runs_job(mocker, auth_client: TestClient):
     record.assert_awaited_once()
 
 
+def test_jobs_api_pauses_job(mocker, auth_client: TestClient):
+    pause_job = mocker.patch(
+        "telegram_auto_poster.web.app.job_manager.pause_job",
+        new=mocker.AsyncMock(
+            return_value={
+                "name": "ocr_missing_images",
+                "title": "OCR missing images",
+                "description": "Extract OCR text for stored images.",
+                "status": "paused",
+                "status_detail": "Paused",
+                "pause_requested": True,
+                "current_run_started_at": "2026-03-08T10:00:00+00:00",
+                "current_run_duration_seconds": 10.0,
+                "current_stats": {"images_missing_ocr": 10},
+                "last_run_started_at": None,
+                "last_run_finished_at": None,
+                "last_run_duration_seconds": None,
+                "last_run_status": None,
+                "last_run_stats": {},
+                "last_error": None,
+                "can_run": False,
+                "can_pause": False,
+                "can_resume": True,
+                "runtime": {"can_run": True},
+            }
+        ),
+    )
+    record = mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post("/api/jobs/ocr_missing_images/pause", json={})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "paused"
+    pause_job.assert_awaited_once_with("ocr_missing_images")
+    record.assert_awaited_once()
+
+
+def test_jobs_api_resumes_job(mocker, auth_client: TestClient):
+    resume_job = mocker.patch(
+        "telegram_auto_poster.web.app.job_manager.resume_job",
+        new=mocker.AsyncMock(
+            return_value={
+                "name": "ocr_missing_images",
+                "title": "OCR missing images",
+                "description": "Extract OCR text for stored images.",
+                "status": "running",
+                "status_detail": "Resuming",
+                "pause_requested": False,
+                "current_run_started_at": "2026-03-08T10:00:00+00:00",
+                "current_run_duration_seconds": 10.0,
+                "current_stats": {"images_missing_ocr": 10},
+                "last_run_started_at": None,
+                "last_run_finished_at": None,
+                "last_run_duration_seconds": None,
+                "last_run_status": None,
+                "last_run_stats": {},
+                "last_error": None,
+                "can_run": False,
+                "can_pause": True,
+                "can_resume": False,
+                "runtime": {"can_run": True},
+            }
+        ),
+    )
+    record = mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post("/api/jobs/ocr_missing_images/resume", json={})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "running"
+    resume_job.assert_awaited_once_with("ocr_missing_images")
+    record.assert_awaited_once()
+
+
 def test_queue_api_lists_posts(mocker, auth_client: TestClient):
     async def fake_get_meta(name):
         assert name == "processed.jpg"
@@ -141,7 +219,7 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
     mocker, auth_client: TestClient
 ):
     mocker.patch(
-        "telegram_auto_poster.web.app._gather_posts",
+        "telegram_auto_poster.web.app._collect_post_summary_groups",
         new=mocker.AsyncMock(
             return_value=[
                 {
@@ -152,12 +230,14 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
                             "kind": "image",
                             "caption": "Funny cat",
                             "source": "@cats",
+                            "_search_text": "processed_cat.jpg funny cat @cats",
                         }
                     ],
                     "count": 1,
                     "is_group": False,
                     "caption": "Funny cat",
                     "source": "@cats",
+                    "_search_text": "processed_cat.jpg funny cat @cats",
                 },
                 {
                     "items": [
@@ -167,6 +247,7 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
                             "kind": "video",
                             "caption": "Loud dog",
                             "source": "@dogs",
+                            "_search_text": "processed_dog.mp4 loud dog @dogs bark bark",
                         },
                         {
                             "path": "videos/processed_dog_2.mp4",
@@ -174,13 +255,24 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
                             "kind": "video",
                             "caption": "Loud dog 2",
                             "source": "@dogs",
+                            "_search_text": "processed_dog_2.mp4 loud dog 2 @dogs",
                         },
                     ],
                     "count": 2,
                     "is_group": True,
                     "caption": "Loud dog",
                     "source": "@dogs",
+                    "_search_text": "processed_dog.mp4 loud dog @dogs bark bark processed_dog_2.mp4 loud dog 2",
                 },
+            ]
+        ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._hydrate_post_groups",
+        new=mocker.AsyncMock(
+            side_effect=lambda groups: [
+                {key: value for key, value in group.items() if key != "_search_text"}
+                for group in groups
             ]
         ),
     )
@@ -188,7 +280,7 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
     resp = auth_client.get(
         "/api/posts",
         params={
-            "q": "dog",
+            "q": "bark",
             "kind": "video",
             "layout": "group",
             "source": "@dogs",
@@ -200,7 +292,7 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
     assert payload["total_items"] == 1
     assert [item["source"] for item in payload["items"]] == ["@dogs"]
     assert payload["filters"] == {
-        "q": "dog",
+        "q": "bark",
         "kind": "video",
         "layout": "group",
         "source": "@dogs",
@@ -210,7 +302,7 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
 
 def test_posts_api_ignores_invalid_filter_values(mocker, auth_client: TestClient):
     mocker.patch(
-        "telegram_auto_poster.web.app._gather_posts",
+        "telegram_auto_poster.web.app._collect_post_summary_groups",
         new=mocker.AsyncMock(
             return_value=[
                 {
@@ -221,13 +313,24 @@ def test_posts_api_ignores_invalid_filter_values(mocker, auth_client: TestClient
                             "kind": "image",
                             "caption": "Funny cat",
                             "source": "@cats",
+                            "_search_text": "processed_cat.jpg funny cat @cats",
                         }
                     ],
                     "count": 1,
                     "is_group": False,
                     "caption": "Funny cat",
                     "source": "@cats",
+                    "_search_text": "processed_cat.jpg funny cat @cats",
                 }
+            ]
+        ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._hydrate_post_groups",
+        new=mocker.AsyncMock(
+            side_effect=lambda groups: [
+                {key: value for key, value in group.items() if key != "_search_text"}
+                for group in groups
             ]
         ),
     )

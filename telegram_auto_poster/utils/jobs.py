@@ -24,6 +24,7 @@ JobRunner = Callable[["JobRunContext"], Awaitable[None]]
 DEFAULT_JOB_STATE: dict[str, Any] = {
     "status": "idle",
     "status_detail": None,
+    "pause_requested": False,
     "current_run_started_at": None,
     "current_stats": {},
     "last_run_started_at": None,
@@ -73,7 +74,9 @@ class JobRunContext:
         state = await self.manager._read_state(self.definition.name)
         current_stats = dict(state.get("current_stats") or {})
         current_stats[key] = value
-        await self.manager._update_state(self.definition.name, current_stats=current_stats)
+        await self.manager._update_state(
+            self.definition.name, current_stats=current_stats
+        )
 
     async def increment(self, key: str, amount: int = 1) -> None:
         """Increment a numeric stat for the active job."""
@@ -81,12 +84,37 @@ class JobRunContext:
         state = await self.manager._read_state(self.definition.name)
         current_stats = dict(state.get("current_stats") or {})
         current_stats[key] = int(current_stats.get(key, 0)) + amount
-        await self.manager._update_state(self.definition.name, current_stats=current_stats)
+        await self.manager._update_state(
+            self.definition.name, current_stats=current_stats
+        )
 
     async def set_status_detail(self, detail: str | None) -> None:
         """Update the live status detail text."""
 
         await self.manager._update_state(self.definition.name, status_detail=detail)
+
+    async def wait_if_paused(self) -> None:
+        """Block the job loop while a pause has been requested."""
+
+        was_paused = False
+        while True:
+            state = await self.manager._read_state(self.definition.name)
+            if not state.get("pause_requested"):
+                if was_paused:
+                    await self.manager._update_state(
+                        self.definition.name,
+                        status="running",
+                        status_detail="Resumed",
+                    )
+                return
+            was_paused = True
+            if state.get("status") != "paused":
+                await self.manager._update_state(
+                    self.definition.name,
+                    status="paused",
+                    status_detail="Paused",
+                )
+            await asyncio.sleep(0.5)
 
 
 class JobManager:
@@ -109,7 +137,7 @@ class JobManager:
         try:
             for name in self._definitions:
                 state = await self._read_state(name)
-                if state["status"] != "running":
+                if state["status"] not in {"running", "paused"}:
                     continue
                 started_at = state.get("current_run_started_at")
                 finished_at = now_utc().isoformat()
@@ -118,6 +146,7 @@ class JobManager:
                     {
                         "status": "failed",
                         "status_detail": None,
+                        "pause_requested": False,
                         "current_run_started_at": None,
                         "current_stats": {},
                         "last_run_started_at": started_at,
@@ -148,11 +177,12 @@ class JobManager:
                     "description": definition.description,
                     "status": state["status"],
                     "status_detail": state.get("status_detail"),
+                    "pause_requested": bool(state.get("pause_requested")),
                     "current_run_started_at": current_started_at,
                     "current_run_duration_seconds": _duration_seconds(
                         current_started_at, now_utc().isoformat()
                     )
-                    if state["status"] == "running"
+                    if state["status"] in {"running", "paused"}
                     else None,
                     "current_stats": state.get("current_stats") or {},
                     "last_run_started_at": state.get("last_run_started_at"),
@@ -161,7 +191,10 @@ class JobManager:
                     "last_run_status": state.get("last_run_status"),
                     "last_run_stats": state.get("last_run_stats") or {},
                     "last_error": state.get("last_error"),
-                    "can_run": state["status"] != "running" and runtime["can_run"],
+                    "can_run": state["status"] not in {"running", "paused"}
+                    and runtime["can_run"],
+                    "can_pause": state["status"] == "running",
+                    "can_resume": state["status"] == "paused",
                     "runtime": runtime,
                 }
             )
@@ -200,6 +233,48 @@ class JobManager:
                 return item
         raise KeyError(name)
 
+    async def pause_job(self, name: str) -> dict[str, Any]:
+        """Pause a running job cooperatively."""
+
+        definition = self._definitions.get(name)
+        if definition is None:
+            raise KeyError(name)
+
+        async with self._locks[name]:
+            state = await self._read_state(name)
+            if state["status"] == "paused":
+                raise RuntimeError("Job is already paused")
+            if state["status"] != "running":
+                raise RuntimeError("Only running jobs can be paused")
+            await self._update_state(
+                name,
+                status="paused",
+                status_detail="Paused",
+                pause_requested=True,
+            )
+
+        return await self.get_job(name)
+
+    async def resume_job(self, name: str) -> dict[str, Any]:
+        """Resume a paused job."""
+
+        definition = self._definitions.get(name)
+        if definition is None:
+            raise KeyError(name)
+
+        async with self._locks[name]:
+            state = await self._read_state(name)
+            if state["status"] != "paused":
+                raise RuntimeError("Only paused jobs can be resumed")
+            await self._update_state(
+                name,
+                status="running",
+                status_detail="Resuming",
+                pause_requested=False,
+            )
+
+        return await self.get_job(name)
+
     async def _execute_job(self, definition: JobDefinition) -> None:
         started_at = now_utc().isoformat()
         await self._write_state(
@@ -207,6 +282,7 @@ class JobManager:
             {
                 "status": "running",
                 "status_detail": "Preparing run",
+                "pause_requested": False,
                 "current_run_started_at": started_at,
                 "current_stats": {},
                 "last_error": None,
@@ -229,6 +305,7 @@ class JobManager:
             {
                 "status": final_status,
                 "status_detail": None,
+                "pause_requested": False,
                 "current_run_started_at": None,
                 "current_stats": {},
                 "last_run_started_at": started_at,
@@ -255,6 +332,7 @@ class JobManager:
             {
                 "status": data.get("status", state["status"]),
                 "status_detail": data.get("status_detail") or None,
+                "pause_requested": data.get("pause_requested") in {"True", "true", "1"},
                 "current_run_started_at": data.get("current_run_started_at") or None,
                 "last_run_started_at": data.get("last_run_started_at") or None,
                 "last_run_finished_at": data.get("last_run_finished_at") or None,
@@ -280,7 +358,9 @@ class JobManager:
         mapping: dict[str, str] = {}
         for key, value in state.items():
             if key in {"current_stats", "last_run_stats"}:
-                mapping[key] = json.dumps(value or {}, ensure_ascii=True, sort_keys=True)
+                mapping[key] = json.dumps(
+                    value or {}, ensure_ascii=True, sort_keys=True
+                )
             elif value is None:
                 mapping[key] = ""
             else:
@@ -407,6 +487,7 @@ async def _run_ocr_missing_images(context: JobRunContext) -> None:
         return
 
     for index, (path, lookup_key) in enumerate(pending_paths, start=1):
+        await context.wait_if_paused()
         await context.set_status_detail(
             f"OCR {index}/{total_pending}: {os.path.basename(path)}"
         )
@@ -454,6 +535,44 @@ async def _run_ocr_missing_images(context: JobRunContext) -> None:
     await context.set_status_detail(f"Completed OCR for {total_pending} images")
 
 
+async def _run_refresh_search_text(context: JobRunContext) -> None:
+    """Rebuild cached search text in Redis from stored metadata and OCR results."""
+
+    objects = await storage.list_files(BUCKET_MAIN)
+    await context.replace_stats(
+        {
+            "objects_total": len(objects),
+            "objects_indexed": 0,
+            "objects_changed": 0,
+            "objects_without_metadata": 0,
+        }
+    )
+
+    total = len(objects)
+    if total == 0:
+        await context.set_status_detail("No objects found")
+        return
+
+    for index, path in enumerate(objects, start=1):
+        lookup_key = _ocr_lookup_key(path)
+        meta = await storage.get_submission_metadata(lookup_key)
+        if not meta:
+            await context.increment("objects_without_metadata")
+            continue
+
+        await context.set_status_detail(
+            f"Refresh {index}/{total}: {os.path.basename(path)}"
+        )
+        before = str(meta.get("search_text") or "")
+        refreshed = await storage.refresh_submission_search_text(lookup_key)
+        after = str((refreshed or {}).get("search_text") or "")
+        await context.increment("objects_indexed")
+        if before != after:
+            await context.increment("objects_changed")
+
+    await context.set_status_detail(f"Refreshed search text for {total} objects")
+
+
 job_manager = JobManager()
 job_manager.register(
     JobDefinition(
@@ -461,5 +580,13 @@ job_manager.register(
         title="OCR missing images",
         description="Extract OCR text for stored images that do not have OCR metadata yet.",
         runner=_run_ocr_missing_images,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="refresh_search_text",
+        title="Refresh search text",
+        description="Rebuild Redis search text from captions, source names, filenames, and OCR results.",
+        runner=_run_refresh_search_text,
     )
 )

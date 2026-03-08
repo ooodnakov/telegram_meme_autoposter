@@ -1,19 +1,40 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock3, Hash, Layers3 } from "lucide-react";
 import { toast } from "sonner";
-import DataTable from "@/components/DataTable";
-import ClickableImage from "@/components/ClickableImage";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
-import ScheduleDateTimePicker from "@/components/ScheduleDateTimePicker";
+import QueueItemCard from "@/components/QueueItemCard";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
-import { api } from "@/lib/api";
-import {
-  formatDateTimeForApi,
-  formatDisplayDate,
-  parseDateTimeValue,
-} from "@/lib/datetime";
+import { api, type QueueItem } from "@/lib/api";
+import { formatDateTimeForApi, parseDateTimeValue } from "@/lib/datetime";
+
+function QueueSummaryCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Clock3;
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+        </div>
+        <div className="rounded-xl bg-primary/10 p-2 text-primary">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const QueuePage = () => {
   const [page, setPage] = useState(1);
@@ -21,24 +42,47 @@ const QueuePage = () => {
   const queryClient = useQueryClient();
   const { t } = useSession();
 
+  const refreshQueue = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["queue"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    ]);
+  };
+
+  const getDraftValue = (item: QueueItem) => drafts[item.path] ?? item.scheduled_at;
+
   const query = useQuery({
     queryKey: ["queue", page],
     queryFn: () => api.getQueue(page),
+    placeholderData: (previousData) => previousData,
   });
 
   const scheduleMutation = useMutation({
     mutationFn: (payload: { path: string; scheduled_at: string }) =>
       api.scheduleQueue(payload.path, payload.scheduled_at),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
+    onSuccess: async (_data, variables) => {
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.path];
+        return next;
+      });
+      await refreshQueue();
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const unscheduleMutation = useMutation({
     mutationFn: api.unscheduleQueue,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries();
+    onSuccess: async (_data, path) => {
+      setDrafts((current) => {
+        if (!(path in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[path];
+        return next;
+      });
+      await refreshQueue();
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -59,73 +103,78 @@ const QueuePage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("totalItems", { count: query.data.total_items })}
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            {t("totalItems", { count: query.data.total_items })}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("pageOf", { page: query.data.page, total: query.data.total_pages })}
+          </p>
+        </div>
         <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
           {t("refresh")}
         </Button>
       </div>
 
-      <DataTable
-        headers={[t("file"), t("caption"), t("scheduledAt"), t("preview"), t("actions")]}
-        rows={query.data.items.map((item) => [
-          <span className="font-mono text-xs text-muted-foreground">{item.path}</span>,
-          item.caption || "—",
-          <div className="flex min-w-[240px] items-center gap-2">
-            <ScheduleDateTimePicker
-              value={drafts[item.path] ?? item.scheduled_at}
-              onChange={(nextValue) =>
-                setDrafts((current) => ({
-                  ...current,
-                  [item.path]: nextValue,
-                }))
-              }
-            />
-            <Button
-              size="sm"
-              onClick={() =>
-                scheduleMutation.mutate({
-                  path: item.path,
-                  scheduled_at:
-                    drafts[item.path] ??
-                    formatDateTimeForApi(parseDateTimeValue(item.scheduled_at) ?? new Date()),
-                })
-              }
-            >
-              {t("save")}
-            </Button>
-          </div>,
-          <div className="min-w-[180px]">
-            {item.kind === "image" ? (
-              <ClickableImage
-                src={item.url}
-                alt={item.caption ?? item.name}
-                className="max-h-40 rounded-lg object-contain"
+      <div className="grid gap-4 md:grid-cols-3">
+        <QueueSummaryCard
+          icon={Layers3}
+          label={t("scheduledPosts")}
+          value={query.data.total_items}
+        />
+        <QueueSummaryCard
+          icon={Clock3}
+          label={t("count")}
+          value={query.data.items.length}
+        />
+        <QueueSummaryCard
+          icon={Hash}
+          label={t("queue")}
+          value={t("pageOf", { page: query.data.page, total: query.data.total_pages })}
+        />
+      </div>
+
+      {query.isFetching ? <p className="text-xs text-muted-foreground">{t("loading")}</p> : null}
+
+      {query.data.items.length === 0 ? (
+        <LoadingState label={t("noQueue")} />
+      ) : (
+        <div className="space-y-4">
+          {query.data.items.map((item) => {
+            const draftValue = getDraftValue(item);
+            const isSavingItem =
+              scheduleMutation.isPending && scheduleMutation.variables?.path === item.path;
+            const isUnschedulingItem =
+              unscheduleMutation.isPending && unscheduleMutation.variables === item.path;
+
+            return (
+              <QueueItemCard
+                key={item.path}
+                item={item}
+                draftValue={draftValue}
+                onDraftChange={(nextValue) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [item.path]: nextValue,
+                  }))
+                }
+                onSave={() =>
+                  scheduleMutation.mutate({
+                    path: item.path,
+                    scheduled_at:
+                      draftValue ??
+                      formatDateTimeForApi(parseDateTimeValue(item.scheduled_at) ?? new Date()),
+                  })
+                }
+                onUnschedule={() => unscheduleMutation.mutate(item.path)}
+                isSaving={isSavingItem}
+                isUnscheduling={isUnschedulingItem}
               />
-            ) : (
-              <video
-                className="max-h-40 rounded-lg"
-                controls
-                preload="metadata"
-                src={item.url}
-              />
-            )}
-            <p className="mt-2 text-xs text-muted-foreground">
-              {formatDisplayDate(item.scheduled_at)}
-            </p>
-          </div>,
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => unscheduleMutation.mutate(item.path)}
-          >
-            {t("unschedule")}
-          </Button>,
-        ])}
-        emptyMessage={t("noQueue")}
-      />
+            );
+          })}
+        </div>
+      )}
 
       <PagePagination
         page={query.data.page}

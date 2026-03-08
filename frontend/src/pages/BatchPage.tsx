@@ -1,13 +1,43 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Hash, Layers3, Send } from "lucide-react";
 import { toast } from "sonner";
-import MediaGroupCard from "@/components/MediaGroupCard";
+import BatchGroupCard from "@/components/BatchGroupCard";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
-import ScheduleDateTimePicker from "@/components/ScheduleDateTimePicker";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
 import { api } from "@/lib/api";
+
+type BatchAction = "push" | "schedule" | "remove_batch";
+
+function BatchSummaryCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Layers3;
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <div className="glass-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+        </div>
+        <div className="rounded-xl bg-primary/10 p-2 text-primary">
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const getGroupKey = (paths: string[]) => paths.join("|");
 
 const BatchPage = () => {
   const [page, setPage] = useState(1);
@@ -15,37 +45,56 @@ const BatchPage = () => {
   const queryClient = useQueryClient();
   const { t } = useSession();
 
-  const query = useQuery({
-    queryKey: ["batch", page],
-    queryFn: () => api.getBatch(page),
-  });
-
-  const refreshAll = async () => {
-    await queryClient.invalidateQueries();
+  const refreshBatch = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["batch"] }),
+      queryClient.invalidateQueries({ queryKey: ["queue"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["stats"] }),
+      queryClient.invalidateQueries({ queryKey: ["events"] }),
+    ]);
   };
 
   const actionMutation = useMutation({
-    mutationFn: (payload: { action: string; paths: string[] }) =>
+    mutationFn: (payload: { action: BatchAction; paths: string[]; groupKey: string }) =>
       api.postAction({ action: payload.action, origin: "batch", paths: payload.paths }),
-    onSuccess: refreshAll,
+    onSuccess: async () => {
+      await refreshBatch();
+    },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const sendMutation = useMutation({
     mutationFn: api.sendBatch,
-    onSuccess: refreshAll,
+    onSuccess: async () => {
+      setPage(1);
+      await refreshBatch();
+    },
     onError: (error: Error) => toast.error(error.message),
   });
 
   const scheduleMutation = useMutation({
-    mutationFn: (payload: { paths: string[]; scheduled_at: string }) =>
+    mutationFn: (payload: { groupKey: string; paths: string[]; scheduled_at: string }) =>
       api.manualSchedule({
         origin: "batch",
         paths: payload.paths,
         scheduled_at: payload.scheduled_at,
       }),
-    onSuccess: refreshAll,
+    onSuccess: async (_data, variables) => {
+      setScheduleInputs((current) => {
+        const next = { ...current };
+        delete next[variables.groupKey];
+        return next;
+      });
+      await refreshBatch();
+    },
     onError: (error: Error) => toast.error(error.message),
+  });
+
+  const query = useQuery({
+    queryKey: ["batch", page],
+    queryFn: () => api.getBatch(page),
+    placeholderData: (previousData) => previousData,
   });
 
   if (query.isLoading) {
@@ -65,12 +114,22 @@ const BatchPage = () => {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("totalItems", { count: query.data.total_items })}
-        </p>
+        <div>
+          <p className="text-sm text-muted-foreground">
+            {t("totalItems", { count: query.data.total_items })}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t("pageOf", { page: query.data.page, total: query.data.total_pages })}
+          </p>
+        </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => sendMutation.mutate()}>
-            {t("sendBatchNow")}
+          <Button
+            size="sm"
+            onClick={() => sendMutation.mutate()}
+            disabled={sendMutation.isPending || query.data.items.length === 0}
+          >
+            <Send className="h-4 w-4" />
+            {sendMutation.isPending ? t("loading") : t("sendBatchNow")}
           </Button>
           <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
             {t("refresh")}
@@ -78,80 +137,66 @@ const BatchPage = () => {
         </div>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-3">
+        <BatchSummaryCard
+          icon={Layers3}
+          label={t("batchQueue")}
+          value={query.data.total_items}
+        />
+        <BatchSummaryCard
+          icon={Hash}
+          label={t("count")}
+          value={query.data.items.length}
+        />
+        <BatchSummaryCard
+          icon={Send}
+          label={t("batch")}
+          value={t("pageOf", { page: query.data.page, total: query.data.total_pages })}
+        />
+      </div>
+
+      {query.isFetching ? <p className="text-xs text-muted-foreground">{t("loading")}</p> : null}
+
       {query.data.items.length === 0 ? (
         <LoadingState label={t("noBatch")} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="space-y-4">
           {query.data.items.map((group) => {
-            const groupKey = group.items.map((item) => item.path).join("|");
+            const groupKey = getGroupKey(group.items.map((item) => item.path));
+            const activeAction =
+              actionMutation.isPending && actionMutation.variables?.groupKey === groupKey
+                ? actionMutation.variables.action
+                : null;
+            const isSchedulingGroup =
+              scheduleMutation.isPending && scheduleMutation.variables?.groupKey === groupKey;
+
             return (
-              <MediaGroupCard
+              <BatchGroupCard
                 key={groupKey}
                 group={group}
-                scheduleInput={
-                  <div className="flex flex-col gap-2 md:flex-row">
-                    <ScheduleDateTimePicker
-                      value={scheduleInputs[groupKey] ?? ""}
-                      onChange={(nextValue) =>
-                        setScheduleInputs((current) => ({
-                          ...current,
-                          [groupKey]: nextValue,
-                        }))
-                      }
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        scheduleMutation.mutate({
-                          paths: group.items.map((item) => item.path),
-                          scheduled_at: scheduleInputs[groupKey] ?? "",
-                        })
-                      }
-                      disabled={!scheduleInputs[groupKey]}
-                    >
-                      {t("manualSchedule")}
-                    </Button>
-                  </div>
+                scheduleValue={scheduleInputs[groupKey] ?? ""}
+                onScheduleChange={(nextValue) =>
+                  setScheduleInputs((current) => ({
+                    ...current,
+                    [groupKey]: nextValue,
+                  }))
                 }
-                actions={
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        actionMutation.mutate({
-                          action: "push",
-                          paths: group.items.map((item) => item.path),
-                        })
-                      }
-                    >
-                      {t("pushNow")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() =>
-                        actionMutation.mutate({
-                          action: "schedule",
-                          paths: group.items.map((item) => item.path),
-                        })
-                      }
-                    >
-                      {t("schedule")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() =>
-                        actionMutation.mutate({
-                          action: "remove_batch",
-                          paths: group.items.map((item) => item.path),
-                        })
-                      }
-                    >
-                      {t("remove")}
-                    </Button>
-                  </>
+                onManualSchedule={() =>
+                  scheduleMutation.mutate({
+                    groupKey,
+                    paths: group.items.map((item) => item.path),
+                    scheduled_at: scheduleInputs[groupKey] ?? "",
+                  })
                 }
+                onAction={(action) =>
+                  actionMutation.mutate({
+                    action,
+                    groupKey,
+                    paths: group.items.map((item) => item.path),
+                  })
+                }
+                activeAction={activeAction}
+                isScheduling={isSchedulingGroup}
               />
             );
           })}

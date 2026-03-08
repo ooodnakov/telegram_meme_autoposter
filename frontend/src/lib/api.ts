@@ -124,18 +124,21 @@ export interface JobRecord {
   name: string;
   title: string;
   description: string;
-  status: "idle" | "running" | "succeeded" | "failed";
+  status: "idle" | "running" | "paused" | "succeeded" | "failed";
   status_detail?: string | null;
+  pause_requested?: boolean;
   current_run_started_at?: string | null;
   current_run_duration_seconds?: number | null;
   current_stats: Record<string, number | string>;
   last_run_started_at?: string | null;
   last_run_finished_at?: string | null;
   last_run_duration_seconds?: number | null;
-  last_run_status?: "idle" | "running" | "succeeded" | "failed" | null;
+  last_run_status?: "idle" | "running" | "paused" | "succeeded" | "failed" | null;
   last_run_stats: Record<string, number | string>;
   last_error?: string | null;
   can_run: boolean;
+  can_pause?: boolean;
+  can_resume?: boolean;
   runtime: JobRuntime;
 }
 
@@ -338,6 +341,16 @@ export const api = {
   getJobs: () => apiRequest<JobsPayload>("/api/jobs"),
   runJob: (jobName: string) =>
     apiRequest<JobRecord>(`/api/jobs/${jobName}/run`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  pauseJob: (jobName: string) =>
+    apiRequest<JobRecord>(`/api/jobs/${jobName}/pause`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  resumeJob: (jobName: string) =>
+    apiRequest<JobRecord>(`/api/jobs/${jobName}/resume`, {
       method: "POST",
       body: JSON.stringify({}),
     }),

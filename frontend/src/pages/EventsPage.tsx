@@ -1,20 +1,38 @@
+import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity, Files, Users } from "lucide-react";
 import { toast } from "sonner";
-import DataTable from "@/components/DataTable";
+import EventFeed from "@/components/EventFeed";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import StatCard from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useSession } from "@/components/SessionProvider";
 import { api } from "@/lib/api";
-import { formatDisplayDate } from "@/lib/datetime";
+import { buildEventSearchText } from "@/lib/event-log";
 
 const EventsPage = () => {
+  const [filters, setFilters] = useState({
+    q: "",
+    origin: "all",
+  });
   const queryClient = useQueryClient();
   const { t } = useSession();
+  const deferredQuery = useDeferredValue(filters.q.trim().toLowerCase());
 
   const query = useQuery({
     queryKey: ["events"],
     queryFn: () => api.getEvents(),
   });
+  const events = query.data?.items;
+  const eventLimit = query.data?.limit ?? 0;
 
   const resetMutation = useMutation({
     mutationFn: api.resetEvents,
@@ -24,6 +42,42 @@ const EventsPage = () => {
     },
     onError: (error: Error) => toast.error(error.message),
   });
+
+  const origins = useMemo(
+    () => {
+      const items = events ?? [];
+      return Array.from(
+        new Set(items.map((event) => event.origin).filter(Boolean) as string[]),
+      ).sort((left, right) => left.localeCompare(right));
+    },
+    [events],
+  );
+
+  const filteredEvents = useMemo(
+    () => {
+      const items = events ?? [];
+      return items.filter((event) => {
+        if (filters.origin !== "all" && event.origin !== filters.origin) {
+          return false;
+        }
+
+        if (deferredQuery.length > 0 && !buildEventSearchText(event).includes(deferredQuery)) {
+          return false;
+        }
+
+        return true;
+      });
+    },
+    [deferredQuery, events, filters.origin],
+  );
+
+  const activeFilters = deferredQuery.length > 0 || filters.origin !== "all";
+  const affectedItems = filteredEvents.reduce((total, event) => total + event.items.length, 0);
+  const uniqueActors = new Set(
+    filteredEvents
+      .map((event) => event.actor)
+      .filter((actor): actor is string | number => actor != null && actor !== ""),
+  ).size;
 
   if (query.isLoading) {
     return <LoadingState label={t("loading")} />;
@@ -41,31 +95,110 @@ const EventsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("totalItems", { count: query.data.items.length })}
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-            {t("refresh")}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
-            {t("clearHistory")}
-          </Button>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          title={t("loggedActions")}
+          value={filteredEvents.length}
+          icon={Activity}
+          description={
+            activeFilters
+              ? t("matchingEvents", { count: filteredEvents.length })
+              : t("showingLastEvents", { count: eventLimit })
+          }
+        />
+        <StatCard
+          title={t("affectedItems")}
+          value={affectedItems}
+          icon={Files}
+          description={t("totalItems", { count: events?.length ?? 0 })}
+        />
+        <StatCard
+          title={t("uniqueActors")}
+          value={uniqueActors}
+          icon={Users}
+          description={t("totalItems", { count: filteredEvents.length })}
+        />
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">
+              {activeFilters
+                ? t("matchingEvents", { count: filteredEvents.length })
+                : t("showingLastEvents", { count: eventLimit })}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setFilters({
+                  q: "",
+                  origin: "all",
+                })
+              }
+              disabled={!activeFilters}
+            >
+              {t("clearFilters")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t("refresh")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
+              {t("clearHistory")}
+            </Button>
+          </div>
+        </div>
+
+        <div className="glass-card grid gap-3 p-4 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("search")}
+            </span>
+            <Input
+              value={filters.q}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  q: event.target.value,
+                }))
+              }
+              placeholder={t("searchLogsPlaceholder")}
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("origin")}
+            </span>
+            <Select
+              value={filters.origin}
+              onValueChange={(value) =>
+                setFilters((current) => ({
+                  ...current,
+                  origin: value,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={t("allOrigins")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allOrigins")}</SelectItem>
+                {origins.map((origin) => (
+                  <SelectItem key={origin} value={origin}>
+                    {origin}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
         </div>
       </div>
 
-      <DataTable
-        headers={[t("timestamp"), t("action"), t("actor"), t("source"), t("count")]}
-        rows={query.data.items.map((event) => [
-          formatDisplayDate(event.timestamp),
-          `${event.action ?? "—"}${event.origin ? ` · ${event.origin}` : ""}`,
-          String(event.actor ?? "—"),
-          event.items[0]?.submitter?.source ?? "—",
-          event.items.length,
-        ])}
-        emptyMessage={t("recentEvents")}
-      />
+      <EventFeed events={filteredEvents} emptyMessage={t("noEventsYet")} />
     </div>
   );
 };

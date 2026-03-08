@@ -1,5 +1,12 @@
+export type BadgeStatusVariant =
+  | "success"
+  | "warning"
+  | "destructive"
+  | "default"
+  | "primary";
+
 interface BadgeStatusProps {
-  variant: "success" | "warning" | "destructive" | "default" | "primary";
+  variant: BadgeStatusVariant;
   children: React.ReactNode;
 }
 

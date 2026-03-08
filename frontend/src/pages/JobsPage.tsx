@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, ScanSearch } from "lucide-react";
+import { Pause, Play, ScanSearch } from "lucide-react";
 import { toast } from "sonner";
 import BadgeStatus from "@/components/BadgeStatus";
 import { ErrorState, LoadingState } from "@/components/PageState";
@@ -46,6 +46,9 @@ function statusVariant(status: JobRecord["status"]): "default" | "primary" | "su
   if (status === "running") {
     return "primary";
   }
+  if (status === "paused") {
+    return "default";
+  }
   if (status === "succeeded") {
     return "success";
   }
@@ -58,6 +61,9 @@ function statusVariant(status: JobRecord["status"]): "default" | "primary" | "su
 function statusLabel(status: JobRecord["status"]): TranslationKey {
   if (status === "running") {
     return "jobRunning";
+  }
+  if (status === "paused") {
+    return "jobPausedStatus";
   }
   if (status === "succeeded") {
     return "jobSucceeded";
@@ -85,7 +91,9 @@ const JobsPage = () => {
     queryKey: ["jobs"],
     queryFn: api.getJobs,
     refetchInterval: (queryState) =>
-      queryState.state.data?.items.some((item) => item.status === "running")
+      queryState.state.data?.items.some(
+        (item) => item.status === "running" || item.status === "paused",
+      )
         ? 3000
         : 15000,
   });
@@ -94,6 +102,24 @@ const JobsPage = () => {
     mutationFn: api.runJob,
     onSuccess: async () => {
       toast.success(t("jobStarted"));
+      await queryClient.invalidateQueries();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: api.pauseJob,
+    onSuccess: async () => {
+      toast.success(t("jobPaused"));
+      await queryClient.invalidateQueries();
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: api.resumeJob,
+    onSuccess: async () => {
+      toast.success(t("jobResumed"));
       await queryClient.invalidateQueries();
     },
     onError: (error: Error) => toast.error(error.message),
@@ -128,10 +154,14 @@ const JobsPage = () => {
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         {query.data.items.map((job) => {
-          const stats = job.status === "running" ? job.current_stats : job.last_run_stats;
+          const stats =
+            job.status === "running" || job.status === "paused"
+              ? job.current_stats
+              : job.last_run_stats;
           const totalPending = Number(stats.images_missing_ocr ?? 0);
           const processed = Number(stats.images_ocred ?? 0);
           const progress = totalPending > 0 ? Math.min(100, (processed / totalPending) * 100) : 0;
+          const isMutating = runMutation.isPending || pauseMutation.isPending || resumeMutation.isPending;
 
           return (
             <section key={job.name} className="glass-card space-y-5 p-5">
@@ -150,15 +180,38 @@ const JobsPage = () => {
                     {t(statusLabel(job.status))}
                   </BadgeStatus>
                 </div>
-                <Button
-                  size="sm"
-                  className="gap-2"
-                  disabled={!job.can_run || runMutation.isPending}
-                  onClick={() => runMutation.mutate(job.name)}
-                >
-                  <Play className="h-4 w-4" />
-                  {t("runJob")}
-                </Button>
+                {job.can_pause ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2"
+                    disabled={isMutating}
+                    onClick={() => pauseMutation.mutate(job.name)}
+                  >
+                    <Pause className="h-4 w-4" />
+                    {t("pauseJob")}
+                  </Button>
+                ) : job.can_resume ? (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={isMutating}
+                    onClick={() => resumeMutation.mutate(job.name)}
+                  >
+                    <Play className="h-4 w-4" />
+                    {t("resumeJob")}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    disabled={!job.can_run || isMutating}
+                    onClick={() => runMutation.mutate(job.name)}
+                  >
+                    <Play className="h-4 w-4" />
+                    {t("runJob")}
+                  </Button>
+                )}
               </div>
 
               {job.runtime.reason ? (
@@ -167,7 +220,7 @@ const JobsPage = () => {
                 </div>
               ) : null}
 
-              {job.status === "running" && totalPending > 0 ? (
+              {(job.status === "running" || job.status === "paused") && totalPending > 0 ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{t("currentRun")}</span>

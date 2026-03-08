@@ -6,6 +6,7 @@ import tempfile
 import time
 from datetime import timedelta
 from inspect import iscoroutinefunction
+from typing import Mapping
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
@@ -70,6 +71,36 @@ def _metadata_candidates(object_name: str) -> list[str]:
             ]
         )
     return candidates
+
+
+def _normalize_search_text_part(value: object) -> str:
+    """Return a normalized searchable text fragment."""
+
+    if value is None:
+        return ""
+    normalized = " ".join(str(value).strip().split())
+    return normalized.casefold()
+
+
+def build_submission_search_text(
+    object_name: str, meta: Mapping[str, object] | None = None
+) -> str:
+    """Build a normalized search text cache for one stored object."""
+
+    parts: list[str] = []
+    seen: set[str] = set()
+    for raw_part in (
+        os.path.basename(object_name),
+        meta.get("caption") if meta else None,
+        meta.get("source") if meta else None,
+        meta.get("ocr_text") if meta else None,
+    ):
+        part = _normalize_search_text_part(raw_part)
+        if not part or part in seen:
+            continue
+        seen.add(part)
+        parts.append(part)
+    return " ".join(parts)
 
 
 class MinioStorage:
@@ -239,6 +270,8 @@ class MinioStorage:
             "ocr_duration_seconds": ocr_duration_seconds,
             "ocr_languages": ocr_languages,
         }
+        meta["search_text"] = build_submission_search_text(object_name, meta)
+        meta["search_text_updated_at"] = now_utc().isoformat()
         self.submission_metadata[object_name] = meta
         try:
             r = get_async_redis_client()
@@ -309,6 +342,8 @@ class MinioStorage:
                             else None
                         ),
                         "ocr_languages": data.get("ocr_languages"),
+                        "search_text": data.get("search_text"),
+                        "search_text_updated_at": data.get("search_text_updated_at"),
                         "trashed_at": data.get("trashed_at"),
                         "trash_expires_at": data.get("trash_expires_at"),
                     }
@@ -354,6 +389,17 @@ class MinioStorage:
         for key in to_delete:
             meta.pop(key, None)
 
+        should_refresh_search_text = (
+            not isinstance(meta.get("search_text"), str)
+            or not meta.get("search_text")
+            or bool({"caption", "source", "ocr_text", "search_text"} & set(fields))
+        )
+        if should_refresh_search_text:
+            meta["search_text"] = build_submission_search_text(storage_key, meta)
+            meta["search_text_updated_at"] = now_utc().isoformat()
+            to_set["search_text"] = meta["search_text"]
+            to_set["search_text_updated_at"] = meta["search_text_updated_at"]
+
         self.submission_metadata[storage_key] = meta
 
         try:
@@ -373,6 +419,20 @@ class MinioStorage:
             logger.error(f"Failed to update submission metadata in Redis: {e}")
 
         return meta
+
+    async def refresh_submission_search_text(
+        self, object_name: str
+    ) -> dict[str, object] | None:
+        """Rebuild the cached search text for ``object_name`` in memory and Redis."""
+
+        storage_key = await self.resolve_submission_metadata_key(object_name)
+        meta = await self.get_submission_metadata(storage_key)
+        if meta is None:
+            return None
+        return await self.update_submission_metadata(
+            storage_key,
+            search_text=meta.get("search_text"),
+        )
 
     async def mark_notified(self, object_name: str) -> bool:
         """Mark that the user has been notified about their submission.

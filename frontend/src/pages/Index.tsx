@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Clock, FileText, Image, Layers, Lightbulb, Trash2, Video } from "lucide-react";
+import { Clock, FileText, Image, Layers, Lightbulb, Trash2, Video } from "lucide-react";
 import { Link } from "react-router-dom";
 import BadgeStatus from "@/components/BadgeStatus";
+import EventFeed from "@/components/EventFeed";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import StatCard from "@/components/StatCard";
 import { useSession } from "@/components/SessionProvider";
@@ -174,25 +175,11 @@ const DashboardPage = () => {
             <p className="mt-1 text-xs text-muted-foreground">{recentEventsSummary}</p>
           </div>
           <div className="space-y-3">
-            {recentEvents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("noPosts")}</p>
-            ) : (
-              recentEvents.map((event, index) => (
-                <div key={`${event.timestamp}-${index}`} className="flex gap-3">
-                  <div className="mt-1">
-                    <Activity className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">
-                      {event.action} {event.origin ? `· ${event.origin}` : ""}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatDisplayDate(event.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
+            <EventFeed
+              events={recentEvents}
+              emptyMessage={t("noEventsYet")}
+              variant="compact"
+            />
           </div>
         </div>
 

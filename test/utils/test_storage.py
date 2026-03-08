@@ -250,6 +250,7 @@ async def test_submission_metadata_round_trip_includes_caption_and_source(storag
     assert meta["message_id"] == 987
     assert meta["caption"] == "hello world"
     assert meta["source"] == "source-full"
+    assert meta["search_text"] == "obj_full hello world source-full"
 
 
 @pytest.mark.asyncio
@@ -264,7 +265,9 @@ async def test_update_submission_metadata_preserves_caption_and_source(storage):
         source="keep source",
     )
 
-    updated = await storage.update_submission_metadata("obj_update", review_message_id=555)
+    updated = await storage.update_submission_metadata(
+        "obj_update", review_message_id=555
+    )
 
     assert updated["review_message_id"] == 555
     assert updated["caption"] == "keep me"
@@ -291,8 +294,30 @@ async def test_update_submission_metadata_resolves_prefixed_key(storage):
     )
 
     assert updated["ocr_text"] == "hello"
+    assert updated["search_text"] == "batch_obj.jpg keep me keep source hello"
     assert f"{PHOTOS_PATH}/batch_obj.jpg" in storage.submission_metadata
     assert "batch_obj.jpg" not in storage.submission_metadata
+
+
+@pytest.mark.asyncio
+async def test_refresh_submission_search_text_rebuilds_cached_value(storage):
+    """Refreshing search text should backfill the Redis cache from OCR metadata."""
+
+    await storage.store_submission_metadata(
+        "ocr_item.jpg",
+        1,
+        2,
+        "photo",
+        caption="hello",
+        source="@source",
+    )
+    await storage.update_submission_metadata("ocr_item.jpg", ocr_text="top text")
+    await storage.update_submission_metadata("ocr_item.jpg", search_text="")
+
+    refreshed = await storage.refresh_submission_search_text("ocr_item.jpg")
+
+    assert refreshed is not None
+    assert refreshed["search_text"] == "ocr_item.jpg hello @source top text"
 
 
 @pytest.mark.asyncio
@@ -471,9 +496,7 @@ async def test_list_files_with_prefix_does_not_cache(
 
 
 @pytest.mark.asyncio
-async def test_count_files_uses_cache(
-    storage, mock_minio_client, mock_redis_client
-):
+async def test_count_files_uses_cache(storage, mock_minio_client, mock_redis_client):
     """Counting uses Valkey's sorted set when available."""
     cache_key = _redis_key("objects", BUCKET_MAIN)
     mock_redis_client.zset_store[cache_key] = ["a.jpg", "b.jpg"]
