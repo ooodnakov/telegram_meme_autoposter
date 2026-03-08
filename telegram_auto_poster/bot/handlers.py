@@ -43,6 +43,9 @@ ERROR_MINIO_DOWNLOAD_FAILED = "Failed to download file from MinIO"
 ERROR_TELEGRAM_SEND_FAILED = "Failed to send media to Telegram"
 ERROR_TEMP_FILE_CREATION = "Failed to create temporary file"
 ERROR_FILE_NOT_SUPPORTED = "File type not supported"
+HANDLE_MEDIA_ERROR_MESSAGE = (
+    "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже."
+)
 MAX_RETRIES = 5
 RETRY_DELAY = 1
 
@@ -639,9 +642,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     except Exception as e:
         logger.error(f"Error in handle_media: {e}")
         await stats.record_error("processing", f"Error handling media: {str(e)}")
-        error_text = _(
-            "Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже."
-        )
+        error_text = _(HANDLE_MEDIA_ERROR_MESSAGE)
 
         if update.message is not None:
             await update.message.reply_text(error_text, do_quote=True)

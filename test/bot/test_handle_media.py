@@ -81,7 +81,7 @@ async def test_handle_media_exception_without_message_uses_chat_fallback(
 
     context.bot.send_message.assert_awaited_once_with(
         chat_id=123,
-        text="Произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте позже.",
+        text=handlers.HANDLE_MEDIA_ERROR_MESSAGE,
     )
 
 
