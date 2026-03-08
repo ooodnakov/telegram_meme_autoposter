@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import BadgeStatus from "@/components/BadgeStatus";
+import ClickableImage from "@/components/ClickableImage";
 import { useSession } from "@/components/SessionProvider";
 import { formatDisplayDate } from "@/lib/datetime";
 import type { MediaGroup } from "@/lib/api";
@@ -31,7 +32,7 @@ const MediaGroupCard = ({
             className="overflow-hidden rounded-lg bg-secondary/50 aspect-square"
           >
             {item.kind === "image" ? (
-              <img
+              <ClickableImage
                 src={item.url}
                 alt={item.caption ?? item.name}
                 className="h-full w-full object-cover"

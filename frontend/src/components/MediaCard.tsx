@@ -1,3 +1,5 @@
+import ClickableImage from "@/components/ClickableImage";
+
 interface MediaCardProps {
   src: string;
   type: "image" | "video";
@@ -11,10 +13,10 @@ const MediaCard = ({ src, type, caption, source, actions }: MediaCardProps) => {
     <div className="glass-card overflow-hidden group hover:border-primary/30 transition-all duration-300">
       <div className="aspect-square bg-secondary/50 overflow-hidden">
         {type === "image" ? (
-          <img
+          <ClickableImage
             src={src}
             alt={caption || "media"}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
