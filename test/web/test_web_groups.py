@@ -1,9 +1,8 @@
 import pytest
 from pytest_mock import MockerFixture
-from starlette.requests import Request
-from starlette.responses import Response
-from telegram_auto_poster.config import PHOTOS_PATH
-from telegram_auto_poster.web.app import _gather_posts, _render_posts_page
+
+from telegram_auto_poster.config import PHOTOS_PATH, TRASH_PATH
+from telegram_auto_poster.web.app import _gather_posts, _gather_trash
 
 
 @pytest.mark.asyncio
@@ -13,142 +12,70 @@ async def test_gather_posts_groups_by_group_id(mocker: MockerFixture):
         f"{PHOTOS_PATH}/processed_b.jpg",
         f"{PHOTOS_PATH}/processed_c.jpg",
     ]
-    async def fake_count_files(bucket, prefix, *, offset=0, limit=None):
-        return len(objects) if prefix.startswith(f"{PHOTOS_PATH}/processed_") else 0
-
-    async def fake_list_files(bucket, prefix, *, offset=0, limit=None):
-        if prefix.startswith(f"{PHOTOS_PATH}/processed_"):
-            data = objects
-        else:
-            data = []
-        end = None if limit is None else offset + limit
-        return data[offset:end]
 
     mocker.patch(
-        "telegram_auto_poster.web.app.storage.count_files",
-        side_effect=fake_count_files,
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.storage.list_files",
-        side_effect=fake_list_files,
+        "telegram_auto_poster.web.app._list_media",
+        new=mocker.AsyncMock(return_value=objects),
     )
 
     async def fake_get_meta(name):
         if name in {"processed_a.jpg", "processed_b.jpg"}:
-            return {"group_id": "g1"}
-        return {}
-
-    async def fake_get_url(obj):
-        return f"http://example.com/{obj}"
-
-    mocker.patch(
-        "telegram_auto_poster.web.app.storage.get_submission_metadata",
-        side_effect=fake_get_meta,
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.storage.get_presigned_url",
-        side_effect=fake_get_url,
-    )
-
-    posts = await _gather_posts(False)
-    assert len(posts) == 2
-    lengths = sorted(len(p["items"]) for p in posts)
-    assert lengths == [1, 2]
-
-
-@pytest.mark.asyncio
-async def test_gather_posts_filters_suggestions(mocker: MockerFixture):
-    async def fake_count_files(bucket, prefix, *, offset=0, limit=None):
-        return 2 if prefix.startswith(f"{PHOTOS_PATH}/processed_") else 0
-
-    async def fake_list_files(bucket, prefix, *, offset=0, limit=None):
-        if prefix.startswith(f"{PHOTOS_PATH}/processed_"):
-            data = [
-                f"{PHOTOS_PATH}/processed_sug.jpg",
-                f"{PHOTOS_PATH}/processed_post.jpg",
-            ]
-        else:
-            data = []
-        end = None if limit is None else offset + limit
-        return data[offset:end]
-
-    mocker.patch(
-        "telegram_auto_poster.web.app.storage.count_files",
-        side_effect=fake_count_files,
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app.storage.list_files",
-        side_effect=fake_list_files,
-    )
-
-    async def fake_get_meta(name):
-        if name == "processed_sug.jpg":
-            return {"user_id": "u1"}
-        return {}
-
-    async def fake_get_url(obj):
-        return f"http://example.com/{obj}"
+            return {
+                "group_id": "g1",
+                "caption": "group caption",
+                "source": "@channel",
+                "user_id": 42,
+            }
+        return {"caption": "single caption", "source": "@single"}
 
     mocker.patch(
         "telegram_auto_poster.web.app.storage.get_submission_metadata",
-        side_effect=fake_get_meta,
+        new=mocker.AsyncMock(side_effect=fake_get_meta),
     )
     mocker.patch(
         "telegram_auto_poster.web.app.storage.get_presigned_url",
-        side_effect=fake_get_url,
+        new=mocker.AsyncMock(side_effect=lambda obj: f"http://example.com/{obj}"),
     )
 
-    suggestions = await _gather_posts(True)
-    assert len(suggestions) == 1
-    assert suggestions[0]["items"][0]["path"].endswith("processed_sug.jpg")
+    posts = await _gather_posts(True)
+    assert len(posts) == 1
+    assert posts[0]["count"] == 2
+    assert posts[0]["caption"] == "group caption"
+    assert posts[0]["source"] == "@channel"
+    assert posts[0]["submitter"]["user_id"] == 42
 
     posts = await _gather_posts(False)
     assert len(posts) == 1
-    assert posts[0]["items"][0]["path"].endswith("processed_post.jpg")
+    assert posts[0]["caption"] == "single caption"
 
 
 @pytest.mark.asyncio
-async def test_render_posts_page_uses_partial_template(mocker: MockerFixture):
-    posts = [
-        {
-            "items": [
-                {
-                    "path": f"{PHOTOS_PATH}/processed_post.jpg",
-                    "url": "http://example.com/a.jpg",
-                    "is_image": True,
-                    "is_video": False,
-                }
-            ]
-        }
-    ]
-    gather = mocker.patch(
-        "telegram_auto_poster.web.app._gather_posts",
-        new=mocker.AsyncMock(return_value=posts),
+async def test_gather_trash_includes_retention_metadata(mocker: MockerFixture):
+    objects = [f"{TRASH_PATH}/{PHOTOS_PATH}/trashed.jpg"]
+    mocker.patch(
+        "telegram_auto_poster.web.app.purge_expired_trash",
+        new=mocker.AsyncMock(),
     )
-    template = mocker.patch(
-        "telegram_auto_poster.web.app.templates.TemplateResponse",
-        return_value=Response(),
+    mocker.patch(
+        "telegram_auto_poster.web.app._list_trash_media",
+        new=mocker.AsyncMock(return_value=objects),
     )
-    request = Request(
-        {
-            "type": "http",
-            "method": "GET",
-            "path": "/",
-            "headers": [(b"hx-request", b"true")],
-            "query_string": b"",
-        }
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.get_submission_metadata",
+        new=mocker.AsyncMock(
+            return_value={
+                "trashed_at": "2026-03-08T10:00:00+00:00",
+                "trash_expires_at": "2026-03-09T10:00:00+00:00",
+            }
+        ),
     )
-    await _render_posts_page(
-        request,
-        only_suggestions=True,
-        origin="suggestions",
-        alt_text="suggestion",
-        empty_message="none",
-        template_name="suggestions.html",
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.get_presigned_url",
+        new=mocker.AsyncMock(return_value="http://example.com/trashed.jpg"),
     )
-    gather.assert_awaited_once()
-    template.assert_called_once()
-    assert template.call_args[0][0] == "_post_grid.html"
-    ctx = template.call_args[0][1]
-    assert ctx["posts"] == posts
-    assert ctx["origin"] == "suggestions"
+
+    posts = await _gather_trash()
+    assert len(posts) == 1
+    assert posts[0]["items"][0]["url"] == "http://example.com/trashed.jpg"
+    assert posts[0]["trashed_at"] == "2026-03-08T10:00:00+00:00"
+    assert posts[0]["expires_at"] == "2026-03-09T10:00:00+00:00"

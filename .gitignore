@@ -17,3 +17,5 @@ uv.lock
 gha-creds-*.json
 **/*.mo
 .coverage
+frontend/node_modules/
+frontend/dist/

@@ -1,6 +1,6 @@
 # Telegram Meme Autoposter
 
-A Telegram bot + watcher that monitors source channels for media (photos/videos), watermarks and queues them for admin review, then posts to a target channel. Includes feedback to submitters, usage stats, and a simple web dashboard.
+A Telegram bot + watcher that monitors source channels for media (photos/videos), watermarks and queues them for admin review, then posts to a target channel. Includes feedback to submitters, usage stats, and a React dashboard served by FastAPI.
 
 ## Quick Setup
 
@@ -16,6 +16,12 @@ Follow these steps to get running fast. For expanded docs, see the Wiki.
    ```bash
    uv sync
    ```
+   And install the dashboard dependencies:
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
 3. Create config and env files
    ```bash
    cp config.example.ini config.ini
@@ -30,8 +36,9 @@ Follow these steps to get running fast. For expanded docs, see the Wiki.
    ```bash
    uv run python -m telegram_auto_poster.main
    ```
-   Or run bot + dashboard together:
+   Build the dashboard bundle and run bot + dashboard together:
    ```bash
+   cd frontend && npm run build && cd ..
    ./run_bg.sh
    ```
 
@@ -64,7 +71,7 @@ Key topics to start with:
 - Feedback to submitters on approval/rejection
 - Configurable trash bin for rejected posts with restore support
 - Daily stats and Valkey-backed metrics
-- Simple FastAPI dashboard for review/analytics
+- React dashboard served by FastAPI for review/analytics
 - MinIO-backed storage for originals/processed media
 
 ## Project Structure
@@ -79,9 +86,15 @@ Key topics to start with:
 
 ## Web Dashboard & Docs
 
-- Run standalone dashboard:
+- Build the dashboard and run the backend shell:
   ```bash
+  cd frontend && npm run build && cd ..
   uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
+  ```
+- Frontend development server:
+  ```bash
+  cd frontend
+  npm run dev
   ```
 - Built-in pydoc browser after start: `http://localhost:8000/pydoc/`
   - Example: `http://localhost:8000/pydoc/telegram_auto_poster.utils.storage`

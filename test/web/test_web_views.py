@@ -4,86 +4,91 @@ from unittest.mock import call
 
 from fastapi.testclient import TestClient
 
-from telegram_auto_poster.config import PHOTOS_PATH, BUCKET_MAIN
+from telegram_auto_poster.config import PHOTOS_PATH
 from telegram_auto_poster.utils.timezone import parse_to_utc_timestamp
-from telegram_auto_poster.web.app import (
-    CONFIG,
-    MANUAL_SCHEDULE_INTERVAL_SECONDS,
-    app,
-)
+from telegram_auto_poster.web.app import MANUAL_SCHEDULE_INTERVAL_SECONDS
 
-from .conftest import login_payload
 
-def test_suggestions_view_requires_login(mocker):
+def test_dashboard_api_payload(mocker, auth_client: TestClient):
     mocker.patch(
-        "telegram_auto_poster.web.app._gather_posts",
-        new=mocker.AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app._get_suggestions_count",
-        new=mocker.AsyncMock(return_value=0),
-    )
-    with TestClient(app) as client:
-        assert client.get("/suggestions").status_code == 401
-        payload = login_payload(CONFIG.bot.admin_ids[0])
-        assert client.post("/auth", json=payload).status_code == 200
-        assert client.get("/suggestions").status_code == 200
-
-
-def test_posts_view_requires_login(mocker):
-    mocker.patch(
-        "telegram_auto_poster.web.app._gather_posts",
-        new=mocker.AsyncMock(return_value=[]),
-    )
-    mocker.patch(
-        "telegram_auto_poster.web.app._get_posts_count",
-        new=mocker.AsyncMock(return_value=0),
-    )
-    with TestClient(app) as client:
-        assert client.get("/posts").status_code == 401
-        payload = login_payload(CONFIG.bot.admin_ids[0])
-        assert client.post("/auth", json=payload).status_code == 200
-        assert client.get("/posts").status_code == 200
-
-
-def test_batch_view_lists_posts(mocker, auth_client: TestClient):
-    mocker.patch(
-        "telegram_auto_poster.web.app._gather_batch",
+        "telegram_auto_poster.web.app._get_dashboard_payload",
         new=mocker.AsyncMock(
-            return_value=[
-                {
-                    "items": [
-                        {
-                            "path": f"{PHOTOS_PATH}/batch.jpg",
-                            "url": "http://x",
-                            "is_image": True,
-                            "is_video": False,
-                        }
-                    ]
-                }
-            ]
+            return_value={
+                "suggestions_count": 1,
+                "batch_count": 2,
+                "posts_count": 3,
+                "trash_count": 4,
+                "scheduled_count": 5,
+                "next_scheduled_at": None,
+                "daily": {"media_received": 10},
+                "recent_events": [],
+            }
         ),
     )
-    mocker.patch(
-        "telegram_auto_poster.web.app._get_batch_count",
-        new=mocker.AsyncMock(return_value=1),
-    )
-    resp = auth_client.get("/batch")
+    resp = auth_client.get("/api/dashboard")
     assert resp.status_code == 200
-    assert "http://x" in resp.text
+    assert resp.json()["batch_count"] == 2
 
 
-def test_send_batch_requires_login(mocker):
+def test_queue_api_lists_posts(mocker, auth_client: TestClient):
+    async def fake_get_meta(name):
+        assert name == "processed.jpg"
+        return {"caption": "caption", "source": "@src"}
+
     mocker.patch(
-        "telegram_auto_poster.web.app._gather_batch",
+        "telegram_auto_poster.web.app.get_scheduled_posts_count",
+        return_value=1,
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.get_scheduled_posts",
+        return_value=[("scheduled/processed.jpg", 1)],
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.get_presigned_url",
+        new=mocker.AsyncMock(return_value="http://example.com/media.jpg"),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.get_submission_metadata",
+        side_effect=fake_get_meta,
+    )
+
+    resp = auth_client.get("/api/queue")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["total_items"] == 1
+    assert payload["items"][0]["url"] == "http://example.com/media.jpg"
+    assert payload["items"][0]["caption"] == "caption"
+
+
+def test_action_api_push_group(mocker, auth_client: TestClient):
+    group = mocker.patch(
+        "telegram_auto_poster.web.app._push_post_group",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._get_metas_for_paths",
         new=mocker.AsyncMock(return_value=[]),
     )
-    with TestClient(app) as client:
-        resp = client.post("/batch/send")
-        assert resp.status_code == 401
+    record = mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post(
+        "/api/actions",
+        json={
+            "action": "push",
+            "origin": "posts",
+            "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+    group.assert_awaited_once_with([f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"])
+    record.assert_awaited_once()
 
 
-def test_send_batch_processes_posts(mocker, auth_client: TestClient):
+def test_batch_send_processes_posts(mocker, auth_client: TestClient):
     posts = [
         {"items": [{"path": f"{PHOTOS_PATH}/batch_a.jpg"}]},
         {"items": [{"path": f"{PHOTOS_PATH}/batch_b.jpg"}]},
@@ -91,6 +96,10 @@ def test_send_batch_processes_posts(mocker, auth_client: TestClient):
     mocker.patch(
         "telegram_auto_poster.web.app._gather_batch",
         new=mocker.AsyncMock(return_value=posts),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._get_metas_for_paths",
+        new=mocker.AsyncMock(return_value=[]),
     )
     push_group = mocker.patch(
         "telegram_auto_poster.web.app._push_post_group",
@@ -104,58 +113,53 @@ def test_send_batch_processes_posts(mocker, auth_client: TestClient):
         "telegram_auto_poster.web.app.stats.record_batch_sent",
         new=mocker.AsyncMock(),
     )
-    resp = auth_client.post(
-        "/batch/send",
-        follow_redirects=False,
+    record = mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
     )
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/batch"
+
+    resp = auth_client.post("/api/batch/send", json={})
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "processed_groups": 2}
     assert push_group.await_args_list == [
         call([f"{PHOTOS_PATH}/batch_a.jpg"]),
         call([f"{PHOTOS_PATH}/batch_b.jpg"]),
     ]
     assert decr.await_args_list == [call(1), call(1)]
     assert rec.await_args_list == [call(1), call(1)]
+    record.assert_not_awaited()
 
 
-def test_send_batch_redirects_when_empty(mocker, auth_client: TestClient):
-    mocker.patch(
-        "telegram_auto_poster.web.app._gather_batch",
-        new=mocker.AsyncMock(return_value=[]),
-    )
-    resp = auth_client.post(
-        "/batch/send",
-        follow_redirects=False,
-    )
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/batch"
-
-
-def test_manual_schedule_requires_login():
-    with TestClient(app) as client:
-        resp = client.post(
-            "/batch/manual_schedule",
-            data={"scheduled_at": "2024-01-01 12:00"},
-        )
-        assert resp.status_code == 401
-
-
-def test_manual_schedule_schedules_paths(mocker, auth_client: TestClient):
+def test_manual_schedule_api_schedules_paths(mocker, auth_client: TestClient):
     schedule = mocker.patch(
         "telegram_auto_poster.web.app._schedule_post_at",
         new=mocker.AsyncMock(),
     )
-    base_ts = parse_to_utc_timestamp("2024-01-01 12:00")
+    mocker.patch(
+        "telegram_auto_poster.web.app._get_metas_for_paths",
+        new=mocker.AsyncMock(
+            return_value=[
+                (f"{PHOTOS_PATH}/a.jpg", {}),
+                (f"{PHOTOS_PATH}/b.jpg", {}),
+            ]
+        ),
+    )
+    record = mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
+    )
+
     resp = auth_client.post(
-        "/batch/manual_schedule",
-        data={
+        "/api/batch/manual-schedule",
+        json={
             "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
             "scheduled_at": "2024-01-01 12:00",
+            "origin": "batch",
         },
-        follow_redirects=False,
     )
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/batch"
+    base_ts = parse_to_utc_timestamp("2024-01-01 12:00")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "scheduled": 2}
     assert schedule.await_args_list == [
         call(f"{PHOTOS_PATH}/a.jpg", base_ts),
         call(
@@ -163,142 +167,37 @@ def test_manual_schedule_schedules_paths(mocker, auth_client: TestClient):
             base_ts + MANUAL_SCHEDULE_INTERVAL_SECONDS,
         ),
     ]
+    record.assert_awaited_once()
 
 
-def test_manual_schedule_background_returns_json(mocker, auth_client: TestClient):
-    schedule = mocker.patch(
-        "telegram_auto_poster.web.app._schedule_post_at",
-        new=mocker.AsyncMock(),
-    )
-    resp = auth_client.post(
-        "/batch/manual_schedule",
-        data={
-            "paths": [f"{PHOTOS_PATH}/a.jpg"],
-            "scheduled_at": "2024-01-01 12:00",
-        },
-        headers={"X-Background-Request": "true"},
-    )
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
-    assert schedule.await_args_list == [
-        call(f"{PHOTOS_PATH}/a.jpg", parse_to_utc_timestamp("2024-01-01 12:00"))
-    ]
-
-
-def test_handle_action_push_single(mocker, auth_client: TestClient):
-    push = mocker.patch(
-        "telegram_auto_poster.web.app._push_post",
-        new=mocker.AsyncMock(),
-    )
-    resp = auth_client.post(
-        "/action",
-        data={
-            "path": f"{PHOTOS_PATH}/a.jpg",
-            "action": "push",
-            "origin": "suggestions",
-        },
-        follow_redirects=False,
-    )
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/suggestions"
-    push.assert_awaited_once_with(f"{PHOTOS_PATH}/a.jpg")
-
-
-def test_handle_action_push_group(mocker, auth_client: TestClient):
-    group = mocker.patch(
-        "telegram_auto_poster.web.app._push_post_group",
-        new=mocker.AsyncMock(),
-    )
-    data = {
-        "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
-        "action": "push",
-        "origin": "posts",
-    }
-    resp = auth_client.post("/action", data=data, follow_redirects=False)
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/posts"
-    group.assert_awaited_once_with(
-        [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"]
-    )
-
-
-def test_handle_action_schedule(mocker, auth_client: TestClient):
-    sched = mocker.patch(
-        "telegram_auto_poster.web.app._schedule_post",
-        new=mocker.AsyncMock(),
-    )
-    data = {
-        "paths": [f"{PHOTOS_PATH}/a.jpg", f"{PHOTOS_PATH}/b.jpg"],
-        "action": "schedule",
-    }
-    resp = auth_client.post("/action", data=data, follow_redirects=False)
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/suggestions"
-    assert sched.await_args_list == [
-        call(f"{PHOTOS_PATH}/a.jpg"),
-        call(f"{PHOTOS_PATH}/b.jpg"),
-    ]
-
-
-def test_handle_action_notok_background(mocker, auth_client: TestClient):
-    notok = mocker.patch(
-        "telegram_auto_poster.web.app._notok_post",
-        new=mocker.AsyncMock(),
-    )
-    resp = auth_client.post(
-        "/action",
-        data={"path": f"{PHOTOS_PATH}/a.jpg", "action": "notok"},
-        headers={"X-Background-Request": "true"},
-    )
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
-    notok.assert_awaited_once_with(f"{PHOTOS_PATH}/a.jpg")
-
-
-def test_unschedule_removes_and_redirects(mocker, auth_client: TestClient):
-    run_tp = mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool",
-        new=mocker.AsyncMock(),
-    )
-    exists = mocker.patch(
-        "telegram_auto_poster.web.app.storage.file_exists",
-        new=mocker.AsyncMock(return_value=True),
-    )
-    delete = mocker.patch(
-        "telegram_auto_poster.web.app.storage.delete_file",
-        new=mocker.AsyncMock(),
-    )
-    resp = auth_client.post(
-        "/queue/unschedule",
-        data={"path": f"{PHOTOS_PATH}/a.jpg"},
-        follow_redirects=False,
-    )
-    assert resp.status_code == 303
-    assert resp.headers["location"] == "/queue"
-    assert run_tp.awaited
-    assert exists.await_args_list == [call(f"{PHOTOS_PATH}/a.jpg", BUCKET_MAIN)]
-    assert delete.await_args_list == [call(f"{PHOTOS_PATH}/a.jpg", BUCKET_MAIN)]
-
-
-def test_unschedule_background_returns_json(mocker, auth_client: TestClient):
+def test_reset_endpoints_return_json(mocker, auth_client: TestClient):
     mocker.patch(
-        "telegram_auto_poster.web.app.run_in_threadpool",
+        "telegram_auto_poster.web.app.clear_event_history",
         new=mocker.AsyncMock(),
     )
     mocker.patch(
-        "telegram_auto_poster.web.app.storage.file_exists",
-        new=mocker.AsyncMock(return_value=False),
+        "telegram_auto_poster.web.app.stats.reset_daily_stats",
+        new=mocker.AsyncMock(return_value="Daily statistics have been reset."),
     )
-    delete = mocker.patch(
-        "telegram_auto_poster.web.app.storage.delete_file",
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.reset_leaderboard",
+        new=mocker.AsyncMock(return_value="Leaderboard reset."),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.force_save",
         new=mocker.AsyncMock(),
     )
-    resp = auth_client.post(
-        "/queue/unschedule",
-        data={"path": f"{PHOTOS_PATH}/a.jpg"},
-        headers={"X-Background-Request": "true"},
+    mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
     )
-    assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
-    delete.assert_not_called()
 
+    assert auth_client.post("/api/events/reset", json={}).json() == {"status": "ok"}
+    assert auth_client.post("/api/stats/reset", json={}).json() == {
+        "status": "ok",
+        "message": "Daily statistics have been reset.",
+    }
+    assert auth_client.post("/api/leaderboard/reset", json={}).json() == {
+        "status": "ok",
+        "message": "Leaderboard reset.",
+    }

@@ -18,6 +18,11 @@ mkdir -p /workspace/tmp
 mkdir -p /workspace/photos
 mkdir -p /workspace/videos
 
+if [ ! -f /workspace/frontend/dist/index.html ]; then
+  echo "Frontend build not found at /workspace/frontend/dist/index.html"
+  echo "Build it with: cd frontend && npm install && npm run build"
+fi
+
 # Start the web dashboard
 echo "Starting web dashboard..."
 uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port ${WEB_PORT:-8000} &
