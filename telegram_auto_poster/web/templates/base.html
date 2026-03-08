@@ -9,6 +9,33 @@
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
     <style>
         body { padding-top: 5rem; }
+        .overlay-image-trigger { cursor: zoom-in; }
+        .image-overlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.85);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease;
+            z-index: 2000;
+            cursor: zoom-out;
+        }
+        .image-overlay.is-open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .image-overlay img {
+            max-width: min(96vw, 1400px);
+            max-height: 92vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.35);
+        }
     </style>
 </head>
 <body>
@@ -72,6 +99,9 @@
 <main class="container">
     {% block content %}{% endblock %}
 </main>
+<div class="image-overlay" id="image-overlay" aria-hidden="true">
+    <img id="image-overlay-preview" alt="" />
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
@@ -130,6 +160,37 @@ document.addEventListener('submit', function(e) {
         }
       }
     });
+  }
+});
+
+const imageOverlay = document.getElementById('image-overlay');
+const imageOverlayPreview = document.getElementById('image-overlay-preview');
+
+function closeImageOverlay() {
+  imageOverlay.classList.remove('is-open');
+  imageOverlay.setAttribute('aria-hidden', 'true');
+  imageOverlayPreview.removeAttribute('src');
+  imageOverlayPreview.alt = '';
+}
+
+document.addEventListener('click', function(e) {
+  const trigger = e.target.closest('[data-image-overlay]');
+  if (trigger) {
+    imageOverlayPreview.src = trigger.currentSrc || trigger.src;
+    imageOverlayPreview.alt = trigger.alt || '';
+    imageOverlay.classList.add('is-open');
+    imageOverlay.setAttribute('aria-hidden', 'false');
+    return;
+  }
+
+  if (imageOverlay.classList.contains('is-open') && e.target.closest('#image-overlay')) {
+    closeImageOverlay();
+  }
+});
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && imageOverlay.classList.contains('is-open')) {
+    closeImageOverlay();
   }
 });
 </script>

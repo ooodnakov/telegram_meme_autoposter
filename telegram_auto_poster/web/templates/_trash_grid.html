@@ -15,7 +15,7 @@
         {% if media.is_video %}
         <video class="img-fluid" controls src="{{ media.url }}"></video>
         {% elif media.is_image %}
-        <img class="img-fluid" src="{{ media.url }}" alt="trash preview" />
+        <img class="img-fluid overlay-image-trigger" src="{{ media.url }}" alt="trash preview" data-image-overlay />
         {% endif %}
         {% endfor %}
         <div class="mt-2 d-flex flex-wrap gap-1">

@@ -51,7 +51,7 @@
                                 {{ _('Your browser does not support the video tag.') }}
                             </video>
                         {% elif p.is_image %}
-                            <img src="{{ p.url }}" loading="lazy" class="img-fluid" style="max-height: 180px; object-fit: contain;" alt="preview">
+                            <img src="{{ p.url }}" loading="lazy" class="img-fluid overlay-image-trigger" style="max-height: 180px; object-fit: contain;" alt="preview" data-image-overlay>
                         {% else %}
                             <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer">{{ _('Open') }}</a>
                         {% endif %}
