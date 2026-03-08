@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import DataTable from "@/components/DataTable";
+import ClickableImage from "@/components/ClickableImage";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import ScheduleDateTimePicker from "@/components/ScheduleDateTimePicker";
@@ -98,7 +99,7 @@ const QueuePage = () => {
           </div>,
           <div className="min-w-[180px]">
             {item.kind === "image" ? (
-              <img
+              <ClickableImage
                 src={item.url}
                 alt={item.caption ?? item.name}
                 className="max-h-40 rounded-lg object-contain"
