@@ -325,6 +325,26 @@ async def test_download_file(storage, mock_minio_client, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_get_presigned_url_uses_cached_internal_base_url(
+    storage, mock_minio_client, mocker: MockerFixture
+):
+    storage.internal_base_url = "http://internal-minio:9000"
+    mock_minio_client.presigned_get_object = mocker.AsyncMock(
+        return_value="http://internal-minio:9000/path/to/object"
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.storage.get_config",
+        return_value=SimpleNamespace(
+            minio=SimpleNamespace(public_url="https://cdn.example.com")
+        ),
+    )
+
+    url = await storage.get_presigned_url("path/to/object")
+
+    assert url == "https://cdn.example.com/path/to/object"
+
+
+@pytest.mark.asyncio
 async def test_get_object_data(storage, mock_minio_client, mocker: MockerFixture):
     """Test getting object data."""
     mock_response = mocker.MagicMock()

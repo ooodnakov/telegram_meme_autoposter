@@ -15,33 +15,36 @@ from miniopy_async import Minio
 from miniopy_async.error import MinioException, S3Error
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
-    CONFIG,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
     VIDEOS_PATH,
+    get_config,
 )
 from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
 from telegram_auto_poster.utils.timezone import now_utc
 
-# Get MinIO configuration from centralized config
-MINIO_URL = CONFIG.minio.url
-MINIO_HOST = CONFIG.minio.host
-MINIO_PORT = CONFIG.minio.port
-MINIO_ACCESS_KEY = CONFIG.minio.access_key.get_secret_value()
-MINIO_SECRET_KEY = CONFIG.minio.secret_key.get_secret_value()
 
-if MINIO_URL:
-    parsed = urlparse(MINIO_URL)
-    if not parsed.netloc:
-        # Ensure a scheme is present so ``urlparse`` extracts the host correctly
-        parsed = urlparse(f"http://{MINIO_URL}")
-    MINIO_ENDPOINT = parsed.netloc
-    MINIO_SECURE = parsed.scheme == "https"
-    MINIO_INTERNAL_URL = f"{parsed.scheme}://{MINIO_ENDPOINT}"
-else:
-    MINIO_ENDPOINT = f"{MINIO_HOST}:{MINIO_PORT}"
-    MINIO_SECURE = False
-    MINIO_INTERNAL_URL = f"http://{MINIO_ENDPOINT}"
+def _minio_connection_params() -> tuple[str, bool, str, str, str]:
+    """Build MinIO endpoint and credentials from runtime configuration."""
+    config = get_config()
+    minio_url = config.minio.url
+    access_key = config.minio.access_key.get_secret_value()
+    secret_key = config.minio.secret_key.get_secret_value()
+
+    if minio_url:
+        parsed = urlparse(minio_url)
+        if not parsed.netloc:
+            # Ensure a scheme is present so ``urlparse`` extracts the host correctly
+            parsed = urlparse(f"http://{minio_url}")
+        endpoint = parsed.netloc
+        secure = parsed.scheme == "https"
+        internal_url = f"{parsed.scheme}://{endpoint}"
+    else:
+        endpoint = f"{config.minio.host}:{config.minio.port}"
+        secure = False
+        internal_url = f"http://{endpoint}"
+
+    return endpoint, secure, internal_url, access_key, secret_key
 
 
 def _to_int(value: str | None) -> int | None:
@@ -78,17 +81,20 @@ class MinioStorage:
             return
 
         try:
+            endpoint, secure, self.internal_base_url, access_key, secret_key = (
+                _minio_connection_params()
+            )
             if client is not None:
                 self.client = client
             else:
                 logger.info(
-                    f"Initializing MinIO client for {MINIO_ENDPOINT} (secure={MINIO_SECURE})"
+                    f"Initializing MinIO client for {endpoint} (secure={secure})"
                 )
                 self.client = Minio(
-                    MINIO_ENDPOINT,
-                    access_key=MINIO_ACCESS_KEY,
-                    secret_key=MINIO_SECRET_KEY,
-                    secure=MINIO_SECURE,
+                    endpoint,
+                    access_key=access_key,
+                    secret_key=secret_key,
+                    secure=secure,
                 )
 
             # Store metadata about submissions
@@ -132,9 +138,9 @@ class MinioStorage:
                 response_headers={"response-content-disposition": "inline"},
             )
 
-            public_url = CONFIG.minio.public_url
-            if public_url:
-                return internal_url.replace(MINIO_INTERNAL_URL, public_url)
+            public_url = get_config().minio.public_url
+            if public_url and self.internal_base_url:
+                return internal_url.replace(self.internal_base_url, public_url)
 
             return internal_url
         except Exception as e:

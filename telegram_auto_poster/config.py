@@ -7,7 +7,7 @@ import os
 from typing import Any
 
 from loguru import logger
-from pydantic import BaseModel, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 
 class TelegramConfig(BaseModel):
@@ -93,7 +93,7 @@ class I18nConfig(BaseModel):
     """Internationalization settings."""
 
     default: str = "ru"
-    users: dict[int, str] = {}
+    users: dict[int, str] = Field(default_factory=dict)
 
 
 class GeminiConfig(BaseModel):
@@ -376,8 +376,29 @@ def load_config() -> Config:
     return config
 
 
-# Global configuration instance
-CONFIG = load_config()
+_CONFIG_CACHE: Config | None = None
+
+
+def get_config(*, refresh: bool = False) -> Config:
+    """Return cached configuration, optionally forcing a reload."""
+    global _CONFIG_CACHE
+    if refresh or _CONFIG_CACHE is None:
+        _CONFIG_CACHE = load_config()
+    return _CONFIG_CACHE
+
+
+class _ConfigProxy:
+    """Backward-compatible lazy proxy for global ``CONFIG`` access."""
+
+    def __getattr__(self, item: str) -> Any:
+        return getattr(get_config(), item)
+
+    def __repr__(self) -> str:
+        return f"<_ConfigProxy(cached={_CONFIG_CACHE is not None})>"
+
+
+# Backward-compatible global configuration accessor
+CONFIG = _ConfigProxy()
 
 
 # Define path names
@@ -388,9 +409,13 @@ SCHEDULED_PATH = "scheduled"
 DOWNLOADS_PATH = "downloads"
 TRASH_PATH = "trash"
 
-# Watermark animation speed range in pixels per second (backwards compatibility)
-WATERMARK_MIN_SPEED = CONFIG.watermark_video.min_speed
-WATERMARK_MAX_SPEED = CONFIG.watermark_video.max_speed
 
-# Caption appended to posts originating from user suggestions (backwards compatibility)
-SUGGESTION_CAPTION = CONFIG.branding.suggestion_caption
+def __getattr__(name: str) -> Any:
+    """Provide lazy module-level compatibility attributes sourced from config."""
+    if name == "WATERMARK_MIN_SPEED":
+        return get_config().watermark_video.min_speed
+    if name == "WATERMARK_MAX_SPEED":
+        return get_config().watermark_video.max_speed
+    if name == "SUGGESTION_CAPTION":
+        return get_config().branding.suggestion_caption
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
