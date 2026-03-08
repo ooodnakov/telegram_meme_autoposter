@@ -34,17 +34,17 @@ const DashboardPage = () => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Link to="/suggestions">
+        <Link to="/suggestions" className="block h-full">
           <StatCard
             title={t("pendingSuggestions")}
             value={query.data.suggestions_count}
             icon={Lightbulb}
           />
         </Link>
-        <Link to="/batch">
+        <Link to="/batch" className="block h-full">
           <StatCard title={t("itemsInBatch")} value={query.data.batch_count} icon={Layers} />
         </Link>
-        <Link to="/queue">
+        <Link to="/queue" className="block h-full">
           <StatCard
             title={t("scheduledPosts")}
             value={query.data.scheduled_count}
@@ -56,7 +56,7 @@ const DashboardPage = () => {
             }
           />
         </Link>
-        <Link to="/posts">
+        <Link to="/posts" className="block h-full">
           <StatCard title={t("pendingPosts")} value={query.data.posts_count} icon={FileText} />
         </Link>
       </div>
