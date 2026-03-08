@@ -23,15 +23,20 @@ def _compute_hash(data: Mapping[str, str], token: str) -> str:
 
 
 def validate_telegram_login(
-    payload: MutableMapping[str, str | int], bot_token: str, *, max_age: int = 86400
+    payload: MutableMapping[str, str | int],
+    bot_token: str,
+    *,
+    max_age: int = 86400,
+    allowed_clock_skew: int = 60,
 ) -> bool:
     """Validate Telegram Login Widget ``payload`` using ``bot_token``.
 
     ``payload`` must contain ``hash`` and ``auth_date`` fields. The
-    ``auth_date`` must be within ``max_age`` seconds of the current time. The
-    remaining fields are used to build the ``data-check-string``. Returns
-    ``True`` if the signature matches and the payload is fresh, ``False``
-    otherwise.
+    ``auth_date`` must not be older than ``max_age`` seconds and must not be
+    more than ``allowed_clock_skew`` seconds in the future relative to the
+    current time. The remaining fields are used to build the
+    ``data-check-string``. Returns ``True`` if the signature matches and the
+    payload is fresh, ``False`` otherwise.
     """
 
     data: dict[str, str] = {k: str(v) for k, v in payload.items()}
@@ -40,7 +45,9 @@ def validate_telegram_login(
     if received_hash is None or auth_date is None:
         return False
     try:
-        if int(auth_date) < int(time.time()) - max_age:
+        auth_date_ts = int(auth_date)
+        now = int(time.time())
+        if auth_date_ts < now - max_age or auth_date_ts > now + allowed_clock_skew:
             return False
     except ValueError:
         return False

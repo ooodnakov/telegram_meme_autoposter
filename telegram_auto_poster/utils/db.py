@@ -7,7 +7,6 @@ import time
 from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
-
 from telegram_auto_poster.config import CONFIG
 from valkey.exceptions import ValkeyError
 

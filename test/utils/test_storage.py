@@ -37,6 +37,12 @@ class FakeRedis:
     async def hgetall(self, key):
         return self.hash_store.get(key, {}).copy()
 
+    async def hdel(self, key, *fields):
+        if key not in self.hash_store:
+            return
+        for field in fields:
+            self.hash_store[key].pop(field, None)
+
     async def zadd(self, key, mapping):
         items = self.zset_store.setdefault(key, [])
         for member in mapping.keys():
@@ -96,12 +102,22 @@ class FakeRedis:
             async def zadd(self, key, mapping):
                 self.commands.append(("zadd", key, mapping))
 
+            def hset(self, key, mapping):
+                self.commands.append(("hset", key, mapping))
+
+            def hdel(self, key, field):
+                self.commands.append(("hdel", key, field))
+
             async def execute(self):
                 for cmd in self.commands:
                     if cmd[0] == "delete":
                         await parent.delete(cmd[1])
                     elif cmd[0] == "zadd":
                         await parent.zadd(cmd[1], cmd[2])
+                    elif cmd[0] == "hset":
+                        await parent.hset(cmd[1], mapping=cmd[2])
+                    elif cmd[0] == "hdel":
+                        await parent.hdel(cmd[1], cmd[2])
                 self.commands.clear()
 
         return Pipeline()
@@ -212,6 +228,50 @@ async def test_get_submission_metadata_from_redis(
 
 
 @pytest.mark.asyncio
+async def test_submission_metadata_round_trip_includes_caption_and_source(storage):
+    """Round-trip Redis serialization should preserve caption and source."""
+    await storage.store_submission_metadata(
+        "obj_full",
+        321,
+        654,
+        "photo",
+        message_id=987,
+        media_hash="hash-full",
+        group_id="group-full",
+        caption="hello world",
+        source="source-full",
+    )
+
+    storage.submission_metadata = {}
+    meta = await storage.get_submission_metadata("obj_full")
+
+    assert meta["user_id"] == 321
+    assert meta["chat_id"] == 654
+    assert meta["message_id"] == 987
+    assert meta["caption"] == "hello world"
+    assert meta["source"] == "source-full"
+
+
+@pytest.mark.asyncio
+async def test_update_submission_metadata_preserves_caption_and_source(storage):
+    """Updating unrelated fields must not remove caption/source."""
+    await storage.store_submission_metadata(
+        "obj_update",
+        100,
+        200,
+        "photo",
+        caption="keep me",
+        source="keep source",
+    )
+
+    updated = await storage.update_submission_metadata("obj_update", review_message_id=555)
+
+    assert updated["review_message_id"] == 555
+    assert updated["caption"] == "keep me"
+    assert updated["source"] == "keep source"
+
+
+@pytest.mark.asyncio
 async def test_get_submission_metadata_missing(storage, mock_minio_client):
     """Return ``None`` when metadata is absent in memory and Valkey."""
     storage.submission_metadata = {}
@@ -262,6 +322,26 @@ async def test_download_file(storage, mock_minio_client, tmp_path):
     mock_minio_client.fget_object.assert_awaited_once_with(
         bucket_name=BUCKET_MAIN, object_name="obj1", file_path=str(file)
     )
+
+
+@pytest.mark.asyncio
+async def test_get_presigned_url_uses_cached_internal_base_url(
+    storage, mock_minio_client, mocker: MockerFixture
+):
+    storage.internal_base_url = "http://internal-minio:9000"
+    mock_minio_client.presigned_get_object = mocker.AsyncMock(
+        return_value="http://internal-minio:9000/path/to/object"
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.storage.get_config",
+        return_value=SimpleNamespace(
+            minio=SimpleNamespace(public_url="https://cdn.example.com")
+        ),
+    )
+
+    url = await storage.get_presigned_url("path/to/object")
+
+    assert url == "https://cdn.example.com/path/to/object"
 
 
 @pytest.mark.asyncio
@@ -376,4 +456,3 @@ async def test_count_files_uses_cache(
     assert await storage.count_files(BUCKET_MAIN) == 2
     assert await storage.count_files(BUCKET_MAIN, prefix="a") == 1
     mock_minio_client.list_objects.assert_not_called()
-

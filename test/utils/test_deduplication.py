@@ -4,12 +4,13 @@ import pytest
 from fakeredis import FakeStrictRedis
 from loguru import logger
 from PIL import Image
+from telegram_auto_poster.config import CONFIG
 from telegram_auto_poster.utils.deduplication import (
-    DEDUPLICATION_SET_KEY,
     add_approved_hash,
     calculate_image_hash,
     calculate_video_hash,
     check_and_add_hash,
+    deduplication_set_key,
     is_duplicate_hash,
 )
 
@@ -70,7 +71,7 @@ def test_check_and_add_with_empty_hash(fake_redis):
     assert check_and_add_hash(None, redis_client=fake_redis) is True
     assert check_and_add_hash("", redis_client=fake_redis) is True
     # Ensure nothing was added to the set
-    assert fake_redis.scard(DEDUPLICATION_SET_KEY) == 0
+    assert fake_redis.scard(deduplication_set_key()) == 0
 
 
 def test_add_approved_hash(fake_redis):
@@ -79,7 +80,7 @@ def test_add_approved_hash(fake_redis):
     # First time, it's not a duplicate, so it should be added and return True
     assert add_approved_hash(media_hash, redis_client=fake_redis) is True
     # Check that it was added
-    assert fake_redis.sismember(DEDUPLICATION_SET_KEY, media_hash)
+    assert fake_redis.sismember(deduplication_set_key(), media_hash)
     # Second time, it is a duplicate, so it should not be added and return False
     assert add_approved_hash(media_hash, redis_client=fake_redis) is False
 
@@ -88,7 +89,7 @@ def test_add_approved_hash_empty(fake_redis):
     """Test adding an empty hash to the approved set"""
     assert add_approved_hash(None, redis_client=fake_redis) is True
     assert add_approved_hash("", redis_client=fake_redis) is True
-    assert fake_redis.scard(DEDUPLICATION_SET_KEY) == 0
+    assert fake_redis.scard(deduplication_set_key()) == 0
 
 
 def test_is_duplicate_hash(fake_redis):
@@ -97,7 +98,7 @@ def test_is_duplicate_hash(fake_redis):
     # Not a duplicate yet
     assert is_duplicate_hash(media_hash, redis_client=fake_redis) is False
     # Add it
-    fake_redis.sadd(DEDUPLICATION_SET_KEY, media_hash)
+    fake_redis.sadd(deduplication_set_key(), media_hash)
     # Now it's a duplicate
     assert is_duplicate_hash(media_hash, redis_client=fake_redis) is True
 
@@ -130,3 +131,23 @@ def test_add_approved_hash_redis_error(mocker):
     assert add_approved_hash(media_hash, redis_client=mock_redis) is False
     assert len(logs) == 1
     assert "Could not add hash" in logs[0]
+
+
+def test_deduplication_set_key_uses_config_prefix(monkeypatch):
+    """Deduplication key should follow configured valkey prefix."""
+    monkeypatch.setattr(CONFIG.valkey, "prefix", "custom_prefix")
+    assert deduplication_set_key() == "custom_prefix:dedup:media_hashes"
+
+    monkeypatch.setattr(CONFIG.valkey, "prefix", "")
+    assert deduplication_set_key() == "dedup:media_hashes"
+
+
+def test_is_duplicate_hash_migrates_legacy_key(fake_redis, monkeypatch):
+    """Legacy deduplication data should be moved to the configured key."""
+    monkeypatch.setattr(CONFIG.valkey, "prefix", "custom_prefix")
+    legacy_key = "telegram_auto_poster:media_hashes"
+    fake_redis.sadd(legacy_key, "legacy_hash")
+
+    assert is_duplicate_hash("legacy_hash", redis_client=fake_redis) is True
+    assert fake_redis.sismember("custom_prefix:dedup:media_hashes", "legacy_hash")
+    assert not fake_redis.exists(legacy_key)

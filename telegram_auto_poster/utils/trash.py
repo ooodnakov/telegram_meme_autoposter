@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
-
 from telegram_auto_poster.config import (
     BUCKET_MAIN,
     CONFIG,

@@ -37,15 +37,15 @@ from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.scheduler import get_due_posts
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
-from telegram_auto_poster.utils.trash import (
-    move_to_trash,
-    purge_expired_trash,
-    restore_from_trash,
-)
 from telegram_auto_poster.utils.timezone import (
     UTC,
     format_display,
     parse_to_utc_timestamp,
+)
+from telegram_auto_poster.utils.trash import (
+    move_to_trash,
+    purge_expired_trash,
+    restore_from_trash,
 )
 
 

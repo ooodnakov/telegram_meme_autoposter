@@ -7,11 +7,29 @@ import hashlib
 import imagehash
 from loguru import logger
 from PIL import Image
-from telegram_auto_poster.utils.db import ValkeyClient, get_redis_client
+from telegram_auto_poster.utils.db import ValkeyClient, _redis_key, get_redis_client
 
-DEDUPLICATION_SET_KEY = (
-    "telegram_auto_poster:media_hashes"  # Stores hashes of APPROVED media
-)
+LEGACY_DEDUPLICATION_SET_KEY = "telegram_auto_poster:media_hashes"
+
+
+def deduplication_set_key() -> str:
+    """Return the Redis set key that stores approved media hashes."""
+    return _redis_key("dedup", "media_hashes")
+
+
+def _migrate_legacy_deduplication_key(redis_client: ValkeyClient) -> None:
+    """Rename the historical deduplication key to the configured key."""
+    new_key = deduplication_set_key()
+    old_key = LEGACY_DEDUPLICATION_SET_KEY
+    if old_key == new_key:
+        return
+
+    try:
+        if redis_client.exists(old_key) and not redis_client.exists(new_key):
+            redis_client.rename(old_key, new_key)
+            logger.info(f"Migrated deduplication key from '{old_key}' to '{new_key}'")
+    except Exception as e:
+        logger.warning(f"Could not migrate legacy deduplication key: {e}")
 
 
 def calculate_image_hash(file_path: str) -> str | None:
@@ -93,7 +111,8 @@ def is_duplicate_hash(
     if redis_client is None:
         redis_client = get_redis_client()
     try:
-        return bool(redis_client.sismember(DEDUPLICATION_SET_KEY, media_hash))
+        _migrate_legacy_deduplication_key(redis_client)
+        return bool(redis_client.sismember(deduplication_set_key(), media_hash))
     except Exception as e:
         logger.error(f"Could not check hash in deduplication set: {e}")
         # Fail open, treat as not duplicate if Redis check fails
@@ -119,7 +138,8 @@ def add_approved_hash(
     if redis_client is None:
         redis_client = get_redis_client()
     try:
-        return redis_client.sadd(DEDUPLICATION_SET_KEY, media_hash) == 1
+        _migrate_legacy_deduplication_key(redis_client)
+        return redis_client.sadd(deduplication_set_key(), media_hash) == 1
     except Exception as e:
         logger.error(f"Could not add hash to deduplication set: {e}")
         # Treat as not added on failure

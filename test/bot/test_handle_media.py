@@ -69,6 +69,23 @@ async def test_handle_media_exception(mocker: MockerFixture, mock_update, mock_c
 
 
 @pytest.mark.asyncio
+async def test_handle_media_exception_without_message_uses_chat_fallback(
+    mocker: MockerFixture, mock_config
+):
+    update = SimpleNamespace(effective_chat=SimpleNamespace(id=123), message=None)
+    context = mocker.MagicMock()
+    context.bot = SimpleNamespace(send_message=mocker.AsyncMock())
+    mocker.patch.object(handlers.logger, "warning", side_effect=Exception("boom"))
+
+    await handlers.handle_media(update, context)
+
+    context.bot.send_message.assert_awaited_once_with(
+        chat_id=123,
+        text=handlers.HANDLE_MEDIA_ERROR_MESSAGE,
+    )
+
+
+@pytest.mark.asyncio
 async def test_handle_photo_wrapper(mocker: MockerFixture, mock_config):
     handle_media_type_mock = mocker.patch.object(
         handlers, "handle_media_type", new_callable=mocker.AsyncMock

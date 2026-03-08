@@ -34,7 +34,6 @@ from telegram_auto_poster.bot.commands import (
     help_command,
     notok_command,
     ok_command,
-    untrash_command,
     post_scheduled_media_job,
     reset_stats_command,
     save_stats_command,
@@ -44,6 +43,7 @@ from telegram_auto_poster.bot.commands import (
     send_luba_command,
     start_command,
     stats_command,
+    untrash_command,
 )
 
 # Import media handlers from handlers.py
@@ -54,8 +54,8 @@ from telegram_auto_poster.utils.ui import (
     CALLBACK_NOTOK,
     CALLBACK_OK,
     CALLBACK_PUSH,
-    CALLBACK_SCHEDULE,
     CALLBACK_RESTORE,
+    CALLBACK_SCHEDULE,
 )
 
 
