@@ -638,9 +638,18 @@ class MinioStorage:
                 else:
                     min_val = "-"
                     max_val = "+"
-                cached = await r.zrangebylex(
-                    cache_key, min_val, max_val, start=offset, num=limit
-                )
+                if limit is None:
+                    cached = await r.zrangebylex(cache_key, min_val, max_val)
+                    if offset:
+                        cached = cached[offset:]
+                else:
+                    cached = await r.zrangebylex(
+                        cache_key,
+                        min_val,
+                        max_val,
+                        start=offset,
+                        num=limit,
+                    )
                 duration = time.time() - start_time
                 await _stats_record_operation("list", duration)
                 return list(cached)

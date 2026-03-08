@@ -102,6 +102,7 @@ SPA_RESERVED_PATHS = {
     "robots.txt",
     "placeholder.svg",
 }
+METADATA_LOOKUP_BATCH_SIZE = 50
 
 
 class ActionRequest(BaseModel):
@@ -422,13 +423,18 @@ def _group_payload(
 async def _get_metas_for_paths(
     paths: Sequence[str],
 ) -> list[tuple[str, dict[str, object] | None]]:
-    """Fetch submission metadata for ``paths`` concurrently."""
+    """Fetch submission metadata for ``paths`` in bounded batches."""
 
     if not paths:
         return []
-    tasks = [storage.get_submission_metadata(os.path.basename(path)) for path in paths]
-    results = await asyncio.gather(*tasks)
-    return [(path, meta) for path, meta in zip(paths, results)]
+    results: list[tuple[str, dict[str, object] | None]] = []
+    for start in range(0, len(paths), METADATA_LOOKUP_BATCH_SIZE):
+        batch = paths[start : start + METADATA_LOOKUP_BATCH_SIZE]
+        batch_results = await asyncio.gather(
+            *[storage.get_submission_metadata(os.path.basename(path)) for path in batch]
+        )
+        results.extend(zip(batch, batch_results))
+    return results
 
 
 async def _record_event(
@@ -670,9 +676,8 @@ async def _get_suggestions_count() -> int:
         storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_"),
     )
     objects: list[str] = photo_files + video_files
-    tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
-    results = await asyncio.gather(*tasks)
-    return sum(1 for meta in results if meta and meta.get("user_id"))
+    meta_items = await _get_metas_for_paths(objects)
+    return sum(1 for _, meta in meta_items if meta and meta.get("user_id"))
 
 
 async def _get_posts_count() -> int:
@@ -683,12 +688,11 @@ async def _get_posts_count() -> int:
         storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/processed_"),
     )
     objects: list[str] = photo_files + video_files
-    tasks = [storage.get_submission_metadata(os.path.basename(obj)) for obj in objects]
-    results = await asyncio.gather(*tasks)
+    meta_items = await _get_metas_for_paths(objects)
 
     count = 0
     groups: set[str] = set()
-    for meta in results:
+    for _, meta in meta_items:
         if meta and meta.get("user_id"):
             continue
         group_id = meta.get("group_id") if meta else None
