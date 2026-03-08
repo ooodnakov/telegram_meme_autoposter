@@ -17,6 +17,8 @@ from telegram_auto_poster.config import (
     BUCKET_MAIN,
     DOWNLOADS_PATH,
     PHOTOS_PATH,
+    SCHEDULED_PATH,
+    TRASH_PATH,
     VIDEOS_PATH,
     get_config,
 )
@@ -50,6 +52,24 @@ def _minio_connection_params() -> tuple[str, bool, str, str, str]:
 def _to_int(value: str | None) -> int | None:
     """Convert a string to ``int`` if not ``None``."""
     return int(value) if value is not None else None
+
+
+def _metadata_candidates(object_name: str) -> list[str]:
+    """Return likely metadata keys for a stored object name."""
+
+    candidates = [object_name]
+    if "/" not in object_name:
+        candidates.extend(
+            [
+                f"{PHOTOS_PATH}/{object_name}",
+                f"{VIDEOS_PATH}/{object_name}",
+                f"{DOWNLOADS_PATH}/{object_name}",
+                f"{SCHEDULED_PATH}/{object_name}",
+                f"{TRASH_PATH}/{PHOTOS_PATH}/{object_name}",
+                f"{TRASH_PATH}/{VIDEOS_PATH}/{object_name}",
+            ]
+        )
+    return candidates
 
 
 class MinioStorage:
@@ -176,6 +196,12 @@ class MinioStorage:
         group_id: str | None = None,
         caption: str | None = None,
         source: str | None = None,
+        ocr_text: str | None = None,
+        ocr_status: str | None = None,
+        ocr_error: str | None = None,
+        ocr_checked_at: str | None = None,
+        ocr_duration_seconds: float | None = None,
+        ocr_languages: str | None = None,
     ) -> None:
         """Store information about who submitted a particular media object.
 
@@ -206,6 +232,12 @@ class MinioStorage:
             "group_id": group_id,
             "caption": caption,
             "source": source,
+            "ocr_text": ocr_text,
+            "ocr_status": ocr_status,
+            "ocr_error": ocr_error,
+            "ocr_checked_at": ocr_checked_at,
+            "ocr_duration_seconds": ocr_duration_seconds,
+            "ocr_languages": ocr_languages,
         }
         self.submission_metadata[object_name] = meta
         try:
@@ -240,16 +272,7 @@ class MinioStorage:
             dict | None: Metadata dictionary or ``None`` if not found.
 
         """
-        # Normalise object name to account for callers that pass only the basename
-        candidates = [object_name]
-        if "/" not in object_name:
-            candidates.extend(
-                [
-                    f"{PHOTOS_PATH}/{object_name}",
-                    f"{VIDEOS_PATH}/{object_name}",
-                    f"{DOWNLOADS_PATH}/{object_name}",
-                ]
-            )
+        candidates = _metadata_candidates(object_name)
 
         # Check in-memory metadata first
         for name in candidates:
@@ -276,6 +299,16 @@ class MinioStorage:
                         "group_id": data.get("group_id"),
                         "caption": data.get("caption"),
                         "source": data.get("source"),
+                        "ocr_text": data.get("ocr_text"),
+                        "ocr_status": data.get("ocr_status"),
+                        "ocr_error": data.get("ocr_error"),
+                        "ocr_checked_at": data.get("ocr_checked_at"),
+                        "ocr_duration_seconds": (
+                            float(data["ocr_duration_seconds"])
+                            if data.get("ocr_duration_seconds")
+                            else None
+                        ),
+                        "ocr_languages": data.get("ocr_languages"),
                         "trashed_at": data.get("trashed_at"),
                         "trash_expires_at": data.get("trash_expires_at"),
                     }
@@ -284,6 +317,24 @@ class MinioStorage:
         except Exception as e:
             logger.error(f"Failed to get submission metadata from Redis: {e}")
         return None
+
+    async def resolve_submission_metadata_key(self, object_name: str) -> str:
+        """Return the best metadata key for ``object_name``."""
+
+        candidates = _metadata_candidates(object_name)
+        for name in candidates:
+            if name in self.submission_metadata:
+                return name
+
+        try:
+            r = get_async_redis_client()
+            for name in candidates:
+                if await r.hgetall(_redis_key("submissions", name)):
+                    return name
+        except Exception as e:
+            logger.error(f"Failed to resolve submission metadata key: {e}")
+
+        return object_name
 
     async def update_submission_metadata(
         self, object_name: str, **fields: object | None
@@ -294,7 +345,8 @@ class MinioStorage:
         metadata.
         """
 
-        meta = await self.get_submission_metadata(object_name) or {}
+        storage_key = await self.resolve_submission_metadata_key(object_name)
+        meta = await self.get_submission_metadata(storage_key) or {}
         to_set = {k: v for k, v in fields.items() if v is not None}
         to_delete = [k for k, v in fields.items() if v is None]
 
@@ -302,11 +354,11 @@ class MinioStorage:
         for key in to_delete:
             meta.pop(key, None)
 
-        self.submission_metadata[object_name] = meta
+        self.submission_metadata[storage_key] = meta
 
         try:
             r = get_async_redis_client()
-            redis_key = _redis_key("submissions", object_name)
+            redis_key = _redis_key("submissions", storage_key)
             pipe = r.pipeline()
             has_commands = False
             if to_set:

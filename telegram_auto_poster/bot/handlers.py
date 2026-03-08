@@ -19,7 +19,10 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.media.photo import add_watermark_to_image
 from telegram_auto_poster.media.video import add_watermark_to_video
-from telegram_auto_poster.utils.caption import generate_caption
+from telegram_auto_poster.utils.caption import (
+    extract_ocr_text,
+    generate_caption_from_text,
+)
 from telegram_auto_poster.utils.deduplication import (
     calculate_image_hash,
     calculate_video_hash,
@@ -35,6 +38,7 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.timezone import now_utc
 from telegram_auto_poster.utils.ui import approval_keyboard
 
 # Define error constants
@@ -295,10 +299,31 @@ async def _send_to_review(
     )
 
     caption = ""
-    if CONFIG.caption.enabled:
-        caption = await asyncio.to_thread(
-            generate_caption, temp_path, CONFIG.caption.target_lang
+    ocr_text = ""
+    ocr_status: str | None = None
+    ocr_error: str | None = None
+    ocr_checked_at: str | None = None
+    ocr_duration_seconds: float | None = None
+    ocr_languages: str | None = None
+
+    if media_type == "photo" and CONFIG.ocr.enabled:
+        ocr_result = await asyncio.to_thread(
+            extract_ocr_text, temp_path, CONFIG.ocr.languages
         )
+        ocr_text = ocr_result.text
+        ocr_status = ocr_result.status
+        ocr_error = ocr_result.error
+        ocr_checked_at = now_utc().isoformat()
+        ocr_duration_seconds = ocr_result.duration_seconds
+        ocr_languages = CONFIG.ocr.languages
+        if CONFIG.caption.enabled and ocr_result.has_text:
+            caption = await asyncio.to_thread(
+                generate_caption_from_text,
+                ocr_result.text,
+                CONFIG.caption.target_lang,
+            )
+    elif CONFIG.caption.enabled:
+        caption = ""
 
     if user_metadata:
         await storage.store_submission_metadata(
@@ -308,8 +333,26 @@ async def _send_to_review(
             user_metadata.get("media_type"),
             user_metadata.get("message_id"),
             media_hash=media_hash,
+            group_id=user_metadata.get("group_id"),
             caption=caption,
             source=user_metadata.get("source"),
+            ocr_text=ocr_text,
+            ocr_status=ocr_status,
+            ocr_error=ocr_error,
+            ocr_checked_at=ocr_checked_at,
+            ocr_duration_seconds=ocr_duration_seconds,
+            ocr_languages=ocr_languages,
+        )
+    elif media_type == "photo":
+        await storage.update_submission_metadata(
+            processed_name,
+            caption=caption,
+            ocr_text=ocr_text,
+            ocr_status=ocr_status,
+            ocr_error=ocr_error,
+            ocr_checked_at=ocr_checked_at,
+            ocr_duration_seconds=ocr_duration_seconds,
+            ocr_languages=ocr_languages,
         )
 
     try:
