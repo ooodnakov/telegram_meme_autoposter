@@ -46,6 +46,7 @@ const PostsPage = () => {
         layout: filters.layout,
         source: filters.source,
       }),
+    placeholderData: (previousData) => previousData,
   });
 
   const mutation = useMutation({
@@ -204,69 +205,81 @@ const PostsPage = () => {
         </div>
       </div>
 
-      {query.data.items.length === 0 ? (
-        <LoadingState label={activeFilters ? t("noPostsMatchFilters") : t("noPosts")} />
-      ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {query.data.items.map((group) => (
-            <MediaGroupCard
-              key={group.items.map((item) => item.path).join("|")}
-              group={group}
-              actions={
-                <>
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      mutation.mutate({
-                        action: "ok",
-                        paths: group.items.map((item) => item.path),
-                      })
-                    }
-                  >
-                    {t("sendToBatch")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() =>
-                      mutation.mutate({
-                        action: "schedule",
-                        paths: group.items.map((item) => item.path),
-                      })
-                    }
-                  >
-                    {t("schedule")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      mutation.mutate({
-                        action: "push",
-                        paths: group.items.map((item) => item.path),
-                      })
-                    }
-                  >
-                    {t("pushNow")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() =>
-                      mutation.mutate({
-                        action: "notok",
-                        paths: group.items.map((item) => item.path),
-                      })
-                    }
-                  >
-                    {t("reject")}
-                  </Button>
-                </>
-              }
-            />
-          ))}
-        </div>
-      )}
+      <div className="space-y-3">
+        {query.isFetching ? (
+          <p className="text-xs text-muted-foreground">{t("loading")}</p>
+        ) : null}
+
+        {query.data.items.length === 0 ? (
+          <LoadingState label={activeFilters ? t("noPostsMatchFilters") : t("noPosts")} />
+        ) : (
+          <div className="relative">
+            <div
+              className={`grid grid-cols-1 gap-4 transition-opacity xl:grid-cols-2 ${
+                query.isFetching ? "opacity-60" : "opacity-100"
+              }`}
+            >
+              {query.data.items.map((group) => (
+                <MediaGroupCard
+                  key={group.items.map((item) => item.path).join("|")}
+                  group={group}
+                  actions={
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          mutation.mutate({
+                            action: "ok",
+                            paths: group.items.map((item) => item.path),
+                          })
+                        }
+                      >
+                        {t("sendToBatch")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() =>
+                          mutation.mutate({
+                            action: "schedule",
+                            paths: group.items.map((item) => item.path),
+                          })
+                        }
+                      >
+                        {t("schedule")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          mutation.mutate({
+                            action: "push",
+                            paths: group.items.map((item) => item.path),
+                          })
+                        }
+                      >
+                        {t("pushNow")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() =>
+                          mutation.mutate({
+                            action: "notok",
+                            paths: group.items.map((item) => item.path),
+                          })
+                        }
+                      >
+                        {t("reject")}
+                      </Button>
+                    </>
+                  }
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <PagePagination
         page={query.data.page}

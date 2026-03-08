@@ -413,12 +413,20 @@ const StatsPage = () => {
                           {channel.graphs.map((graph) => {
                             const series = graph.series ?? [];
                             const points = graph.points ?? [];
+                            const seriesWithColors = series.map((item, index) => ({
+                              ...item,
+                              resolvedColor: resolveTelegramSeriesColor(
+                                graph.key,
+                                item.color,
+                                index,
+                              ),
+                            }));
                             const graphConfig = Object.fromEntries(
-                              series.map((item, index) => [
+                              seriesWithColors.map((item) => [
                                 item.key,
                                 {
                                   label: item.label,
-                                  color: resolveTelegramSeriesColor(graph.key, item.color, index),
+                                  color: item.resolvedColor,
                                 },
                               ]),
                             );
@@ -455,12 +463,12 @@ const StatsPage = () => {
                                       />
                                       <ChartTooltip content={<ChartTooltipContent />} />
                                       <ChartLegend content={<ChartLegendContent />} />
-                                      {series.map((item) =>
+                                      {seriesWithColors.map((item) =>
                                         item.type === "bar" ? (
                                           <Bar
                                             key={item.key}
                                             dataKey={item.key}
-                                            fill={`var(--color-${item.key})`}
+                                            fill={item.resolvedColor}
                                             stackId={graph.stacked ? graph.key : undefined}
                                             radius={[4, 4, 0, 0]}
                                           />
@@ -469,7 +477,7 @@ const StatsPage = () => {
                                             key={item.key}
                                             type="monotone"
                                             dataKey={item.key}
-                                            stroke={`var(--color-${item.key})`}
+                                            stroke={item.resolvedColor}
                                             strokeWidth={2.5}
                                             dot={false}
                                           />

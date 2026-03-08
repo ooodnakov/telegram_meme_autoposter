@@ -110,6 +110,13 @@ class CaptionConfig(BaseModel):
     target_lang: str = "en"
 
 
+class OcrConfig(BaseModel):
+    """OCR extraction settings."""
+
+    enabled: bool = True
+    languages: str = "eng+rus"
+
+
 class BrandingConfig(BaseModel):
     """Branding strings used across media and captions."""
 
@@ -171,6 +178,7 @@ class Config(BaseModel):
     rate_limit: RateLimitConfig = RateLimitConfig()
     gemini: GeminiConfig = GeminiConfig()
     caption: CaptionConfig = CaptionConfig()
+    ocr: OcrConfig = OcrConfig()
     branding: BrandingConfig = BrandingConfig()
     watermark_image: WatermarkImageConfig = WatermarkImageConfig()
     watermark_video: WatermarkVideoConfig = WatermarkVideoConfig()
@@ -210,6 +218,8 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "GEMINI_MODEL": ("gemini", "model"),
     "CAPTION_ENABLED": ("caption", "enabled"),
     "CAPTION_TARGET_LANG": ("caption", "target_lang"),
+    "OCR_ENABLED": ("ocr", "enabled"),
+    "OCR_LANGUAGES": ("ocr", "languages"),
     "BRANDING_ATTRIBUTION": ("branding", "attribution"),
     "BRANDING_SUGGESTION_CAPTION": ("branding", "suggestion_caption"),
     "WATERMARK_IMAGE_PATH": ("watermark_image", "path"),
@@ -257,6 +267,7 @@ def _load_ini(path: str) -> dict[str, Any]:
         "RateLimit": ("rate_limit", RateLimitConfig),
         "Gemini": ("gemini", GeminiConfig),
         "Caption": ("caption", CaptionConfig),
+        "OCR": ("ocr", OcrConfig),
         "Branding": ("branding", BrandingConfig),
         "WatermarkImage": ("watermark_image", WatermarkImageConfig),
         "WatermarkVideo": ("watermark_video", WatermarkVideoConfig),
