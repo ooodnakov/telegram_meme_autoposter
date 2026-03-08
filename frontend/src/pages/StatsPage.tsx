@@ -304,250 +304,309 @@ const StatsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <StatCard
-          title={t("mediaReceived")}
-          value={formatNumber(Number(daily.media_received ?? 0))}
-          icon={Inbox}
-          description={`${t("decisions")}: ${formatNumber(query.data.decision_total_24h)}`}
-          trend={{
-            value: Number(receivedTrend.toFixed(1)),
-            positive: receivedTrend >= 0,
-          }}
-        />
-        <StatCard
-          title={t("approved")}
-          value={formatNumber(Number(daily.photos_approved ?? 0) + Number(daily.videos_approved ?? 0))}
-          icon={CheckCircle2}
-          description={`${t("rejected")}: ${formatNumber(Number(daily.photos_rejected ?? 0) + Number(daily.videos_rejected ?? 0))}`}
-          trend={{
-            value: Number(approvedTrend.toFixed(1)),
-            positive: approvedTrend >= 0,
-          }}
-        />
-        <StatCard
-          title={t("publishEvents")}
-          value={formatNumber(Number(daily.publish_events ?? 0))}
-          icon={Send}
-          description={`${t("channelDeliveries")}: ${formatNumber(Number(daily.channel_deliveries ?? 0))}`}
-          trend={{
-            value: Number(publishedTrend.toFixed(1)),
-            positive: publishedTrend >= 0,
-          }}
-        />
-        <StatCard
-          title={t("queuePressure")}
-          value={formatNumber(queuePressure)}
-          icon={Layers3}
-          description={`${t("batchQueue")}: ${currentBatchCount} · ${t("scheduledQueue")}: ${currentScheduledCount}`}
-        />
-        <StatCard
-          title={t("approvalRate24h")}
-          value={formatPercent(approval24h)}
-          icon={Gauge}
-          description={`${t("errorRate24h")}: ${formatPercent(errorRate24h)}`}
-          trend={{
-            value: Number((currentApprovalWindow - previousApprovalWindow).toFixed(1)),
-            positive: currentApprovalWindow >= previousApprovalWindow,
-          }}
-        />
-        <StatCard
-          title={t("successRate24h")}
-          value={formatPercent(success24h)}
-          icon={ShieldCheck}
-          description={`${t("onTimePublishRate")}: ${formatPercent(scheduleHealth.on_time_publish_rate)}`}
-          trend={{
-            value: Number((currentSuccessWindow - previousSuccessWindow).toFixed(1)),
-            positive: currentSuccessWindow >= previousSuccessWindow,
-          }}
-        />
-      </div>
-
-      <div className="glass-card p-6">
-        <div className="mb-5 flex flex-col gap-1">
-          <h3 className="text-sm font-semibold">{t("telegramAnalytics")}</h3>
-          <p className="text-xs text-muted-foreground">{t("telegramAnalyticsCached")}</p>
-          {telegramChannelAnalytics ? (
-            <p className="text-xs text-muted-foreground">
-              {formatDisplayDate(telegramChannelAnalytics.fetched_at)} · {t("cacheExpiresAt")}:{" "}
-              {formatDisplayDate(telegramChannelAnalytics.expires_at)}
-            </p>
-          ) : null}
-        </div>
-
-        {!telegramChannelAnalytics || telegramChannelAnalytics.channels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t("telegramAnalyticsUnavailable")}</p>
-        ) : (
-          <div className="space-y-6">
-            {telegramChannelAnalytics.channels.map((channel) => (
-              <div key={channel.peer} className="rounded-2xl border border-border/60 bg-secondary/15 p-5">
-                <div className="mb-4 flex flex-col gap-1">
-                  <h4 className="text-base font-semibold">{channel.title}</h4>
-                  <p className="text-xs text-muted-foreground">
-                    {channel.username ? `@${channel.username}` : channel.peer}
-                  </p>
-                  {channel.period?.start || channel.period?.end ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t("telegramPeriod")}: {formatDisplayDate(channel.period?.start)} -{" "}
-                      {formatDisplayDate(channel.period?.end)}
+      <Accordion
+        type="multiple"
+        defaultValue={[
+          "telegram",
+          "overview",
+          "activity",
+          "operations",
+          "sources",
+        ]}
+        className="space-y-6"
+      >
+        <SectionCard
+          value="telegram"
+          title={t("telegramAnalytics")}
+          description={
+            telegramChannelAnalytics
+              ? `${t("telegramAnalyticsCached")} · ${formatDisplayDate(telegramChannelAnalytics.fetched_at)}`
+              : t("telegramAnalyticsCached")
+          }
+        >
+          {!telegramChannelAnalytics || telegramChannelAnalytics.channels.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("telegramAnalyticsUnavailable")}</p>
+          ) : (
+            <div className="space-y-6">
+              {telegramChannelAnalytics.channels.map((channel) => (
+                <div
+                  key={channel.peer}
+                  className="rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/8 via-cyan-500/6 to-transparent p-5"
+                >
+                  <div className="mb-4 flex flex-col gap-1">
+                    <h4 className="text-base font-semibold">{channel.title}</h4>
+                    <p className="text-xs text-sky-100/70">
+                      {channel.username ? `@${channel.username}` : channel.peer}
                     </p>
-                  ) : null}
-                </div>
-
-                {channel.error ? (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                    {t("telegramFetchError")}: {channel.error}
+                    <p className="text-xs text-sky-100/60">
+                      {telegramChannelAnalytics
+                        ? `${t("cacheExpiresAt")}: ${formatDisplayDate(telegramChannelAnalytics.expires_at)}`
+                        : null}
+                    </p>
+                    {channel.period?.start || channel.period?.end ? (
+                      <p className="text-xs text-sky-100/60">
+                        {t("telegramPeriod")}: {formatDisplayDate(channel.period?.start)} -{" "}
+                        {formatDisplayDate(channel.period?.end)}
+                      </p>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                      {channel.summary_metrics.map((metric) => {
-                        const metricLabel = telegramMetricLabels[metric.key] ?? "unknown";
-                        return (
-                          <StatCard
-                            key={metric.key}
-                            title={t(metricLabel)}
-                            value={formatMetricValue(metric.current)}
-                            icon={Gauge}
-                            description={formatMetricValue(metric.previous)}
-                            trend={{
-                              value: Number(metric.delta_pct.toFixed(1)),
-                              positive: metric.delta >= 0,
-                            }}
-                          />
-                        );
-                      })}
-                      {channel.ratio_metrics.map((metric) => {
-                        const metricLabel = telegramMetricLabels[metric.key] ?? "unknown";
-                        return (
-                          <StatCard
-                            key={metric.key}
-                            title={t(metricLabel)}
-                            value={formatPercent(metric.percentage)}
-                            icon={ShieldCheck}
-                            description={`${formatMetricValue(metric.part)} / ${formatMetricValue(metric.total)}`}
-                          />
-                        );
-                      })}
-                    </div>
 
-                    {channel.graphs.length > 0 ? (
-                      <div className="grid gap-4 xl:grid-cols-2">
-                        {channel.graphs.map((graph) => {
-                          const series = graph.series ?? [];
-                          const points = graph.points ?? [];
-                          const graphConfig = Object.fromEntries(
-                            series.map((item, index) => [
-                              item.key,
-                              {
-                                label: item.label,
-                                color: item.color || fallbackChartColors[index % fallbackChartColors.length],
-                              },
-                            ]),
-                          );
+                  {channel.error ? (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                      {t("telegramFetchError")}: {channel.error}
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                        {channel.summary_metrics.map((metric, index) => {
+                          const metricLabel = telegramMetricLabels[metric.key] ?? "unknown";
+                          const accent = resolveTelegramSeriesColor("followers", undefined, index);
                           return (
-                            <div key={graph.key} className="rounded-xl bg-background/50 p-4">
-                              <div className="mb-3">
-                                <h5 className="text-sm font-medium">
-                                  {t(graph.title_key as TranslationKey)}
-                                </h5>
-                                {graph.error ? (
-                                  <p className="text-xs text-muted-foreground">{graph.error}</p>
-                                ) : null}
+                            <div
+                              key={metric.key}
+                              className="rounded-2xl border border-white/8 p-[1px]"
+                              style={{
+                                background: `linear-gradient(135deg, ${accent}, transparent 70%)`,
+                              }}
+                            >
+                              <div className="rounded-[15px] bg-background/85">
+                                <StatCard
+                                  title={t(metricLabel)}
+                                  value={formatMetricValue(metric.current)}
+                                  icon={RadioTower}
+                                  description={formatMetricValue(metric.previous)}
+                                  trend={{
+                                    value: Number(metric.delta_pct.toFixed(1)),
+                                    positive: metric.delta >= 0,
+                                  }}
+                                />
                               </div>
-                              {points.length === 0 || series.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">{t("unknown")}</p>
-                              ) : (
-                                <ChartContainer config={graphConfig} className="h-[260px] w-full aspect-auto">
-                                  <ComposedChart data={points}>
-                                    <CartesianGrid vertical={false} />
-                                    <XAxis dataKey="label" minTickGap={24} />
-                                    <YAxis
-                                      allowDecimals={!graph.percentage}
-                                      tickFormatter={(value) =>
-                                        graph.percentage && typeof value === "number"
-                                          ? `${value}%`
-                                          : String(value)
-                                      }
-                                    />
-                                    <ChartTooltip content={<ChartTooltipContent />} />
-                                    <ChartLegend content={<ChartLegendContent />} />
-                                    {series.map((item) =>
-                                      item.type === "bar" ? (
-                                        <Bar
-                                          key={item.key}
-                                          dataKey={item.key}
-                                          fill={`var(--color-${item.key})`}
-                                          stackId={graph.stacked ? graph.key : undefined}
-                                          radius={[4, 4, 0, 0]}
-                                        />
-                                      ) : (
-                                        <Line
-                                          key={item.key}
-                                          type="monotone"
-                                          dataKey={item.key}
-                                          stroke={`var(--color-${item.key})`}
-                                          strokeWidth={2}
-                                          dot={false}
-                                        />
-                                      ),
-                                    )}
-                                  </ComposedChart>
-                                </ChartContainer>
-                              )}
+                            </div>
+                          );
+                        })}
+                        {channel.ratio_metrics.map((metric, index) => {
+                          const metricLabel = telegramMetricLabels[metric.key] ?? "unknown";
+                          const accent = resolveTelegramSeriesColor("interactions", undefined, index);
+                          return (
+                            <div
+                              key={metric.key}
+                              className="rounded-2xl border border-white/8 p-[1px]"
+                              style={{
+                                background: `linear-gradient(135deg, ${accent}, transparent 70%)`,
+                              }}
+                            >
+                              <div className="rounded-[15px] bg-background/85">
+                                <StatCard
+                                  title={t(metricLabel)}
+                                  value={formatPercent(metric.percentage)}
+                                  icon={Sparkles}
+                                  description={`${formatMetricValue(metric.part)} / ${formatMetricValue(metric.total)}`}
+                                />
+                              </div>
                             </div>
                           );
                         })}
                       </div>
-                    ) : null}
 
-                    <div className="rounded-xl bg-background/50 p-4">
-                      <div className="mb-3">
-                        <h5 className="text-sm font-medium">{t("recentTopPosts")}</h5>
-                      </div>
-                      {channel.recent_posts.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">{t("noRecentTopPosts")}</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {channel.recent_posts.map((post) => (
-                            <div
-                              key={post.message_id}
-                              className="flex items-center justify-between rounded-lg bg-secondary/30 px-3 py-2"
-                            >
-                              <div className="min-w-0">
-                                {post.link ? (
-                                  <a
-                                    href={post.link}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-sm font-medium text-primary hover:underline"
-                                  >
-                                    #{post.message_id}
-                                  </a>
+                      {channel.graphs.length > 0 ? (
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          {channel.graphs.map((graph) => {
+                            const series = graph.series ?? [];
+                            const points = graph.points ?? [];
+                            const graphConfig = Object.fromEntries(
+                              series.map((item, index) => [
+                                item.key,
+                                {
+                                  label: item.label,
+                                  color: resolveTelegramSeriesColor(graph.key, item.color, index),
+                                },
+                              ]),
+                            );
+                            return (
+                              <div
+                                key={graph.key}
+                                className="rounded-xl border border-white/8 bg-background/55 p-4"
+                              >
+                                <div className="mb-3">
+                                  <h5 className="text-sm font-medium text-sky-100">
+                                    {t(graph.title_key as TranslationKey)}
+                                  </h5>
+                                  {graph.error ? (
+                                    <p className="text-xs text-muted-foreground">{graph.error}</p>
+                                  ) : null}
+                                </div>
+                                {points.length === 0 || series.length === 0 ? (
+                                  <p className="text-sm text-muted-foreground">{t("unknown")}</p>
                                 ) : (
-                                  <span className="text-sm font-medium">#{post.message_id}</span>
+                                  <ChartContainer
+                                    config={graphConfig}
+                                    className="h-[260px] w-full aspect-auto"
+                                  >
+                                    <ComposedChart data={points}>
+                                      <CartesianGrid vertical={false} />
+                                      <XAxis dataKey="label" minTickGap={24} />
+                                      <YAxis
+                                        allowDecimals={!graph.percentage}
+                                        tickFormatter={(value) =>
+                                          graph.percentage && typeof value === "number"
+                                            ? `${value}%`
+                                            : String(value)
+                                        }
+                                      />
+                                      <ChartTooltip content={<ChartTooltipContent />} />
+                                      <ChartLegend content={<ChartLegendContent />} />
+                                      {series.map((item) =>
+                                        item.type === "bar" ? (
+                                          <Bar
+                                            key={item.key}
+                                            dataKey={item.key}
+                                            fill={`var(--color-${item.key})`}
+                                            stackId={graph.stacked ? graph.key : undefined}
+                                            radius={[4, 4, 0, 0]}
+                                          />
+                                        ) : (
+                                          <Line
+                                            key={item.key}
+                                            type="monotone"
+                                            dataKey={item.key}
+                                            stroke={`var(--color-${item.key})`}
+                                            strokeWidth={2.5}
+                                            dot={false}
+                                          />
+                                        ),
+                                      )}
+                                    </ComposedChart>
+                                  </ChartContainer>
                                 )}
                               </div>
-                              <div className="flex gap-4 text-xs text-muted-foreground">
-                                <span>V {formatNumber(post.views)}</span>
-                                <span>F {formatNumber(post.forwards)}</span>
-                                <span>R {formatNumber(post.reactions)}</span>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                      ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="glass-card p-6 xl:col-span-2">
+                      <div className="rounded-xl border border-white/8 bg-background/55 p-4">
+                        <div className="mb-3">
+                          <h5 className="text-sm font-medium text-sky-100">{t("recentTopPosts")}</h5>
+                        </div>
+                        {channel.recent_posts.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">{t("noRecentTopPosts")}</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {channel.recent_posts.map((post, index) => {
+                              const accent = resolveTelegramSeriesColor("views_by_source", undefined, index);
+                              return (
+                                <div
+                                  key={post.message_id}
+                                  className="flex items-center justify-between rounded-lg border border-white/6 px-3 py-2"
+                                  style={{
+                                    background: `linear-gradient(90deg, ${accent}22, transparent 65%)`,
+                                  }}
+                                >
+                                  <div className="min-w-0">
+                                    {post.link ? (
+                                      <a
+                                        href={post.link}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-sm font-medium text-sky-300 hover:underline"
+                                      >
+                                        #{post.message_id}
+                                      </a>
+                                    ) : (
+                                      <span className="text-sm font-medium">#{post.message_id}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex gap-4 text-xs text-sky-100/70">
+                                    <span>V {formatNumber(post.views)}</span>
+                                    <span>F {formatNumber(post.forwards)}</span>
+                                    <span>R {formatNumber(post.reactions)}</span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard
+          value="overview"
+          title={t("dashboard")}
+          description={t("operationalKpis")}
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard
+              title={t("mediaReceived")}
+              value={formatNumber(Number(daily.media_received ?? 0))}
+              icon={Inbox}
+              description={`${t("decisions")}: ${formatNumber(query.data.decision_total_24h)}`}
+              trend={{
+                value: Number(receivedTrend.toFixed(1)),
+                positive: receivedTrend >= 0,
+              }}
+            />
+            <StatCard
+              title={t("approved")}
+              value={formatNumber(Number(daily.photos_approved ?? 0) + Number(daily.videos_approved ?? 0))}
+              icon={CheckCircle2}
+              description={`${t("rejected")}: ${formatNumber(Number(daily.photos_rejected ?? 0) + Number(daily.videos_rejected ?? 0))}`}
+              trend={{
+                value: Number(approvedTrend.toFixed(1)),
+                positive: approvedTrend >= 0,
+              }}
+            />
+            <StatCard
+              title={t("publishEvents")}
+              value={formatNumber(Number(daily.publish_events ?? 0))}
+              icon={Send}
+              description={`${t("channelDeliveries")}: ${formatNumber(Number(daily.channel_deliveries ?? 0))}`}
+              trend={{
+                value: Number(publishedTrend.toFixed(1)),
+                positive: publishedTrend >= 0,
+              }}
+            />
+            <StatCard
+              title={t("queuePressure")}
+              value={formatNumber(queuePressure)}
+              icon={Layers3}
+              description={`${t("batchQueue")}: ${currentBatchCount} · ${t("scheduledQueue")}: ${currentScheduledCount}`}
+            />
+            <StatCard
+              title={t("approvalRate24h")}
+              value={formatPercent(approval24h)}
+              icon={Gauge}
+              description={`${t("errorRate24h")}: ${formatPercent(errorRate24h)}`}
+              trend={{
+                value: Number((currentApprovalWindow - previousApprovalWindow).toFixed(1)),
+                positive: currentApprovalWindow >= previousApprovalWindow,
+              }}
+            />
+            <StatCard
+              title={t("successRate24h")}
+              value={formatPercent(success24h)}
+              icon={ShieldCheck}
+              description={`${t("onTimePublishRate")}: ${formatPercent(scheduleHealth.on_time_publish_rate)}`}
+              trend={{
+                value: Number((currentSuccessWindow - previousSuccessWindow).toFixed(1)),
+                positive: currentSuccessWindow >= previousSuccessWindow,
+              }}
+            />
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          value="activity"
+          title={t("activityTrend")}
+          description={t("hourlyRhythm")}
+        >
+          <div className="grid gap-6 xl:grid-cols-3">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-6 xl:col-span-2">
           <div className="mb-4">
             <h3 className="text-sm font-semibold">{t("activityTrend")}</h3>
             <p className="text-xs text-muted-foreground">{t("analytics")}</p>
@@ -599,7 +658,7 @@ const StatsPage = () => {
           </ChartContainer>
         </div>
 
-        <div className="glass-card p-6">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-6">
           <div className="mb-4">
             <h3 className="text-sm font-semibold">{t("hourlyRhythm")}</h3>
             <p className="text-xs text-muted-foreground">
@@ -633,10 +692,16 @@ const StatsPage = () => {
             </BarChart>
           </ChartContainer>
         </div>
-      </div>
+          </div>
+        </SectionCard>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="glass-card p-6">
+        <SectionCard
+          value="operations"
+          title={t("processingSpeed")}
+          description={t("scheduleHealth")}
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-6">
           <div className="mb-4">
             <h3 className="text-sm font-semibold">{t("processingSpeed")}</h3>
             <p className="text-xs text-muted-foreground">
@@ -687,7 +752,7 @@ const StatsPage = () => {
           </div>
         </div>
 
-        <div className="glass-card p-6">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-6">
           <div className="mb-4">
             <h3 className="text-sm font-semibold">{t("scheduleHealth")}</h3>
             <p className="text-xs text-muted-foreground">{t("trackedScheduledPublishes")}</p>
@@ -752,10 +817,16 @@ const StatsPage = () => {
             })}
           </div>
         </div>
-      </div>
+          </div>
+        </SectionCard>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="glass-card p-6">
+        <SectionCard
+          value="sources"
+          title={t("sourceQuality")}
+          description={t("operationalKpis")}
+        >
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-6">
           <div className="mb-4">
             <h3 className="text-sm font-semibold">{t("sourceQuality")}</h3>
             <p className="text-xs text-muted-foreground">{t("topSourcesByAcceptance")}</p>
@@ -800,7 +871,7 @@ const StatsPage = () => {
           )}
         </div>
 
-        <div className="glass-card p-6 space-y-3">
+            <div className="rounded-xl border border-border/60 bg-background/35 p-6 space-y-3">
           <div className="mb-1">
             <h3 className="text-sm font-semibold">{t("operationalKpis")}</h3>
             <p className="text-xs text-muted-foreground">{t("dashboard")}</p>
@@ -825,7 +896,9 @@ const StatsPage = () => {
           <MetricRow label={t("errorsTotal")} value={formatNumber(totalErrors)} />
           <MetricRow label={t("posts14d")} value={formatNumber(published14d)} />
         </div>
-      </div>
+          </div>
+        </SectionCard>
+      </Accordion>
 
       <div className="flex justify-end">
         <Button variant="outline" onClick={() => resetMutation.mutate()}>
