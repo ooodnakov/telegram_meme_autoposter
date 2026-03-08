@@ -30,6 +30,83 @@ def test_dashboard_api_payload(mocker, auth_client: TestClient):
     assert resp.json()["batch_count"] == 2
 
 
+def test_jobs_api_lists_jobs(mocker, auth_client: TestClient):
+    mocker.patch(
+        "telegram_auto_poster.web.app.job_manager.list_jobs",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "name": "ocr_missing_images",
+                    "title": "OCR missing images",
+                    "description": "Extract OCR text for stored images.",
+                    "status": "idle",
+                    "status_detail": None,
+                    "current_run_started_at": None,
+                    "current_run_duration_seconds": None,
+                    "current_stats": {},
+                    "last_run_started_at": None,
+                    "last_run_finished_at": None,
+                    "last_run_duration_seconds": None,
+                    "last_run_status": None,
+                    "last_run_stats": {},
+                    "last_error": None,
+                    "can_run": True,
+                    "runtime": {
+                        "can_run": True,
+                        "ocr_enabled": True,
+                        "languages": "eng+rus",
+                        "tesseract_available": True,
+                        "tesseract_version": "5.3.0",
+                        "tesseract_error": None,
+                    },
+                }
+            ]
+        ),
+    )
+
+    resp = auth_client.get("/api/jobs")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["items"][0]["name"] == "ocr_missing_images"
+    assert payload["items"][0]["runtime"]["languages"] == "eng+rus"
+
+
+def test_jobs_api_runs_job(mocker, auth_client: TestClient):
+    run_job = mocker.patch(
+        "telegram_auto_poster.web.app.job_manager.run_job",
+        new=mocker.AsyncMock(
+            return_value={
+                "name": "ocr_missing_images",
+                "title": "OCR missing images",
+                "description": "Extract OCR text for stored images.",
+                "status": "running",
+                "status_detail": "Preparing run",
+                "current_run_started_at": "2026-03-08T10:00:00+00:00",
+                "current_run_duration_seconds": 1.0,
+                "current_stats": {"images_missing_ocr": 10},
+                "last_run_started_at": None,
+                "last_run_finished_at": None,
+                "last_run_duration_seconds": None,
+                "last_run_status": None,
+                "last_run_stats": {},
+                "last_error": None,
+                "can_run": False,
+                "runtime": {"can_run": True},
+            }
+        ),
+    )
+    record = mocker.patch(
+        "telegram_auto_poster.web.app._record_event",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post("/api/jobs/ocr_missing_images/run", json={})
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "running"
+    run_job.assert_awaited_once_with("ocr_missing_images")
+    record.assert_awaited_once()
+
+
 def test_queue_api_lists_posts(mocker, auth_client: TestClient):
     async def fake_get_meta(name):
         assert name == "processed.jpg"

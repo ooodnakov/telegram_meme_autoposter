@@ -14,6 +14,7 @@ import {
   Send,
   Trash2,
   Trophy,
+  Workflow,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/suggestions", key: "suggestions", icon: Lightbulb },
   { path: "/posts", key: "posts", icon: FileText },
   { path: "/stats", key: "analytics", icon: BarChart3 },
+  { path: "/jobs", key: "jobs", icon: Workflow },
   { path: "/leaderboard", key: "leaderboard", icon: Trophy },
   { path: "/events", key: "events", icon: Activity },
   { path: "/trash", key: "trash", icon: Trash2 },

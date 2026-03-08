@@ -272,6 +272,30 @@ async def test_update_submission_metadata_preserves_caption_and_source(storage):
 
 
 @pytest.mark.asyncio
+async def test_update_submission_metadata_resolves_prefixed_key(storage):
+    """Updating basename metadata should reuse the stored prefixed key."""
+
+    await storage.store_submission_metadata(
+        f"{PHOTOS_PATH}/batch_obj.jpg",
+        100,
+        200,
+        "photo",
+        caption="keep me",
+        source="keep source",
+    )
+
+    updated = await storage.update_submission_metadata(
+        "batch_obj.jpg",
+        ocr_text="hello",
+        ocr_status="completed",
+    )
+
+    assert updated["ocr_text"] == "hello"
+    assert f"{PHOTOS_PATH}/batch_obj.jpg" in storage.submission_metadata
+    assert "batch_obj.jpg" not in storage.submission_metadata
+
+
+@pytest.mark.asyncio
 async def test_get_submission_metadata_missing(storage, mock_minio_client):
     """Return ``None`` when metadata is absent in memory and Valkey."""
     storage.submission_metadata = {}

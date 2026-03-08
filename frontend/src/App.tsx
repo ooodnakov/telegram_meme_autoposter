@@ -12,6 +12,7 @@ import BatchPage from "@/pages/BatchPage";
 import SuggestionsPage from "@/pages/SuggestionsPage";
 import PostsPage from "@/pages/PostsPage";
 import StatsPage from "@/pages/StatsPage";
+import JobsPage from "@/pages/JobsPage";
 import LeaderboardPage from "@/pages/LeaderboardPage";
 import EventsPage from "@/pages/EventsPage";
 import TrashPage from "@/pages/TrashPage";
@@ -49,6 +50,7 @@ const App = () => (
               <Route path="/suggestions" element={<SuggestionsPage />} />
               <Route path="/posts" element={<PostsPage />} />
               <Route path="/stats" element={<StatsPage />} />
+              <Route path="/jobs" element={<JobsPage />} />
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/trash" element={<TrashPage />} />

@@ -60,6 +60,7 @@ from telegram_auto_poster.utils.general import (
     send_media_to_telegram,
 )
 from telegram_auto_poster.utils.i18n import set_locale
+from telegram_auto_poster.utils.jobs import job_manager
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
@@ -275,6 +276,13 @@ app.mount(
     StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets"), check_dir=False),
     name="frontend_assets",
 )
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    """Recover persisted background job states."""
+
+    await job_manager.initialize()
 
 bot = Bot(token=CONFIG.bot.bot_token.get_secret_value())
 TARGET_CHANNELS = CONFIG.telegram.target_channels
@@ -1736,6 +1744,33 @@ async def api_stats() -> JSONResponse:
     """Return analytics and runtime statistics."""
 
     return JSONResponse(await _get_stats_payload())
+
+
+@app.get("/api/jobs")
+async def api_jobs() -> JSONResponse:
+    """Return administrative job states."""
+
+    return JSONResponse({"items": await job_manager.list_jobs()})
+
+
+@app.post("/api/jobs/{job_name}/run")
+async def api_jobs_run(request: Request, job_name: str) -> JSONResponse:
+    """Start a background administrative job."""
+
+    try:
+        job = await job_manager.run_job(job_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Unknown job") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    await _record_event(
+        "job_run",
+        origin="jobs",
+        request=request,
+        extra={"job_name": job_name},
+    )
+    return JSONResponse(job, status_code=status.HTTP_202_ACCEPTED)
 
 
 @app.get("/api/leaderboard")

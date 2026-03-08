@@ -110,6 +110,39 @@ export interface EventEntry {
   extra: Record<string, unknown>;
 }
 
+export interface JobRuntime {
+  can_run: boolean;
+  reason?: string | null;
+  ocr_enabled?: boolean;
+  languages?: string | null;
+  tesseract_available?: boolean;
+  tesseract_version?: string | null;
+  tesseract_error?: string | null;
+}
+
+export interface JobRecord {
+  name: string;
+  title: string;
+  description: string;
+  status: "idle" | "running" | "succeeded" | "failed";
+  status_detail?: string | null;
+  current_run_started_at?: string | null;
+  current_run_duration_seconds?: number | null;
+  current_stats: Record<string, number | string>;
+  last_run_started_at?: string | null;
+  last_run_finished_at?: string | null;
+  last_run_duration_seconds?: number | null;
+  last_run_status?: "idle" | "running" | "succeeded" | "failed" | null;
+  last_run_stats: Record<string, number | string>;
+  last_error?: string | null;
+  can_run: boolean;
+  runtime: JobRuntime;
+}
+
+export interface JobsPayload {
+  items: JobRecord[];
+}
+
 export interface StatsPayload {
   daily: Record<string, number | string>;
   total: Record<string, number>;
@@ -302,6 +335,12 @@ export const api = {
   getEvents: (limit = 50) =>
     apiRequest<EventsPayload>(`/api/events?limit=${limit}`),
   getStats: () => apiRequest<StatsPayload>("/api/stats"),
+  getJobs: () => apiRequest<JobsPayload>("/api/jobs"),
+  runJob: (jobName: string) =>
+    apiRequest<JobRecord>(`/api/jobs/${jobName}/run`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
   getLeaderboard: () => apiRequest<LeaderboardPayload>("/api/leaderboard"),
   postAction: (payload: {
     action: string;

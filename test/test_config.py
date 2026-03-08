@@ -371,6 +371,37 @@ session_secret = secret
     assert conf.watermark_video.max_speed == 20
 
 
+def test_ocr_env_overrides(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test1, @test2
+luba_chat = @luba
+[Web]
+session_secret = secret
+""",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    monkeypatch.setenv("OCR_ENABLED", "false")
+    monkeypatch.setenv("OCR_LANGUAGES", "eng")
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+    conf = config_module.load_config()
+    assert conf.ocr.enabled is False
+    assert conf.ocr.languages == "eng"
+
+
 def test_i18n_users_default_dict_is_independent():
     from telegram_auto_poster.config import I18nConfig
 
