@@ -1245,15 +1245,20 @@ async def _send_batch_now(request: Request) -> dict[str, object]:
     if not posts:
         return {"status": "ok", "processed_groups": 0}
 
-    event_items: list[tuple[str, dict[str, object] | None]] = []
-    processed_groups = 0
+    all_paths: list[str] = []
     for post in posts:
-        paths = [
+        all_paths.extend(
+            [
             item["path"]
             for item in post["items"]
             if isinstance(item, dict) and isinstance(item.get("path"), str)
-        ]
-        event_items.extend(await _get_metas_for_paths(paths))
+            ]
+        )
+
+    event_items = await _get_metas_for_paths(all_paths)
+    processed_groups = 0
+    for start in range(0, len(all_paths), 10):
+        paths = all_paths[start : start + 10]
         try:
             await _push_post_group(paths)
             await decrement_batch_count(len(paths))

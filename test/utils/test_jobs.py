@@ -6,7 +6,10 @@ import pytest
 
 from telegram_auto_poster.config import BUCKET_MAIN
 from telegram_auto_poster.utils.jobs import (
+    _run_purge_expired_trash,
     _run_reconcile_scheduled_queue,
+    _run_reconcile_batch_count,
+    _run_sync_trash_registry,
     _run_refresh_search_text,
 )
 
@@ -96,3 +99,96 @@ async def test_reconcile_scheduled_queue_job_removes_missing_objects(mocker) -> 
     exists.assert_any_await("scheduled/keep.jpg", BUCKET_MAIN)
     exists.assert_any_await("scheduled/missing.jpg", BUCKET_MAIN)
     remove.assert_called_once_with("scheduled/missing.jpg")
+
+
+@pytest.mark.asyncio
+async def test_purge_expired_trash_job_reports_before_and_after_counts(mocker) -> None:
+    context = _FakeJobContext()
+    list_files = mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.list_files",
+        new=mocker.AsyncMock(
+            side_effect=[
+                ["trash/photos/a.jpg", "trash/videos/b.mp4"],
+                [],
+                ["trash/photos/keep.jpg"],
+                [],
+            ]
+        ),
+    )
+    purge = mocker.patch(
+        "telegram_auto_poster.utils.jobs.purge_expired_trash",
+        new=mocker.AsyncMock(return_value=["trash/photos/a.jpg"]),
+    )
+
+    await _run_purge_expired_trash(context)
+
+    assert context.stats["trash_objects_before"] == 2
+    assert context.stats["removed"] == 1
+    assert context.stats["trash_objects_after"] == 1
+    assert list_files.await_count == 4
+    purge.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_sync_trash_registry_job_rebuilds_future_entries(mocker) -> None:
+    context = _FakeJobContext()
+    future = datetime.datetime(2026, 3, 10, tzinfo=datetime.timezone.utc)
+    now = datetime.datetime(2026, 3, 9, tzinfo=datetime.timezone.utc)
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.list_files",
+        new=mocker.AsyncMock(
+            side_effect=[
+                ["trash/photos/a.jpg", "trash/videos/b.mp4"],
+                [],
+            ]
+        ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.get_submission_metadata",
+        new=mocker.AsyncMock(
+            side_effect=[
+                {"trash_expires_at": future.isoformat()},
+                None,
+            ]
+        ),
+    )
+    add = mocker.patch(
+        "telegram_auto_poster.utils.jobs.add_trashed_post",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch("telegram_auto_poster.utils.jobs.now_utc", return_value=now)
+
+    await _run_sync_trash_registry(context)
+
+    assert context.stats["trash_objects"] == 2
+    assert context.stats["items_checked"] == 2
+    assert context.stats["registry_synced"] == 1
+    assert context.stats["missing_metadata"] == 1
+    add.assert_awaited_once_with("trash/photos/a.jpg", int(future.timestamp()))
+
+
+@pytest.mark.asyncio
+async def test_reconcile_batch_count_job_resets_counter_to_storage_size(
+    mocker,
+) -> None:
+    context = _FakeJobContext()
+    redis = mocker.AsyncMock()
+    redis.get.return_value = "5"
+    mocker.patch("telegram_auto_poster.utils.jobs.get_async_redis_client", return_value=redis)
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.list_files",
+        new=mocker.AsyncMock(
+            side_effect=[
+                ["photos/batch_a.jpg"],
+                ["videos/batch_b.mp4", "videos/batch_c.mp4"],
+            ]
+        ),
+    )
+
+    await _run_reconcile_batch_count(context)
+
+    assert context.stats["stored_count"] == 5
+    assert context.stats["actual_count"] == 3
+    assert context.stats["delta"] == -2
+    assert context.stats["updated"] == 1
+    redis.set.assert_awaited_once_with("telegram_auto_poster:batch:size", "3")

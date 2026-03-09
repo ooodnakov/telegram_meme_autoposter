@@ -408,13 +408,12 @@ def test_batch_send_processes_posts(mocker, auth_client: TestClient):
 
     resp = auth_client.post("/api/batch/send", json={})
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "processed_groups": 2}
+    assert resp.json() == {"status": "ok", "processed_groups": 1}
     assert push_group.await_args_list == [
-        call([f"{PHOTOS_PATH}/batch_a.jpg"]),
-        call([f"{PHOTOS_PATH}/batch_b.jpg"]),
+        call([f"{PHOTOS_PATH}/batch_a.jpg", f"{PHOTOS_PATH}/batch_b.jpg"]),
     ]
-    assert decr.await_args_list == [call(1), call(1)]
-    assert rec.await_args_list == [call(1), call(1)]
+    assert decr.await_args_list == [call(2)]
+    assert rec.await_args_list == [call(1)]
     record.assert_not_awaited()
 
 

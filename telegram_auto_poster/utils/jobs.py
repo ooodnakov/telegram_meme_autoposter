@@ -11,9 +11,16 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from loguru import logger
-from telegram_auto_poster.config import BUCKET_MAIN, CONFIG
+from telegram_auto_poster.config import (
+    BUCKET_MAIN,
+    CONFIG,
+    PHOTOS_PATH,
+    TRASH_PATH,
+    VIDEOS_PATH,
+)
 from telegram_auto_poster.utils.caption import extract_ocr_text, get_tesseract_info
 from telegram_auto_poster.utils.db import (
+    add_trashed_post,
     _redis_key,
     get_async_redis_client,
     get_scheduled_posts,
@@ -22,6 +29,7 @@ from telegram_auto_poster.utils.db import (
 from telegram_auto_poster.utils.general import cleanup_temp_file, download_from_minio
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import now_utc
+from telegram_auto_poster.utils.trash import purge_expired_trash
 
 JobRunner = Callable[["JobRunContext"], Awaitable[None]]
 JobRuntimeBuilder = Callable[[], dict[str, Any]]
@@ -700,6 +708,187 @@ async def _run_reconcile_scheduled_queue(context: JobRunContext) -> None:
     await context.set_status_detail(f"Checked {total} scheduled items")
 
 
+def _purge_expired_trash_runtime() -> dict[str, Any]:
+    """Return runtime details for the trash purge job."""
+
+    return {
+        "can_run": True,
+        "details": [
+            {
+                "label": "Scope",
+                "value": "Trash objects whose Valkey expiration has passed",
+            }
+        ],
+    }
+
+
+async def _run_purge_expired_trash(context: JobRunContext) -> None:
+    """Delete expired trash objects immediately."""
+
+    trash_before = await _count_trash_objects()
+    await context.replace_stats(
+        {
+            "trash_objects_before": trash_before,
+            "removed": 0,
+            "trash_objects_after": trash_before,
+        }
+    )
+    await context.set_status_detail("Purging expired trash")
+    removed = await purge_expired_trash()
+    trash_after = await _count_trash_objects()
+    await context.replace_stats(
+        {
+            "trash_objects_before": trash_before,
+            "removed": len(removed),
+            "trash_objects_after": trash_after,
+        }
+    )
+    await context.set_status_detail(f"Removed {len(removed)} expired trash items")
+
+
+def _sync_trash_registry_runtime() -> dict[str, Any]:
+    """Return runtime details for the trash registry sync job."""
+
+    return {
+        "can_run": True,
+        "progress": {
+            "current_key": "items_checked",
+            "total_key": "trash_objects",
+            "label": "Checked trash objects",
+        },
+        "details": [
+            {
+                "label": "Queue source",
+                "value": "MinIO trash paths + metadata expiration timestamps",
+            }
+        ],
+    }
+
+
+async def _run_sync_trash_registry(context: JobRunContext) -> None:
+    """Rebuild trash expiration entries in Valkey from stored metadata."""
+
+    trash_objects = await _list_trash_objects()
+    now = now_utc()
+    await context.replace_stats(
+        {
+            "trash_objects": len(trash_objects),
+            "items_checked": 0,
+            "registry_synced": 0,
+            "missing_metadata": 0,
+            "invalid_expiration": 0,
+            "already_expired": 0,
+        }
+    )
+
+    if not trash_objects:
+        await context.set_status_detail("No trash objects found")
+        return
+
+    total = len(trash_objects)
+    for index, path in enumerate(trash_objects, start=1):
+        await context.wait_if_paused()
+        await context.set_status_detail(
+            f"Sync {index}/{total}: {os.path.basename(path)}"
+        )
+        await context.increment("items_checked")
+        meta = await storage.get_submission_metadata(os.path.basename(path))
+        if not meta:
+            await context.increment("missing_metadata")
+            continue
+
+        expires_at = _parse_iso_datetime(meta.get("trash_expires_at"))
+        if expires_at is None:
+            await context.increment("invalid_expiration")
+            continue
+        if expires_at <= now:
+            await context.increment("already_expired")
+            continue
+
+        await add_trashed_post(path, int(expires_at.timestamp()))
+        await context.increment("registry_synced")
+
+    await context.set_status_detail(f"Synced {total} trash objects")
+
+
+def _reconcile_batch_count_runtime() -> dict[str, Any]:
+    """Return runtime details for the batch count reconciliation job."""
+
+    return {
+        "can_run": True,
+        "details": [
+            {
+                "label": "Counter",
+                "value": _redis_key("batch", "size"),
+            }
+        ],
+    }
+
+
+async def _run_reconcile_batch_count(context: JobRunContext) -> None:
+    """Reset the stored batch counter to match MinIO contents."""
+
+    redis = get_async_redis_client()
+    key = _redis_key("batch", "size")
+    stored_raw = await redis.get(key)
+    stored_count = int(stored_raw) if stored_raw is not None else 0
+    actual_count = await _count_batch_objects()
+    await redis.set(key, str(actual_count))
+    await context.replace_stats(
+        {
+            "stored_count": stored_count,
+            "actual_count": actual_count,
+            "delta": actual_count - stored_count,
+            "updated": 1 if actual_count != stored_count else 0,
+        }
+    )
+    await context.set_status_detail(
+        "Batch counter updated"
+        if actual_count != stored_count
+        else "Batch counter already matched storage"
+    )
+
+
+async def _list_trash_objects() -> list[str]:
+    """Return all current trash object paths."""
+
+    photo_files, video_files = await asyncio.gather(
+        storage.list_files(BUCKET_MAIN, prefix=f"{TRASH_PATH}/{PHOTOS_PATH}/"),
+        storage.list_files(BUCKET_MAIN, prefix=f"{TRASH_PATH}/{VIDEOS_PATH}/"),
+    )
+    return list(photo_files) + list(video_files)
+
+
+async def _count_trash_objects() -> int:
+    """Return the total number of trash objects in storage."""
+
+    return len(await _list_trash_objects())
+
+
+async def _count_batch_objects() -> int:
+    """Return the total number of batch objects in storage."""
+
+    photo_files, video_files = await asyncio.gather(
+        storage.list_files(BUCKET_MAIN, prefix=f"{PHOTOS_PATH}/batch_"),
+        storage.list_files(BUCKET_MAIN, prefix=f"{VIDEOS_PATH}/batch_"),
+    )
+    return len(photo_files) + len(video_files)
+
+
+def _parse_iso_datetime(value: object) -> datetime.datetime | None:
+    """Parse an ISO datetime string into an aware UTC datetime when possible."""
+
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=datetime.UTC)
+    return parsed.astimezone(datetime.UTC)
+
+
 job_manager = JobManager()
 job_manager.register(
     JobDefinition(
@@ -726,5 +915,32 @@ job_manager.register(
         description="Remove scheduled queue entries that no longer have a corresponding object in storage.",
         runner=_run_reconcile_scheduled_queue,
         runtime_builder=_reconcile_scheduled_queue_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="purge_expired_trash",
+        title="Purge expired trash",
+        description="Delete trash objects whose retention period has already expired.",
+        runner=_run_purge_expired_trash,
+        runtime_builder=_purge_expired_trash_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="sync_trash_registry",
+        title="Sync trash registry",
+        description="Rebuild Valkey trash expiration entries from stored trash metadata.",
+        runner=_run_sync_trash_registry,
+        runtime_builder=_sync_trash_registry_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="reconcile_batch_count",
+        title="Reconcile batch count",
+        description="Reset the stored batch counter to match the actual number of batch objects in storage.",
+        runner=_run_reconcile_batch_count,
+        runtime_builder=_reconcile_batch_count_runtime,
     )
 )

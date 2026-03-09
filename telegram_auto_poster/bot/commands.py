@@ -49,6 +49,38 @@ from telegram_auto_poster.utils.trash import (
 )
 
 
+async def _prepare_batch_media_items(
+    batch_files: list[str],
+) -> list[dict[str, object]]:
+    """Load batch media in order for later chunking into media groups."""
+
+    media_items: list[dict[str, object]] = []
+
+    for file_path in batch_files:
+        temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+        ext = os.path.splitext(temp_path)[1].lower()
+        file_obj: IO[bytes] = open(temp_path, "rb")
+        base_name = os.path.basename(file_path)
+        user_metadata = await storage.get_submission_metadata(base_name)
+        info: dict[str, object] = {
+            "file_path": file_path,
+            "temp_path": temp_path,
+            "file_obj": file_obj,
+            "media_type": "video" if ext in [".mp4", ".avi", ".mov"] else "photo",
+            "base_name": base_name,
+            "user_metadata": user_metadata,
+        }
+        if ext in [".mp4", ".avi", ".mov"]:
+            info["input_media"] = InputMediaVideo(file_obj, supports_streaming=True)
+        elif ext in [".jpg", ".jpeg", ".png"]:
+            info["input_media"] = InputMediaPhoto(file_obj)
+        else:
+            info["input_media"] = InputMediaDocument(file_obj)
+        media_items.append(info)
+
+    return media_items
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Start the bot and provide a welcome message."""
     logger.info(f"Received /start command from user {update.effective_user.id}")
@@ -704,85 +736,72 @@ async def send_batch_command(
         notified_users: set[int] = set()
         sent_count = 0
 
-        media_info: list[dict[str, object]] = []
+        media_items = await _prepare_batch_media_items(batch_files)
 
-        for file_path in batch_files:
-            temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
-            ext = os.path.splitext(temp_path)[1].lower()
-            file_obj: IO[bytes] = open(temp_path, "rb")
-            info = {
-                "file_path": file_path,
-                "temp_path": temp_path,
-                "file_obj": file_obj,
-                "media_type": "video" if ext in [".mp4", ".avi", ".mov"] else "photo",
-                "base_name": os.path.basename(file_path),
-            }
-            if ext in [".mp4", ".avi", ".mov"]:
-                info["input_media"] = InputMediaVideo(file_obj, supports_streaming=True)
-            elif ext in [".jpg", ".jpeg", ".png"]:
-                info["input_media"] = InputMediaPhoto(file_obj)
-            else:
-                info["input_media"] = InputMediaDocument(file_obj)
-            media_info.append(info)
-
-        for i in range(0, len(media_info), 10):
-            chunk = media_info[i : i + 10]
-            media_group = [item["input_media"] for item in chunk]
+        for start in range(0, len(media_items), 10):
+            group = media_items[start : start + 10]
+            media_group = [item["input_media"] for item in group]
             delivered_channels = 0
-            for channel in target_channels:
-                try:
-                    # Reset file handles for each channel
-                    for item in chunk:
-                        file_obj = cast(IO[bytes], item["file_obj"])
-                        file_obj.seek(0)
-                    await context.bot.send_media_group(
-                        chat_id=channel, media=media_group
-                    )
-                    delivered_channels += 1
-                except Exception as e:
-                    logger.error(f"Error sending media group: {e}")
-                    await stats.record_error(
-                        "telegram", f"Failed to send media group: {str(e)}"
-                    )
+            try:
+                for channel in target_channels:
+                    try:
+                        # Reset file handles for each channel before Telegram reads them again.
+                        for item in group:
+                            file_obj = cast(IO[bytes], item["file_obj"])
+                            file_obj.seek(0)
+                        await context.bot.send_media_group(
+                            chat_id=channel, media=media_group
+                        )
+                        delivered_channels += 1
+                    except Exception as e:
+                        logger.error(f"Error sending media group: {e}")
+                        await stats.record_error(
+                            "telegram", f"Failed to send media group: {str(e)}"
+                        )
+                        continue
+
+                if not delivered_channels:
                     continue
 
-            if delivered_channels:
                 await stats.record_post_published(delivered_channels)
 
-            for item in chunk:
-                file_path = item["file_path"]
-                temp_path = item["temp_path"]
-                file_obj = cast(IO[bytes], item["file_obj"])
-                media_type = item["media_type"]
-                base_name = item["base_name"]
-                file_obj.close()
+                for item in group:
+                    file_path = item["file_path"]
+                    media_type = item["media_type"]
+                    base_name = item["base_name"]
+                    user_metadata = cast(
+                        dict[str, object] | None, item.get("user_metadata")
+                    )
 
-                user_metadata = await storage.get_submission_metadata(base_name)
-                await stats.record_approved(
-                    media_type,
-                    filename=base_name,
-                    source=user_metadata.get("source") if user_metadata else None,
-                )
-                if user_metadata and not user_metadata.get("notified"):
-                    user_id = user_metadata.get("user_id")
-                    if user_id and user_id not in notified_users:
-                        text = (
-                            "Отличные новости! Ваша фотография была одобрена и размещена в канале как часть пакета. Спасибо за ваш вклад!"
-                            if media_type == "photo"
-                            else "Отличные новости! Ваше видео было одобрено и размещено в канале как часть пакета. Спасибо за ваш вклад!"
-                        )
-                        await notify_user(context, user_id, text)
-                        notified_users.add(user_id)
-                    await storage.mark_notified(base_name)
+                    await stats.record_approved(
+                        media_type,
+                        filename=base_name,
+                        source=user_metadata.get("source") if user_metadata else None,
+                    )
+                    if user_metadata and not user_metadata.get("notified"):
+                        user_id = user_metadata.get("user_id")
+                        if user_id and user_id not in notified_users:
+                            text = (
+                                "Отличные новости! Ваша фотография была одобрена и размещена в канале как часть пакета. Спасибо за ваш вклад!"
+                                if media_type == "photo"
+                                else "Отличные новости! Ваше видео было одобрено и размещено в канале как часть пакета. Спасибо за ваш вклад!"
+                            )
+                            await notify_user(context, user_id, text)
+                            notified_users.add(user_id)
+                        await storage.mark_notified(base_name)
 
-                cleanup_temp_file(temp_path)
+                    try:
+                        await storage.delete_file(file_path, BUCKET_MAIN)
+                    except Exception as de:
+                        logger.error(f"Failed to delete batch item {file_path}: {de}")
 
-                try:
-                    await storage.delete_file(file_path, BUCKET_MAIN)
-                except Exception as de:
-                    logger.error(f"Failed to delete batch item {file_path}: {de}")
-
-                sent_count += 1
+                    sent_count += 1
+            finally:
+                for item in group:
+                    file_obj = cast(IO[bytes], item["file_obj"])
+                    temp_path = item["temp_path"]
+                    file_obj.close()
+                    cleanup_temp_file(temp_path)
 
         if sent_count:
             await db.decrement_batch_count(sent_count)

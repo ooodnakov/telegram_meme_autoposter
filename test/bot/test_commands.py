@@ -170,6 +170,59 @@ async def test_send_batch_video_closes_file_and_cleans(
 
 
 @pytest.mark.asyncio
+async def test_send_batch_chunks_ten_items_into_one_media_group(
+    tmp_path, mocker: MockerFixture, mock_bot_and_context, commands
+):
+    paths = []
+    download_results = []
+    metadata_map = {}
+    for idx in range(10):
+        file_name = f"img_{idx}.jpg"
+        file_path = tmp_path / file_name
+        file_path.write_bytes(str(idx).encode())
+        paths.append(f"photos/{file_name}")
+        download_results.append((str(file_path), "ext"))
+        metadata_map[file_name] = None
+
+    mocker.patch.object(
+        commands,
+        "list_batch_files",
+        new=mocker.AsyncMock(return_value=paths),
+    )
+    mocker.patch(
+        "telegram_auto_poster.bot.commands.download_from_minio",
+        side_effect=download_results,
+    )
+    mock_storage = mocker.patch("telegram_auto_poster.bot.commands.storage")
+    mock_storage.get_submission_metadata = mocker.AsyncMock(
+        side_effect=lambda name: metadata_map[name]
+    )
+    mock_storage.delete_file = mocker.AsyncMock()
+    mock_storage.mark_notified = mocker.AsyncMock()
+    mock_stats = mocker.patch("telegram_auto_poster.utils.stats.stats")
+    mock_stats.record_approved = mocker.AsyncMock()
+    mock_stats.record_batch_sent = mocker.AsyncMock()
+    mock_stats.record_post_published = mocker.AsyncMock()
+    mock_stats.record_error = mocker.AsyncMock()
+    mock_cleanup = mocker.patch("telegram_auto_poster.bot.commands.cleanup_temp_file")
+    _ = mocker.patch(
+        "telegram_auto_poster.bot.commands.notify_user",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch.object(commands.db, "decrement_batch_count", new=mocker.AsyncMock())
+
+    update, context = mock_bot_and_context
+
+    await commands.send_batch_command(update, context)
+
+    context.bot.send_media_group.assert_awaited_once()
+    first_call = context.bot.send_media_group.await_args_list[0].kwargs
+    assert len(first_call["media"]) == 10
+    for file_name in metadata_map:
+        mock_cleanup.assert_any_call(str(tmp_path / file_name))
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "report, expected",
     [
