@@ -307,16 +307,18 @@ async def add_event_history_entry(
         logger.error(f"Failed to store event history entry: {exc}")
 
 
-async def get_event_history(limit: int = 50) -> list[dict[str, object]]:
-    """Return the most recent event history entries."""
+async def get_event_history(
+    *, offset: int = 0, limit: int = 50
+) -> list[dict[str, object]]:
+    """Return event history entries ordered from newest to oldest."""
 
-    if limit <= 0:
+    if limit <= 0 or offset < 0:
         return []
 
     try:
         client = get_async_redis_client()
         key = _redis_key("events", "history")
-        raw_entries = await client.lrange(key, 0, limit - 1)
+        raw_entries = await client.lrange(key, offset, offset + limit - 1)
     except ValkeyError as exc:  # pragma: no cover - logging only
         logger.error(f"Failed to read event history: {exc}")
         return []
@@ -330,6 +332,20 @@ async def get_event_history(limit: int = 50) -> list[dict[str, object]]:
         if isinstance(parsed, dict):
             events.append(parsed)
     return events
+
+
+async def get_event_history_count() -> int:
+    """Return the number of stored administrative event history entries."""
+
+    try:
+        client = get_async_redis_client()
+        key = _redis_key("events", "history")
+        count = await client.llen(key)
+    except ValkeyError as exc:  # pragma: no cover - logging only
+        logger.error(f"Failed to count event history entries: {exc}")
+        return 0
+
+    return int(count) if count is not None else 0
 
 
 async def clear_event_history() -> None:

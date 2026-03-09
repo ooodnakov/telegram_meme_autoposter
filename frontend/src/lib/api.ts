@@ -264,10 +264,7 @@ export interface LeaderboardPayload {
   rejected: LeaderboardEntry[];
 }
 
-export interface EventsPayload {
-  items: EventEntry[];
-  limit: number;
-}
+export type EventsPayload = PaginatedResponse<EventEntry>;
 
 export interface ChannelSettingsPayload {
   selected_chats: string[];
@@ -341,8 +338,8 @@ export const api = {
     apiRequest<PaginatedResponse<MediaGroup>>(`/api/trash?page=${page}`),
   getQueue: (page: number) =>
     apiRequest<PaginatedResponse<QueueItem>>(`/api/queue?page=${page}`),
-  getEvents: (limit = 50) =>
-    apiRequest<EventsPayload>(`/api/events?limit=${limit}`),
+  getEvents: (page: number) =>
+    apiRequest<EventsPayload>(`/api/events?page=${page}`),
   getStats: () => apiRequest<StatsPayload>("/api/stats"),
   getJobs: () => apiRequest<JobsPayload>("/api/jobs"),
   getChannelSettings: () =>

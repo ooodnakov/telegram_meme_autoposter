@@ -985,12 +985,14 @@ async def _get_trash_count() -> int:
 
 
 async def _get_events_payload(
-    limit: int = EVENT_HISTORY_PAGE_SIZE,
+    *, page: int = 1, per_page: int = EVENT_HISTORY_PAGE_SIZE
 ) -> dict[str, object]:
     """Return normalized administrative event history."""
 
-    clamped_limit = max(1, min(limit, EVENT_HISTORY_LIMIT))
-    history = await get_event_history(limit=clamped_limit)
+    clamped_per_page = max(1, min(per_page, EVENT_HISTORY_LIMIT))
+    count = await get_event_history_count()
+    page, total_pages, offset = _paginate(count, page, clamped_per_page)
+    history = await get_event_history(offset=offset, limit=clamped_per_page)
     events: list[dict[str, object]] = []
     for entry in history:
         items: list[dict[str, object]] = []
@@ -1019,7 +1021,13 @@ async def _get_events_payload(
                 "extra": entry.get("extra", {}),
             }
         )
-    return {"items": events, "limit": clamped_limit}
+    return {
+        "items": events,
+        "page": page,
+        "per_page": clamped_per_page,
+        "total_pages": total_pages,
+        "total_items": count,
+    }
 
 
 async def _get_queue_payload(
@@ -1170,7 +1178,7 @@ async def _get_dashboard_payload() -> dict[str, object]:
         _get_trash_count(),
         run_in_threadpool(get_scheduled_posts_count),
         stats.get_daily_stats(reset_if_new_day=False),
-        _get_events_payload(limit=5),
+        _get_events_payload(page=1, per_page=5),
     )
     next_scheduled: str | None = None
     next_items = await run_in_threadpool(get_scheduled_posts, offset=0, limit=1)
@@ -1881,10 +1889,10 @@ async def api_queue(page: int = 1) -> JSONResponse:
 
 
 @app.get("/api/events")
-async def api_events(limit: int = EVENT_HISTORY_PAGE_SIZE) -> JSONResponse:
-    """Return recent administrative events."""
+async def api_events(page: int = 1) -> JSONResponse:
+    """Return paginated administrative events."""
 
-    return JSONResponse(await _get_events_payload(limit=limit))
+    return JSONResponse(await _get_events_payload(page=page))
 
 
 @app.get("/api/stats")
