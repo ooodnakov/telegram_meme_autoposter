@@ -18,7 +18,17 @@ const statLabels: Partial<Record<string, TranslationKey>> = {
   images_with_text: "imagesWithText",
   images_without_text: "imagesWithoutText",
   images_failed: "errors",
+  scheduled_total: "scheduledQueue",
+  failed: "errors",
 };
+
+function startCase(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
 
 function formatDuration(seconds?: number | null): string {
   if (seconds == null) {
@@ -41,6 +51,47 @@ function formatMetric(value: number | string | undefined): string {
     return value;
   }
   return "0";
+}
+
+function formatDetailValue(value: string | number | boolean | null | undefined): string {
+  if (typeof value === "number") {
+    return new Intl.NumberFormat().format(value);
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+  return "—";
+}
+
+function metricLabel(key: string, t: (key: TranslationKey, values?: Record<string, string | number>) => string): string {
+  const translationKey = statLabels[key];
+  if (translationKey) {
+    return t(translationKey);
+  }
+  return startCase(key);
+}
+
+function resolveProgress(job: JobRecord, stats: Record<string, number | string>) {
+  const progress = job.runtime.progress;
+  if (!progress) {
+    return null;
+  }
+
+  const total = Number(stats[progress.total_key] ?? 0);
+  const current = Number(stats[progress.current_key] ?? 0);
+  if (!Number.isFinite(total) || !Number.isFinite(current) || total <= 0) {
+    return null;
+  }
+
+  return {
+    label: progress.label ?? "Progress",
+    current,
+    total,
+    value: Math.min(100, (current / total) * 100),
+  };
 }
 
 function statusVariant(status: JobRecord["status"]): "default" | "primary" | "success" | "destructive" {
@@ -182,9 +233,9 @@ const JobsPage = () => {
             job.status === "running" || job.status === "paused"
               ? job.current_stats
               : job.last_run_stats;
-          const totalPending = Number(stats.images_missing_ocr ?? 0);
-          const processed = Number(stats.images_ocred ?? 0);
-          const progress = totalPending > 0 ? Math.min(100, (processed / totalPending) * 100) : 0;
+          const progress = resolveProgress(job, stats);
+          const runtimeDetails = job.runtime.details ?? [];
+          const statEntries = Object.entries(stats);
           const isMutating = runMutation.isPending || pauseMutation.isPending || resumeMutation.isPending;
           const actionButton = job.can_pause ? (
             <Button
@@ -242,31 +293,19 @@ const JobsPage = () => {
                 </div>
               ) : null}
 
-              {(job.status === "running" || job.status === "paused") && totalPending > 0 ? (
+              {(job.status === "running" || job.status === "paused") && progress ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{t("currentRun")}</span>
+                    <span className="text-muted-foreground">{progress.label}</span>
                     <span className="font-medium">
-                      {processed}/{totalPending}
+                      {progress.current}/{progress.total}
                     </span>
                   </div>
-                  <Progress value={progress} />
+                  <Progress value={progress.value} />
                 </div>
               ) : null}
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <InfoRow
-                  label={t("tesseract")}
-                  value={
-                    job.runtime.tesseract_available
-                      ? job.runtime.tesseract_version ?? "OK"
-                      : t("unavailable")
-                  }
-                />
-                <InfoRow
-                  label={t("ocrLanguages")}
-                  value={job.runtime.languages ?? "—"}
-                />
                 <InfoRow
                   label={t("runningNow")}
                   value={formatDuration(job.current_run_duration_seconds)}
@@ -283,6 +322,13 @@ const JobsPage = () => {
                   label={t("lastRun")}
                   value={job.last_run_finished_at ? formatDisplayDate(job.last_run_finished_at) : t("neverRun")}
                 />
+                {runtimeDetails.map((detail, index) => (
+                  <InfoRow
+                    key={`${detail.label}-${index}`}
+                    label={detail.label}
+                    value={formatDetailValue(detail.value)}
+                  />
+                ))}
               </div>
 
               {job.status_detail ? (
@@ -291,21 +337,23 @@ const JobsPage = () => {
                 </div>
               ) : null}
 
-              <div className="space-y-3">
-                <div className="text-sm font-semibold">{t("jobStats")}</div>
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                  {Object.entries(stats).map(([key, value]) => (
-                    <div key={key} className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-3">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                        {t(statLabels[key] ?? "count")}
+              {statEntries.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="text-sm font-semibold">{t("jobStats")}</div>
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                    {statEntries.map(([key, value]) => (
+                      <div key={key} className="rounded-xl border border-border/60 bg-secondary/25 px-3 py-3">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {metricLabel(key, t)}
+                        </div>
+                        <div className="mt-1 text-lg font-semibold">
+                          {formatMetric(value)}
+                        </div>
                       </div>
-                      <div className="mt-1 text-lg font-semibold">
-                        {formatMetric(value)}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
               {job.last_error ? (
                 <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-3 text-sm text-destructive">
