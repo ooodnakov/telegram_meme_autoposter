@@ -8,10 +8,9 @@ from datetime import timedelta
 from typing import Any, Sequence
 
 from loguru import logger
-from telethon import TelegramClient, functions, types
-
 from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
 from telegram_auto_poster.utils.timezone import now_utc
+from telethon import TelegramClient, functions, types
 
 CHANNEL_ANALYTICS_CACHE_TTL_SECONDS = 24 * 60 * 60
 CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS = 60 * 60
@@ -204,7 +203,9 @@ async def _serialize_broadcast_stats(
         "username": username,
         "kind": "broadcast",
         "period": {
-            "start": stats.period.min_date.isoformat() if stats.period.min_date else None,
+            "start": stats.period.min_date.isoformat()
+            if stats.period.min_date
+            else None,
             "end": stats.period.max_date.isoformat() if stats.period.max_date else None,
         },
         "summary_metrics": [
@@ -214,7 +215,9 @@ async def _serialize_broadcast_stats(
             _serialize_abs_metric("reactionsPerPost", stats.reactions_per_post),
         ],
         "ratio_metrics": [
-            _serialize_percent_metric("enabledNotifications", stats.enabled_notifications)
+            _serialize_percent_metric(
+                "enabledNotifications", stats.enabled_notifications
+            )
         ],
         "graphs": graphs,
         "recent_posts": recent_posts,
@@ -243,11 +246,15 @@ async def _serialize_megagroup_stats(
     return {
         "peer": raw_channel,
         "id": getattr(entity, "id", None),
-        "title": getattr(entity, "title", None) or getattr(entity, "username", None) or raw_channel,
+        "title": getattr(entity, "title", None)
+        or getattr(entity, "username", None)
+        or raw_channel,
         "username": getattr(entity, "username", None),
         "kind": "megagroup",
         "period": {
-            "start": stats.period.min_date.isoformat() if stats.period.min_date else None,
+            "start": stats.period.min_date.isoformat()
+            if stats.period.min_date
+            else None,
             "end": stats.period.max_date.isoformat() if stats.period.max_date else None,
         },
         "summary_metrics": [
@@ -277,7 +284,9 @@ async def _fetch_channel_payload(
     return {
         "peer": channel,
         "id": getattr(entity, "id", None),
-        "title": getattr(entity, "title", None) or getattr(entity, "username", None) or channel,
+        "title": getattr(entity, "title", None)
+        or getattr(entity, "username", None)
+        or channel,
         "username": getattr(entity, "username", None),
         "kind": "unknown",
         "error": f"Unsupported stats payload: {type(stats).__name__}",
@@ -347,7 +356,9 @@ async def refresh_channel_analytics_cache(
 
     payload = {
         "fetched_at": fetched_at.isoformat(),
-        "expires_at": (fetched_at + timedelta(seconds=CHANNEL_ANALYTICS_CACHE_TTL_SECONDS)).isoformat(),
+        "expires_at": (
+            fetched_at + timedelta(seconds=CHANNEL_ANALYTICS_CACHE_TTL_SECONDS)
+        ).isoformat(),
         "channels": channel_payloads,
     }
     await cache.setex(

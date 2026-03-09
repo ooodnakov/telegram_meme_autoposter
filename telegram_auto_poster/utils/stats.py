@@ -110,13 +110,17 @@ class MediaStats:
         await self.r.incrbyfloat(_redis_key("perf", f"{base}_total"), duration)
         await self.r.incrby(_redis_key("perf", f"{base}_count"), 1)
 
-    async def _record_activity(self, when: datetime.datetime, field: str, count: int) -> None:
+    async def _record_activity(
+        self, when: datetime.datetime, field: str, count: int
+    ) -> None:
         """Increment a per-day activity field for ``when``."""
 
         key = _redis_key("activity", when.strftime("%Y-%m-%d"))
         await self.r.hincrby(key, field, count)
 
-    async def _record_hourly_activity(self, hour: int, field: str, count: int = 1) -> None:
+    async def _record_hourly_activity(
+        self, hour: int, field: str, count: int = 1
+    ) -> None:
         """Increment an hourly activity field."""
 
         key = _redis_key("hourly_activity", str(hour))
@@ -491,9 +495,7 @@ class MediaStats:
             )
         return entries
 
-    async def get_activity_series(
-        self, days: int = 14
-    ) -> list[dict[str, str | int]]:
+    async def get_activity_series(self, days: int = 14) -> list[dict[str, str | int]]:
         """Return per-day activity totals for the last ``days`` days."""
 
         today = now_utc().date()

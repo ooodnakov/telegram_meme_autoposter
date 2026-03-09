@@ -531,7 +531,8 @@ async def post_scheduled_media_job(context: ContextTypes.DEFAULT_TYPE) -> None:
                 file_name = os.path.basename(file_path)
                 media_type = (
                     "video"
-                    if os.path.splitext(temp_path)[1].lower() in [".mp4", ".avi", ".mov"]
+                    if os.path.splitext(temp_path)[1].lower()
+                    in [".mp4", ".avi", ".mov"]
                     else "photo"
                 )
                 meta = await storage.get_submission_metadata(file_name)

@@ -19,6 +19,7 @@ from telegram_auto_poster.bot.handlers import (
     process_video,
 )
 from telegram_auto_poster.config import Config
+from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.channel_analytics import (
     CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS,
     refresh_channel_analytics_cache,
@@ -27,7 +28,6 @@ from telegram_auto_poster.utils.channels import (
     ensure_selected_chats_cached,
     fetch_selected_chats,
 )
-from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.general import RateLimiter, backoff_delay
 
 

@@ -6,13 +6,12 @@ import json
 from collections.abc import Iterable, Sequence
 
 from loguru import logger
-from valkey.exceptions import ValkeyError
-
 from telegram_auto_poster.utils.db import (
     _redis_key,
     get_async_redis_client,
     get_redis_client,
 )
+from valkey.exceptions import ValkeyError
 
 SELECTED_CHATS_KEY = _redis_key("config", "selected_chats")
 
