@@ -11,15 +11,20 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from loguru import logger
-
 from telegram_auto_poster.config import BUCKET_MAIN, CONFIG
 from telegram_auto_poster.utils.caption import extract_ocr_text, get_tesseract_info
-from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
+from telegram_auto_poster.utils.db import (
+    _redis_key,
+    get_async_redis_client,
+    get_scheduled_posts,
+    remove_scheduled_post,
+)
 from telegram_auto_poster.utils.general import cleanup_temp_file, download_from_minio
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import now_utc
 
 JobRunner = Callable[["JobRunContext"], Awaitable[None]]
+JobRuntimeBuilder = Callable[[], dict[str, Any]]
 
 DEFAULT_JOB_STATE: dict[str, Any] = {
     "status": "idle",
@@ -54,6 +59,7 @@ class JobDefinition:
     title: str
     description: str
     runner: JobRunner
+    runtime_builder: JobRuntimeBuilder | None = None
 
 
 class JobRunContext:
@@ -168,7 +174,7 @@ class JobManager:
         items: list[dict[str, Any]] = []
         for definition in self._definitions.values():
             state = await self._read_state(definition.name)
-            runtime = _job_runtime_payload(definition.name)
+            runtime = _build_runtime_payload(definition)
             current_started_at = state.get("current_run_started_at")
             items.append(
                 {
@@ -207,7 +213,7 @@ class JobManager:
         if definition is None:
             raise KeyError(name)
 
-        runtime = _job_runtime_payload(name)
+        runtime = _build_runtime_payload(definition)
         if not runtime["can_run"]:
             raise RuntimeError(runtime.get("reason") or "Job prerequisites are not met")
 
@@ -428,11 +434,18 @@ def _needs_ocr(meta: dict[str, Any] | None) -> bool:
     )
 
 
-def _job_runtime_payload(name: str) -> dict[str, Any]:
-    """Return runtime details for a registered job."""
+def _build_runtime_payload(definition: JobDefinition) -> dict[str, Any]:
+    """Return runtime details for one job definition."""
 
-    if name != "ocr_missing_images":
+    if definition.runtime_builder is None:
         return {"can_run": True}
+    payload = definition.runtime_builder()
+    payload.setdefault("can_run", True)
+    return payload
+
+
+def _ocr_missing_images_runtime() -> dict[str, Any]:
+    """Return runtime details for the OCR backfill job."""
 
     tesseract = get_tesseract_info()
     enabled = CONFIG.ocr.enabled
@@ -445,6 +458,25 @@ def _job_runtime_payload(name: str) -> dict[str, Any]:
     return {
         "can_run": can_run,
         "reason": reason,
+        "progress": {
+            "current_key": "images_checked",
+            "total_key": "images_missing_ocr",
+            "label": "OCR progress",
+        },
+        "details": [
+            {
+                "label": "Tesseract",
+                "value": (
+                    tesseract.version
+                    if tesseract.available
+                    else tesseract.error or "Unavailable"
+                ),
+            },
+            {
+                "label": "OCR languages",
+                "value": CONFIG.ocr.languages or "—",
+            },
+        ],
         "ocr_enabled": enabled,
         "languages": CONFIG.ocr.languages,
         "tesseract_available": tesseract.available,
@@ -474,6 +506,7 @@ async def _run_ocr_missing_images(context: JobRunContext) -> None:
             "images_total": len(image_paths),
             "images_missing_ocr": len(pending_paths),
             "images_skipped": skipped,
+            "images_checked": 0,
             "images_ocred": 0,
             "images_with_text": 0,
             "images_without_text": 0,
@@ -491,6 +524,7 @@ async def _run_ocr_missing_images(context: JobRunContext) -> None:
         await context.set_status_detail(
             f"OCR {index}/{total_pending}: {os.path.basename(path)}"
         )
+        await context.increment("images_checked")
         try:
             temp_path, _mime = await download_from_minio(path, BUCKET_MAIN)
         except Exception as exc:
@@ -542,6 +576,7 @@ async def _run_refresh_search_text(context: JobRunContext) -> None:
     await context.replace_stats(
         {
             "objects_total": len(objects),
+            "objects_checked": 0,
             "objects_indexed": 0,
             "objects_changed": 0,
             "objects_without_metadata": 0,
@@ -555,6 +590,7 @@ async def _run_refresh_search_text(context: JobRunContext) -> None:
 
     for index, path in enumerate(objects, start=1):
         lookup_key = _ocr_lookup_key(path)
+        await context.increment("objects_checked")
         meta = await storage.get_submission_metadata(lookup_key)
         if not meta:
             await context.increment("objects_without_metadata")
@@ -573,6 +609,97 @@ async def _run_refresh_search_text(context: JobRunContext) -> None:
     await context.set_status_detail(f"Refreshed search text for {total} objects")
 
 
+def _refresh_search_text_runtime() -> dict[str, Any]:
+    """Return runtime details for the search text refresh job."""
+
+    return {
+        "can_run": True,
+        "progress": {
+            "current_key": "objects_checked",
+            "total_key": "objects_total",
+            "label": "Checked objects",
+        },
+        "details": [
+            {
+                "label": "Source",
+                "value": "MinIO metadata + OCR cache",
+            }
+        ],
+    }
+
+
+def _reconcile_scheduled_queue_runtime() -> dict[str, Any]:
+    """Return runtime details for the scheduled queue reconciliation job."""
+
+    return {
+        "can_run": True,
+        "progress": {
+            "current_key": "items_checked",
+            "total_key": "scheduled_total",
+            "label": "Checked scheduled items",
+        },
+        "details": [
+            {
+                "label": "Queue source",
+                "value": "Valkey scheduled_posts + MinIO objects",
+            }
+        ],
+    }
+
+
+async def _run_reconcile_scheduled_queue(context: JobRunContext) -> None:
+    """Remove stale scheduled entries whose storage object no longer exists."""
+
+    scheduled_posts = await asyncio.to_thread(get_scheduled_posts)
+    now_ts = int(now_utc().timestamp())
+    await context.replace_stats(
+        {
+            "scheduled_total": len(scheduled_posts),
+            "items_checked": 0,
+            "kept_valid": 0,
+            "overdue_items": 0,
+            "missing_objects": 0,
+            "removed_stale": 0,
+            "failed": 0,
+        }
+    )
+
+    if not scheduled_posts:
+        await context.set_status_detail("No scheduled posts found")
+        return
+
+    total = len(scheduled_posts)
+    for index, (path, scheduled_ts) in enumerate(scheduled_posts, start=1):
+        await context.wait_if_paused()
+        await context.set_status_detail(
+            f"Check {index}/{total}: {os.path.basename(path)}"
+        )
+        await context.increment("items_checked")
+        if int(scheduled_ts) <= now_ts:
+            await context.increment("overdue_items")
+
+        try:
+            exists = await storage.file_exists(path, BUCKET_MAIN)
+        except Exception:
+            await context.increment("failed")
+            logger.exception("Failed to inspect scheduled object %s", path)
+            continue
+
+        if exists:
+            await context.increment("kept_valid")
+            continue
+
+        await context.increment("missing_objects")
+        try:
+            await asyncio.to_thread(remove_scheduled_post, path)
+            await context.increment("removed_stale")
+        except Exception:
+            await context.increment("failed")
+            logger.exception("Failed to remove stale scheduled entry %s", path)
+
+    await context.set_status_detail(f"Checked {total} scheduled items")
+
+
 job_manager = JobManager()
 job_manager.register(
     JobDefinition(
@@ -580,6 +707,7 @@ job_manager.register(
         title="OCR missing images",
         description="Extract OCR text for stored images that do not have OCR metadata yet.",
         runner=_run_ocr_missing_images,
+        runtime_builder=_ocr_missing_images_runtime,
     )
 )
 job_manager.register(
@@ -588,5 +716,15 @@ job_manager.register(
         title="Refresh search text",
         description="Rebuild Redis search text from captions, source names, filenames, and OCR results.",
         runner=_run_refresh_search_text,
+        runtime_builder=_refresh_search_text_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="reconcile_scheduled_queue",
+        title="Reconcile scheduled queue",
+        description="Remove scheduled queue entries that no longer have a corresponding object in storage.",
+        runner=_run_reconcile_scheduled_queue,
+        runtime_builder=_reconcile_scheduled_queue_runtime,
     )
 )

@@ -113,6 +113,15 @@ export interface EventEntry {
 export interface JobRuntime {
   can_run: boolean;
   reason?: string | null;
+  progress?: {
+    current_key: string;
+    total_key: string;
+    label?: string | null;
+  } | null;
+  details?: Array<{
+    label: string;
+    value: string | number | boolean | null;
+  }> | null;
   ocr_enabled?: boolean;
   languages?: string | null;
   tesseract_available?: boolean;
