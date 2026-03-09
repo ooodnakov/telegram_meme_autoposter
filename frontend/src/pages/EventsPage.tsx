@@ -1,8 +1,9 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Files, SlidersHorizontal, Users } from "lucide-react";
 import { toast } from "sonner";
 import EventFeed from "@/components/EventFeed";
+import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import SectionHeader from "@/components/SectionHeader";
 import StatCard from "@/components/StatCard";
@@ -20,6 +21,7 @@ import { api } from "@/lib/api";
 import { buildEventSearchText } from "@/lib/event-log";
 
 const EventsPage = () => {
+  const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({
     q: "",
     origin: "all",
@@ -28,12 +30,16 @@ const EventsPage = () => {
   const { t } = useSession();
   const deferredQuery = useDeferredValue(filters.q.trim().toLowerCase());
 
+  useEffect(() => {
+    setPage(1);
+  }, [deferredQuery, filters.origin]);
+
   const query = useQuery({
-    queryKey: ["events"],
-    queryFn: () => api.getEvents(),
+    queryKey: ["events", page],
+    queryFn: () => api.getEvents(page),
+    placeholderData: (previousData) => previousData,
   });
   const events = query.data?.items;
-  const eventLimit = query.data?.limit ?? 0;
 
   const resetMutation = useMutation({
     mutationFn: api.resetEvents,
@@ -102,7 +108,10 @@ const EventsPage = () => {
         description={
           activeFilters
             ? t("matchingEvents", { count: filteredEvents.length })
-            : t("showingLastEvents", { count: eventLimit })
+            : `${t("totalItems", { count: query.data.total_items })} · ${t("pageOf", {
+                page: query.data.page,
+                total: query.data.total_pages,
+              })}`
         }
         icon={Activity}
         actions={
@@ -138,20 +147,20 @@ const EventsPage = () => {
           description={
             activeFilters
               ? t("matchingEvents", { count: filteredEvents.length })
-              : t("showingLastEvents", { count: eventLimit })
+              : t("totalItems", { count: query.data.total_items })
           }
         />
         <StatCard
           title={t("affectedItems")}
           value={affectedItems}
           icon={Files}
-          description={t("totalItems", { count: events?.length ?? 0 })}
+          description={t("pageOf", { page: query.data.page, total: query.data.total_pages })}
         />
         <StatCard
           title={t("uniqueActors")}
           value={uniqueActors}
           icon={Users}
-          description={t("totalItems", { count: filteredEvents.length })}
+          description={t("count") + `: ${events?.length ?? 0}`}
         />
       </div>
 
@@ -217,6 +226,12 @@ const EventsPage = () => {
         events={filteredEvents}
         emptyMessage={t("noEventsYet")}
         denseDesktop
+      />
+
+      <PagePagination
+        page={query.data.page}
+        totalPages={query.data.total_pages}
+        onPageChange={setPage}
       />
     </div>
   );

@@ -12,6 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 
 type EventFeedVariant = "compact" | "full";
+const DENSE_DESKTOP_GRID_CLASS =
+  "grid grid-cols-[9rem_7rem_11rem_9rem_9rem_minmax(0,1fr)] items-center gap-4";
 
 interface EventFeedProps {
   events: EventEntry[];
@@ -124,6 +126,60 @@ function CompactEventRow({ event }: { event: EventEntry }) {
           ) : null}
         </div>
       </div>
+    </article>
+  );
+}
+
+function DenseDesktopEventRow({
+  event,
+  isLast,
+}: {
+  event: EventEntry;
+  isLast: boolean;
+}) {
+  const { t } = useSession();
+  const actor = formatActorLabel(event.actor, t("system"));
+  const source = getEventPrimarySource(event);
+  const eventTone = getEventIntent(event.action);
+  const extraEntries = Object.entries(event.extra ?? {});
+  const itemSummary = event.items
+    .map((item) => buildItemSummary(item, t("unknown")))
+    .join(" • ");
+  const extraSummary = buildExtraSummary(extraEntries);
+  const detailsSummary = [itemSummary || t("noItemsRecorded"), extraSummary]
+    .filter(Boolean)
+    .join(" • ");
+
+  return (
+    <article
+      className={cn(
+        DENSE_DESKTOP_GRID_CLASS,
+        "px-4 py-3 text-sm",
+        !isLast && "border-b border-border/40",
+      )}
+    >
+      <div className="min-w-0">
+        <BadgeStatus variant={eventTone}>{humanizeEventAction(event.action)}</BadgeStatus>
+      </div>
+      <div className="min-w-0">
+        {event.origin ? (
+          <BadgeStatus variant="default">{event.origin}</BadgeStatus>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </div>
+      <span className="truncate text-sm text-muted-foreground">
+        {formatDisplayDate(event.timestamp)}
+      </span>
+      <span className="truncate text-sm text-muted-foreground" title={actor}>
+        {actor}
+      </span>
+      <span className="truncate text-sm text-muted-foreground" title={source ?? undefined}>
+        {source ?? "—"}
+      </span>
+      <span className="truncate text-sm text-foreground/90" title={detailsSummary}>
+        {detailsSummary}
+      </span>
     </article>
   );
 }
@@ -278,6 +334,8 @@ const EventFeed = ({
   variant = "full",
   denseDesktop = false,
 }: EventFeedProps) => {
+  const { t } = useSession();
+
   if (events.length === 0) {
     return (
       <div className="glass-card p-12 text-center">
@@ -287,20 +345,60 @@ const EventFeed = ({
   }
 
   return (
-    <div className={cn("space-y-3", className)}>
-      {events.map((event, index) =>
-        variant === "compact" ? (
-          <CompactEventRow
-            key={`${event.timestamp ?? "event"}-${event.action ?? "action"}-${index}`}
-            event={event}
-          />
-        ) : (
-          <FullEventCard
-            key={`${event.timestamp ?? "event"}-${event.action ?? "action"}-${index}`}
-            event={event}
-            denseDesktop={denseDesktop}
-          />
-        ),
+    <div className={className}>
+      {denseDesktop && variant === "full" ? (
+        <>
+          <div className="hidden md:block">
+            <div className="glass-card overflow-hidden">
+              <div
+                className={cn(
+                  DENSE_DESKTOP_GRID_CLASS,
+                  "border-b border-border/60 bg-secondary/20 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground",
+                )}
+              >
+                <span>{t("action")}</span>
+                <span>{t("origin")}</span>
+                <span>{t("timestamp")}</span>
+                <span>{t("actor")}</span>
+                <span>{t("source")}</span>
+                <span>{t("details")}</span>
+              </div>
+              {events.map((event, index) => (
+                <DenseDesktopEventRow
+                  key={`${event.timestamp ?? "event"}-${event.action ?? "action"}-${index}`}
+                  event={event}
+                  isLast={index === events.length - 1}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3 md:hidden">
+            {events.map((event, index) => (
+              <FullEventCard
+                key={`${event.timestamp ?? "event"}-${event.action ?? "action"}-${index}`}
+                event={event}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="space-y-3">
+          {events.map((event, index) =>
+            variant === "compact" ? (
+              <CompactEventRow
+                key={`${event.timestamp ?? "event"}-${event.action ?? "action"}-${index}`}
+                event={event}
+              />
+            ) : (
+              <FullEventCard
+                key={`${event.timestamp ?? "event"}-${event.action ?? "action"}-${index}`}
+                event={event}
+                denseDesktop={denseDesktop}
+              />
+            ),
+          )}
+        </div>
       )}
     </div>
   );
