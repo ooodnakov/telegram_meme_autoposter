@@ -213,7 +213,11 @@ const EventsPage = () => {
         </div>
       </div>
 
-      <EventFeed events={filteredEvents} emptyMessage={t("noEventsYet")} />
+      <EventFeed
+        events={filteredEvents}
+        emptyMessage={t("noEventsYet")}
+        denseDesktop
+      />
     </div>
   );
 };
