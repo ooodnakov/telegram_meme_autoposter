@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Clock,
   FileText,
+  Hand,
   Image,
   Layers,
   LayoutDashboard,
@@ -107,6 +108,9 @@ const DashboardPage = () => {
               <Link to="/queue">{t("queue")}</Link>
             </Button>
             <Button variant="outline" size="sm" asChild>
+              <Link to="/swipe-review">{t("swipeReview")}</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
               <Link to="/events">{t("events")}</Link>
             </Button>
           </>
@@ -160,6 +164,22 @@ const DashboardPage = () => {
           />
         </Link>
       </div>
+
+      <Link to="/swipe-review" className="block">
+        <div className="glass-card border-primary/25 p-5 transition-colors hover:border-primary/50">
+          <div className="flex items-start gap-4">
+            <div className="rounded-2xl bg-primary/10 p-3 text-primary">
+              <Hand className="h-5 w-5" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold">{t("swipeReview")}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("swipeReviewDescription")}
+              </p>
+            </div>
+          </div>
+        </div>
+      </Link>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <StatCard

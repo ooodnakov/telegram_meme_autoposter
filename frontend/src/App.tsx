@@ -13,6 +13,7 @@ const QueuePage = lazy(() => import("@/pages/QueuePage"));
 const BatchPage = lazy(() => import("@/pages/BatchPage"));
 const SuggestionsPage = lazy(() => import("@/pages/SuggestionsPage"));
 const PostsPage = lazy(() => import("@/pages/PostsPage"));
+const SwipeReviewPage = lazy(() => import("@/pages/SwipeReviewPage"));
 const StatsPage = lazy(() => import("@/pages/StatsPage"));
 const JobsPage = lazy(() => import("@/pages/JobsPage"));
 const LeaderboardPage = lazy(() => import("@/pages/LeaderboardPage"));
@@ -57,6 +58,7 @@ const App = () => (
                 <Route path="/batch" element={<BatchPage />} />
                 <Route path="/suggestions" element={<SuggestionsPage />} />
                 <Route path="/posts" element={<PostsPage />} />
+                <Route path="/swipe-review" element={<SwipeReviewPage />} />
                 <Route path="/stats" element={<StatsPage />} />
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/leaderboard" element={<LeaderboardPage />} />
