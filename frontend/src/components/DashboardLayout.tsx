@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   Send,
+  Settings2,
   Trash2,
   Trophy,
   Workflow,
@@ -31,6 +32,7 @@ const navItems = [
   { path: "/leaderboard", key: "leaderboard", icon: Trophy },
   { path: "/events", key: "events", icon: Activity },
   { path: "/trash", key: "trash", icon: Trash2 },
+  { path: "/settings", key: "settings", icon: Settings2 },
 ] as const;
 
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => {

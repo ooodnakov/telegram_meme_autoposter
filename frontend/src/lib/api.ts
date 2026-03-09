@@ -269,6 +269,12 @@ export interface EventsPayload {
   limit: number;
 }
 
+export interface ChannelSettingsPayload {
+  selected_chats: string[];
+  default_selected_chats: string[];
+  valkey_key: string;
+}
+
 async function apiRequest<T>(
   input: string,
   init?: RequestInit,
@@ -339,6 +345,13 @@ export const api = {
     apiRequest<EventsPayload>(`/api/events?limit=${limit}`),
   getStats: () => apiRequest<StatsPayload>("/api/stats"),
   getJobs: () => apiRequest<JobsPayload>("/api/jobs"),
+  getChannelSettings: () =>
+    apiRequest<ChannelSettingsPayload>("/api/settings/channels"),
+  updateChannelSettings: (selected_chats: string[]) =>
+    apiRequest<ChannelSettingsPayload>("/api/settings/channels", {
+      method: "POST",
+      body: JSON.stringify({ selected_chats }),
+    }),
   runJob: (jobName: string) =>
     apiRequest<JobRecord>(`/api/jobs/${jobName}/run`, {
       method: "POST",

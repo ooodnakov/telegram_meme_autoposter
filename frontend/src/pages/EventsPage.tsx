@@ -1,9 +1,10 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Activity, Files, Users } from "lucide-react";
+import { Activity, Files, SlidersHorizontal, Users } from "lucide-react";
 import { toast } from "sonner";
 import EventFeed from "@/components/EventFeed";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import StatCard from "@/components/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,40 @@ const EventsPage = () => {
 
   return (
     <div className="space-y-6">
+      <SectionHeader
+        badge={t("events")}
+        title={t("recentEvents")}
+        description={
+          activeFilters
+            ? t("matchingEvents", { count: filteredEvents.length })
+            : t("showingLastEvents", { count: eventLimit })
+        }
+        icon={Activity}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setFilters({
+                  q: "",
+                  origin: "all",
+                })
+              }
+              disabled={!activeFilters}
+            >
+              {t("clearFilters")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t("refresh")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
+              {t("clearHistory")}
+            </Button>
+          </>
+        }
+      />
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           title={t("loggedActions")}
@@ -120,39 +155,19 @@ const EventsPage = () => {
         />
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              {activeFilters
-                ? t("matchingEvents", { count: filteredEvents.length })
-                : t("showingLastEvents", { count: eventLimit })}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                setFilters({
-                  q: "",
-                  origin: "all",
-                })
-              }
-              disabled={!activeFilters}
-            >
-              {t("clearFilters")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-              {t("refresh")}
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
-              {t("clearHistory")}
-            </Button>
-          </div>
-        </div>
+      <div className="glass-card p-4">
+        <SectionHeader
+          as="div"
+          badge={t("events")}
+          title={t("search")}
+          description={t("searchLogsPlaceholder")}
+          icon={SlidersHorizontal}
+          tone="neutral"
+          compact
+          className="mb-4"
+        />
 
-        <div className="glass-card grid gap-3 p-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2">
           <label className="space-y-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("search")}

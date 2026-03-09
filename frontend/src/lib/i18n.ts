@@ -11,6 +11,7 @@ export const translations = {
     leaderboardSubtitle: "Track which sources drive moderation volume and approval quality.",
     events: "Events",
     trash: "Trash",
+    settings: "Settings",
     adminPanel: "Admin Panel",
     loginTitle: "Admin Login",
     loginSubtitle: "Use Telegram to open the moderation dashboard.",
@@ -216,6 +217,17 @@ export const translations = {
     searchPostsPlaceholder: "Search by caption, file, or source",
     searchLogsPlaceholder: "Search by action, actor, file, or metadata",
     noPostsMatchFilters: "No posts match the current filters.",
+    settingsSubtitle: "Manage the live list of source channels watched by the Telethon client.",
+    sourceChannelsHint:
+      "Use one channel username or numeric chat ID per line. Changes apply without restarting the bot.",
+    sourceChannelsPlaceholder: "@channel_name\n-1001234567890",
+    settingsSaveSuccess: "Settings saved",
+    settingsSavedCount: "{count} channels saved",
+    settingsResetDefaults: "Use config defaults",
+    settingsCurrentList: "Live channel list",
+    settingsDefaultList: "Config defaults",
+    settingsValkeyKey: "Valkey key",
+    settingsEmpty: "No source channels configured.",
   },
   ru: {
     dashboard: "Панель",
@@ -229,6 +241,7 @@ export const translations = {
     leaderboardSubtitle: "Показывает, какие источники дают основной объём и качество модерации.",
     events: "События",
     trash: "Корзина",
+    settings: "Настройки",
     adminPanel: "Админка",
     loginTitle: "Вход в админку",
     loginSubtitle: "Используйте Telegram для входа в панель модерации.",
@@ -434,6 +447,18 @@ export const translations = {
     searchPostsPlaceholder: "Поиск по подписи, файлу или источнику",
     searchLogsPlaceholder: "Поиск по действию, актору, файлу или метаданным",
     noPostsMatchFilters: "По текущим фильтрам постов не найдено.",
+    settingsSubtitle:
+      "Управляйте живым списком каналов-источников, которые отслеживает клиент Telethon.",
+    sourceChannelsHint:
+      "Указывайте по одному username канала или числовому chat ID в строке. Изменения применяются без перезапуска бота.",
+    sourceChannelsPlaceholder: "@channel_name\n-1001234567890",
+    settingsSaveSuccess: "Настройки сохранены",
+    settingsSavedCount: "Сохранено каналов: {count}",
+    settingsResetDefaults: "Взять значения из config",
+    settingsCurrentList: "Текущий список каналов",
+    settingsDefaultList: "Значения из config",
+    settingsValkeyKey: "Ключ Valkey",
+    settingsEmpty: "Список исходных каналов пуст.",
   },
 } as const;
 

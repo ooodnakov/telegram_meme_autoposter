@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import { useSession } from "@/components/SessionProvider";
 import {
   AlertDialog,
@@ -483,22 +484,13 @@ const LeaderboardPage = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <section className="relative overflow-hidden rounded-[24px] border border-primary/20 bg-[radial-gradient(circle_at_top_left,_hsl(var(--primary)/0.18),_transparent_36%),linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--card)/0.88)_100%)] px-4 py-4 shadow-[0_24px_80px_-40px_hsl(var(--primary)/0.45)] sm:rounded-[28px] sm:px-6 sm:py-6">
-        <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,_hsl(var(--chart-2)/0.16),_transparent_60%)] lg:block" />
-        <div className="relative flex flex-col gap-4 sm:gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <Badge className="border-primary/20 bg-primary/10 text-primary hover:bg-primary/10">
-              {t("leaderboard")}
-            </Badge>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight text-foreground sm:mt-4 sm:text-3xl">
-              {t("leaderboard")}
-            </h1>
-            <p className="mt-2 max-w-xl text-xs leading-5 text-muted-foreground sm:mt-3 sm:text-sm sm:leading-6">
-              {t("leaderboardSubtitle")}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:flex">
+      <SectionHeader
+        badge={t("leaderboard")}
+        title={t("leaderboard")}
+        description={t("leaderboardSubtitle")}
+        icon={Trophy}
+        actions={
+          <>
             <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
               <RefreshCw className="h-4 w-4" />
               {t("refresh")}
@@ -528,9 +520,9 @@ const LeaderboardPage = () => {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-          </div>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
         <CompactStatCard
@@ -630,16 +622,21 @@ const LeaderboardPage = () => {
 
         {categories.map((category) => (
           <TabsContent key={category.key} value={category.key} className="space-y-4">
-            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-foreground sm:text-lg">
-                  {category.label}
-                </h2>
-                <p className="text-xs text-muted-foreground sm:text-sm">
-                  {t("totalItems", { count: query.data[category.key].length })}
-                </p>
-              </div>
-            </div>
+            <SectionHeader
+              as="div"
+              badge={t("leaderboard")}
+              title={category.label}
+              description={t("totalItems", { count: query.data[category.key].length })}
+              icon={category.icon}
+              tone={
+                category.key === "approved"
+                  ? "success"
+                  : category.key === "rejected"
+                    ? "destructive"
+                    : "primary"
+              }
+              compact
+            />
 
             <LeaderboardTable
               rows={query.data[category.key]}

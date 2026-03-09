@@ -1,9 +1,11 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import MediaGroupCard from "@/components/MediaGroupCard";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -80,16 +82,17 @@ const PostsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              {activeFilters
-                ? t("filteredItems", { count: query.data.total_items })
-                : t("totalItems", { count: query.data.total_items })}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+      <SectionHeader
+        badge={t("posts")}
+        title={t("pendingPosts")}
+        description={
+          activeFilters
+            ? t("filteredItems", { count: query.data.total_items })
+            : t("totalItems", { count: query.data.total_items })
+        }
+        icon={FileText}
+        actions={
+          <>
             <Button
               variant="ghost"
               size="sm"
@@ -108,10 +111,23 @@ const PostsPage = () => {
             <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
               {t("refresh")}
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        <div className="glass-card grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="glass-card p-4">
+        <SectionHeader
+          as="div"
+          badge={t("posts")}
+          title={t("search")}
+          description={t("searchPostsPlaceholder")}
+          icon={SlidersHorizontal}
+          tone="neutral"
+          compact
+          className="mb-4"
+        />
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="space-y-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("search")}

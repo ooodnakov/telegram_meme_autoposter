@@ -1,12 +1,23 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Clock, FileText, Image, Layers, Lightbulb, Trash2, Video } from "lucide-react";
+import {
+  Clock,
+  FileText,
+  Image,
+  Layers,
+  LayoutDashboard,
+  Lightbulb,
+  Trash2,
+  Video,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import BadgeStatus from "@/components/BadgeStatus";
 import EventFeed from "@/components/EventFeed";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import StatCard from "@/components/StatCard";
 import { useSession } from "@/components/SessionProvider";
+import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { formatDisplayDate } from "@/lib/datetime";
 
@@ -85,6 +96,23 @@ const DashboardPage = () => {
 
   return (
     <div className="space-y-6">
+      <SectionHeader
+        badge={t("dashboard")}
+        title={t("dashboard")}
+        description={queueSummary}
+        icon={LayoutDashboard}
+        actions={
+          <>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/queue">{t("queue")}</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/events">{t("events")}</Link>
+            </Button>
+          </>
+        }
+      />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Link to="/suggestions" className="block h-full">
           <StatCard
@@ -165,29 +193,36 @@ const DashboardPage = () => {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="glass-card p-5">
-          <div className="mb-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">{t("recentEvents")}</h3>
-              <Link to="/events" className="text-xs text-primary hover:underline">
-                {t("events")}
-              </Link>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">{recentEventsSummary}</p>
-          </div>
+          <SectionHeader
+            badge={t("events")}
+            title={t("recentEvents")}
+            description={recentEventsSummary}
+            className="mb-4"
+            compact
+          />
           <div className="space-y-3">
             <EventFeed
               events={recentEvents}
               emptyMessage={t("noEventsYet")}
               variant="compact"
             />
+            <div>
+              <Link to="/events" className="text-xs text-primary hover:underline">
+                {t("events")}
+              </Link>
+            </div>
           </div>
         </div>
 
         <div className="glass-card p-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold">{t("dashboard")}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{queueSummary}</p>
-          </div>
+          <SectionHeader
+            badge={t("dashboard")}
+            title={t("operationalKpis")}
+            description={queueSummary}
+            icon={LayoutDashboard}
+            className="mb-4"
+            compact
+          />
           <div className="space-y-3">
             <SummaryRow
               label={t("itemsInBatch")}

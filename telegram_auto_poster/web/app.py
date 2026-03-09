@@ -47,6 +47,12 @@ from telegram_auto_poster.utils.db import (
     remove_scheduled_post,
 )
 from telegram_auto_poster.utils.channel_analytics import get_cached_channel_analytics
+from telegram_auto_poster.utils.channels import (
+    ensure_selected_chats_cached,
+    fetch_selected_chats,
+    get_selected_chats_cache_key,
+    store_selected_chats,
+)
 from telegram_auto_poster.utils.deduplication import (
     add_approved_hash,
     calculate_image_hash,
@@ -150,6 +156,12 @@ class ResetRequest(BaseModel):
     """JSON payload for reset actions."""
 
     next: str = "/"
+
+
+class ChannelSettingsRequest(BaseModel):
+    """JSON payload for updating the monitored source channel list."""
+
+    selected_chats: list[str] = Field(default_factory=list)
 
 
 def _cycle_language(current: str) -> str:
@@ -1887,6 +1899,44 @@ async def api_jobs() -> JSONResponse:
     """Return administrative job states."""
 
     return JSONResponse({"items": await job_manager.list_jobs()})
+
+
+@app.get("/api/settings/channels")
+async def api_settings_channels() -> JSONResponse:
+    """Return the runtime source channel settings."""
+
+    config_selected_chats = ensure_selected_chats_cached(CONFIG.chats.selected_chats)
+    selected_chats = await fetch_selected_chats(fallback=config_selected_chats)
+    return JSONResponse(
+        {
+            "selected_chats": selected_chats,
+            "default_selected_chats": list(CONFIG.chats.selected_chats),
+            "valkey_key": get_selected_chats_cache_key(),
+        }
+    )
+
+
+@app.post("/api/settings/channels")
+async def api_settings_channels_update(
+    request: Request, payload: ChannelSettingsRequest
+) -> JSONResponse:
+    """Persist the runtime source channel settings."""
+
+    selected_chats = await store_selected_chats(payload.selected_chats)
+    await _record_event(
+        "settings_update_channels",
+        origin="settings",
+        request=request,
+        extra={"selected_chats": selected_chats},
+    )
+    return JSONResponse(
+        {
+            "status": "ok",
+            "selected_chats": selected_chats,
+            "default_selected_chats": list(CONFIG.chats.selected_chats),
+            "valkey_key": get_selected_chats_cache_key(),
+        }
+    )
 
 
 @app.post("/api/jobs/{job_name}/run")

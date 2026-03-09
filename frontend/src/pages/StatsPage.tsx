@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  BarChart3,
   CheckCircle2,
   Gauge,
   Inbox,
@@ -10,6 +11,7 @@ import {
   Send,
   ShieldCheck,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -21,6 +23,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import StatCard from "@/components/StatCard";
 import {
   ChartContainer,
@@ -159,23 +162,35 @@ function resolveTelegramSeriesColor(
 function SectionCard({
   value,
   title,
+  badge,
   description,
+  icon,
+  tone = "primary",
   children,
 }: {
   value: string;
   title: string;
+  badge?: string;
   description?: string;
+  icon?: LucideIcon;
+  tone?: "primary" | "success" | "warning" | "destructive" | "neutral";
   children: ReactNode;
 }) {
   return (
-    <AccordionItem value={value} className="glass-card overflow-hidden border-none px-6">
-      <AccordionTrigger className="py-5 text-left hover:no-underline">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold">{title}</div>
-          {description ? <div className="mt-1 text-xs text-muted-foreground">{description}</div> : null}
-        </div>
+    <AccordionItem value={value} className="glass-card overflow-hidden border-none">
+      <AccordionTrigger className="p-0 text-left hover:no-underline">
+        <SectionHeader
+          as="div"
+          badge={badge ?? title}
+          title={title}
+          description={description}
+          icon={icon}
+          tone={tone}
+          compact
+          className="w-full rounded-none border-x-0 border-t-0 shadow-none"
+        />
       </AccordionTrigger>
-      <AccordionContent className="pb-6 pt-1">{children}</AccordionContent>
+      <AccordionContent className="px-6 pb-6 pt-5">{children}</AccordionContent>
     </AccordionItem>
   );
 }
@@ -307,6 +322,23 @@ const StatsPage = () => {
 
   return (
     <div className="space-y-6">
+      <SectionHeader
+        badge={t("analytics")}
+        title={t("analytics")}
+        description={t("operationalKpis")}
+        icon={BarChart3}
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t("refresh")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
+              {t("resetStats")}
+            </Button>
+          </>
+        }
+      />
+
       <Accordion
         type="multiple"
         defaultValue={[
@@ -320,12 +352,14 @@ const StatsPage = () => {
       >
         <SectionCard
           value="telegram"
+          badge={t("telegramAnalytics")}
           title={t("telegramAnalytics")}
           description={
             telegramChannelAnalytics
               ? `${t("telegramAnalyticsCached")} · ${formatDisplayDate(telegramChannelAnalytics.fetched_at)}`
               : t("telegramAnalyticsCached")
           }
+          icon={RadioTower}
         >
           {!telegramChannelAnalytics || telegramChannelAnalytics.channels.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("telegramAnalyticsUnavailable")}</p>
@@ -548,8 +582,11 @@ const StatsPage = () => {
 
         <SectionCard
           value="overview"
+          badge={t("dashboard")}
           title={t("dashboard")}
           description={t("operationalKpis")}
+          icon={Gauge}
+          tone="success"
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard
@@ -613,8 +650,10 @@ const StatsPage = () => {
 
         <SectionCard
           value="activity"
+          badge={t("analytics")}
           title={t("activityTrend")}
           description={t("hourlyRhythm")}
+          icon={Sparkles}
         >
           <div className="grid gap-6 xl:grid-cols-3">
             <div className="rounded-xl border border-border/60 bg-background/35 p-6 xl:col-span-2">
@@ -708,8 +747,11 @@ const StatsPage = () => {
 
         <SectionCard
           value="operations"
+          badge={t("scheduleHealth")}
           title={t("processingSpeed")}
           description={t("scheduleHealth")}
+          icon={ShieldCheck}
+          tone="warning"
         >
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-xl border border-border/60 bg-background/35 p-6">
@@ -833,8 +875,11 @@ const StatsPage = () => {
 
         <SectionCard
           value="sources"
+          badge={t("source")}
           title={t("sourceQuality")}
           description={t("operationalKpis")}
+          icon={Layers3}
+          tone="success"
         >
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="rounded-xl border border-border/60 bg-background/35 p-6">
@@ -910,12 +955,6 @@ const StatsPage = () => {
           </div>
         </SectionCard>
       </Accordion>
-
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={() => resetMutation.mutate()}>
-          {t("resetStats")}
-        </Button>
-      </div>
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import QueueItemCard from "@/components/QueueItemCard";
+import SectionHeader from "@/components/SectionHeader";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
 import { api, type QueueItem } from "@/lib/api";
@@ -103,19 +104,20 @@ const QueuePage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            {t("totalItems", { count: query.data.total_items })}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("pageOf", { page: query.data.page, total: query.data.total_pages })}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-          {t("refresh")}
-        </Button>
-      </div>
+      <SectionHeader
+        badge={t("queue")}
+        title={t("scheduledPosts")}
+        description={`${t("totalItems", { count: query.data.total_items })} · ${t("pageOf", {
+          page: query.data.page,
+          total: query.data.total_pages,
+        })}`}
+        icon={Clock3}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+            {t("refresh")}
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 md:grid-cols-3">
         <QueueSummaryCard

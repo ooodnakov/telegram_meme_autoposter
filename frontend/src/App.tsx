@@ -16,6 +16,7 @@ import JobsPage from "@/pages/JobsPage";
 import LeaderboardPage from "@/pages/LeaderboardPage";
 import EventsPage from "@/pages/EventsPage";
 import TrashPage from "@/pages/TrashPage";
+import SettingsPage from "@/pages/SettingsPage";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/trash" element={<TrashPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

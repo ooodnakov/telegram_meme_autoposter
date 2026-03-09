@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import time
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -21,6 +22,10 @@ from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils.channel_analytics import (
     CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS,
     refresh_channel_analytics_cache,
+)
+from telegram_auto_poster.utils.channels import (
+    ensure_selected_chats_cached,
+    fetch_selected_chats,
 )
 from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.general import RateLimiter, backoff_delay
@@ -55,7 +60,12 @@ class TelegramMemeClient:
         self.application = application
         self.target_channels = config.telegram.target_channels
         self.bot_chat_id = config.bot.bot_chat_id
-        self.selected_chats = config.chats.selected_chats
+        self.selected_chats = ensure_selected_chats_cached(config.chats.selected_chats)
+        self._selected_chat_ids: set[int] = set()
+        self._selected_chat_usernames: set[str] = set()
+        self._selected_chat_last_refresh = 0.0
+        self._selected_chat_refresh_interval = 30.0
+        self._update_selected_chat_lookup(self.selected_chats)
         self._running = False
         self.rate_limiters: dict[int, RateLimiter] = {}
         self.rate_limit_config = config.rate_limit
@@ -69,6 +79,71 @@ class TelegramMemeClient:
             )
 
         logger.info("TelegramClient instance created")
+
+    def _update_selected_chat_lookup(self, channels: list[str]) -> None:
+        """Cache selected chats for quick membership tests."""
+
+        self.selected_chats = channels
+        ids: set[int] = set()
+        usernames: set[str] = set()
+        for channel in channels:
+            cleaned = channel.strip()
+            if not cleaned:
+                continue
+            if cleaned.lstrip("-").isdigit():
+                try:
+                    channel_id = int(cleaned)
+                except ValueError:
+                    continue
+                ids.add(channel_id)
+                ids.add(abs(channel_id))
+            else:
+                usernames.add(cleaned.lstrip("@").lower())
+        self._selected_chat_ids = ids
+        self._selected_chat_usernames = usernames
+
+    async def _refresh_selected_chats(self, *, force: bool = False) -> None:
+        """Refresh selected chats from Valkey, updating caches if needed."""
+
+        now = time.monotonic()
+        if (
+            not force
+            and now - self._selected_chat_last_refresh
+            < self._selected_chat_refresh_interval
+        ):
+            return
+
+        channels = await fetch_selected_chats(fallback=self.selected_chats)
+        if channels != self.selected_chats:
+            rendered = ", ".join(channels) if channels else "<empty>"
+            logger.info(f"Selected chats updated from Valkey: {rendered}")
+        self._update_selected_chat_lookup(channels)
+        self._selected_chat_last_refresh = now
+
+    async def _is_selected_chat(self, event: EventCommon) -> bool:
+        """Return ``True`` when the event is from a monitored chat."""
+
+        await self._refresh_selected_chats()
+        chat = event.chat if getattr(event, "chat", None) else await event.get_chat()
+        candidate_ids = {
+            candidate
+            for candidate in (
+                getattr(chat, "id", None),
+                getattr(event, "chat_id", None),
+            )
+            if isinstance(candidate, int)
+        }
+        candidate_ids.update(abs(candidate) for candidate in tuple(candidate_ids))
+        if candidate_ids.intersection(self._selected_chat_ids):
+            return True
+
+        username = getattr(chat, "username", None)
+        if (
+            isinstance(username, str)
+            and username.lower() in self._selected_chat_usernames
+        ):
+            return True
+        return False
 
     async def _channel_analytics_refresh_loop(self) -> None:
         """Refresh cached Telegram-provided channel analytics while connected."""
@@ -145,10 +220,12 @@ class TelegramMemeClient:
         """Start the client and maintain the connection with retries."""
         self._running = True
 
-        @self.client.on(events.Album(chats=self.selected_chats))
+        @self.client.on(events.Album())
         async def handle_album(
             event: EventCommon,
         ) -> None:  # pragma: no cover - telemetry
+            if not await self._is_selected_chat(event):
+                return
             log = logger.bind(chat_id=event.chat_id, grouped_id=event.grouped_id)
             if not await self._check_rate_limit(event.chat_id, log):
                 return
@@ -179,10 +256,12 @@ class TelegramMemeClient:
                 if not files:
                     log.info("New non photo/video album in channel")
 
-        @self.client.on(events.NewMessage(chats=self.selected_chats))
+        @self.client.on(events.NewMessage())
         async def handle_new_message(
             event: EventCommon,
         ) -> None:  # pragma: no cover - telemetry
+            if not await self._is_selected_chat(event):
+                return
             log = logger.bind(chat_id=event.chat_id, message_id=event.id)
             if not await self._check_rate_limit(event.chat_id, log):
                 return
@@ -228,6 +307,7 @@ class TelegramMemeClient:
         while self._running:
             try:
                 await self.client.start()
+                await self._refresh_selected_chats(force=True)
                 logger.info("TelegramClient started successfully")
                 analytics_task = asyncio.create_task(
                     self._channel_analytics_refresh_loop()

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import MediaGroupCard from "@/components/MediaGroupCard";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
 import { api } from "@/lib/api";
@@ -50,14 +52,18 @@ const TrashPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("totalItems", { count: query.data.total_items })}
-        </p>
-        <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-          {t("refresh")}
-        </Button>
-      </div>
+      <SectionHeader
+        badge={t("trash")}
+        title={t("trashItems")}
+        description={t("totalItems", { count: query.data.total_items })}
+        icon={Trash2}
+        tone="destructive"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+            {t("refresh")}
+          </Button>
+        }
+      />
 
       {query.data.items.length === 0 ? (
         <LoadingState label={t("noTrash")} />

@@ -87,3 +87,29 @@ def test_api_language_updates_session(auth_client: TestClient):
     resp = auth_client.get("/api/session")
     assert resp.status_code == 200
     assert resp.json()["language"] == "en"
+
+
+def test_api_channel_settings_returns_live_and_default_values(auth_client: TestClient):
+    resp = auth_client.get("/api/settings/channels")
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "selected_chats": ["@test1", "@test2"],
+        "default_selected_chats": ["@test1", "@test2"],
+        "valkey_key": "telegram_auto_poster:config:selected_chats",
+    }
+
+
+def test_api_channel_settings_update_persists_value(auth_client: TestClient):
+    resp = auth_client.post(
+        "/api/settings/channels",
+        json={"selected_chats": ["@source_one", "-1001234567890", "@source_one"]},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "status": "ok",
+        "selected_chats": ["@source_one", "-1001234567890"],
+        "default_selected_chats": ["@test1", "@test2"],
+        "valkey_key": "telegram_auto_poster:config:selected_chats",
+    }

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pause, Play, ScanSearch } from "lucide-react";
+import { Pause, Play, ScanSearch, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import BadgeStatus from "@/components/BadgeStatus";
 import { ErrorState, LoadingState } from "@/components/PageState";
+import SectionHeader from "@/components/SectionHeader";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useSession } from "@/components/SessionProvider";
@@ -72,6 +73,24 @@ function statusLabel(status: JobRecord["status"]): TranslationKey {
     return "jobFailed";
   }
   return "jobIdle";
+}
+
+function statusTone(
+  status: JobRecord["status"],
+): "primary" | "success" | "warning" | "destructive" | "neutral" {
+  if (status === "running") {
+    return "primary";
+  }
+  if (status === "paused") {
+    return "warning";
+  }
+  if (status === "succeeded") {
+    return "success";
+  }
+  if (status === "failed") {
+    return "destructive";
+  }
+  return "neutral";
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -145,12 +164,17 @@ const JobsPage = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">{t("jobsLiveHint")}</p>
-        <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-          {t("refresh")}
-        </Button>
-      </div>
+      <SectionHeader
+        badge={t("jobs")}
+        title={t("jobs")}
+        description={t("jobsLiveHint")}
+        icon={Workflow}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+            {t("refresh")}
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         {query.data.items.map((job) => {
@@ -162,57 +186,55 @@ const JobsPage = () => {
           const processed = Number(stats.images_ocred ?? 0);
           const progress = totalPending > 0 ? Math.min(100, (processed / totalPending) * 100) : 0;
           const isMutating = runMutation.isPending || pauseMutation.isPending || resumeMutation.isPending;
+          const actionButton = job.can_pause ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              disabled={isMutating}
+              onClick={() => pauseMutation.mutate(job.name)}
+            >
+              <Pause className="h-4 w-4" />
+              {t("pauseJob")}
+            </Button>
+          ) : job.can_resume ? (
+            <Button
+              size="sm"
+              className="gap-2"
+              disabled={isMutating}
+              onClick={() => resumeMutation.mutate(job.name)}
+            >
+              <Play className="h-4 w-4" />
+              {t("resumeJob")}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              className="gap-2"
+              disabled={!job.can_run || isMutating}
+              onClick={() => runMutation.mutate(job.name)}
+            >
+              <Play className="h-4 w-4" />
+              {t("runJob")}
+            </Button>
+          );
 
           return (
             <section key={job.name} className="glass-card space-y-5 p-5">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-primary/10 p-2.5">
-                      <ScanSearch className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold">{job.title}</h3>
-                      <p className="text-sm text-muted-foreground">{job.description}</p>
-                    </div>
-                  </div>
-                  <BadgeStatus variant={statusVariant(job.status)}>
-                    {t(statusLabel(job.status))}
-                  </BadgeStatus>
-                </div>
-                {job.can_pause ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-2"
-                    disabled={isMutating}
-                    onClick={() => pauseMutation.mutate(job.name)}
-                  >
-                    <Pause className="h-4 w-4" />
-                    {t("pauseJob")}
-                  </Button>
-                ) : job.can_resume ? (
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    disabled={isMutating}
-                    onClick={() => resumeMutation.mutate(job.name)}
-                  >
-                    <Play className="h-4 w-4" />
-                    {t("resumeJob")}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    disabled={!job.can_run || isMutating}
-                    onClick={() => runMutation.mutate(job.name)}
-                  >
-                    <Play className="h-4 w-4" />
-                    {t("runJob")}
-                  </Button>
-                )}
-              </div>
+              <SectionHeader
+                as="div"
+                badge={t(statusLabel(job.status))}
+                title={job.title}
+                description={job.description}
+                icon={ScanSearch}
+                tone={statusTone(job.status)}
+                compact
+                actions={actionButton}
+              />
+
+              <BadgeStatus variant={statusVariant(job.status)}>
+                {t(statusLabel(job.status))}
+              </BadgeStatus>
 
               {job.runtime.reason ? (
                 <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
