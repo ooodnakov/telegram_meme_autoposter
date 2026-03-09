@@ -19,14 +19,26 @@ from telegram_auto_poster.config import (
     VIDEOS_PATH,
 )
 from telegram_auto_poster.utils.caption import extract_ocr_text, get_tesseract_info
+from telegram_auto_poster.utils.channel_analytics import (
+    get_cached_channel_analytics,
+    get_completed_channel_analytics_refresh,
+    request_channel_analytics_refresh,
+)
+from telegram_auto_poster.utils.deduplication import (
+    add_approved_hash,
+    calculate_image_hash,
+    calculate_video_hash,
+)
 from telegram_auto_poster.utils.db import (
     add_trashed_post,
     _redis_key,
+    clear_event_history,
     get_async_redis_client,
     get_scheduled_posts,
     remove_scheduled_post,
 )
 from telegram_auto_poster.utils.general import cleanup_temp_file, download_from_minio
+from telegram_auto_poster.utils.stats import stats
 from telegram_auto_poster.utils.storage import storage
 from telegram_auto_poster.utils.timezone import now_utc
 from telegram_auto_poster.utils.trash import purge_expired_trash
@@ -423,6 +435,13 @@ def _is_image_path(path: str) -> bool:
     return bool(mime_type and mime_type.startswith("image/"))
 
 
+def _is_video_path(path: str) -> bool:
+    """Return whether the object path points to a video."""
+
+    mime_type = mimetypes.guess_type(path)[0]
+    return bool(mime_type and mime_type.startswith("video/"))
+
+
 def _ocr_lookup_key(path: str) -> str:
     """Return the metadata lookup key for a stored image path."""
 
@@ -470,10 +489,12 @@ def _ocr_missing_images_runtime() -> dict[str, Any]:
             "current_key": "images_checked",
             "total_key": "images_missing_ocr",
             "label": "OCR progress",
+            "label_key": "ocrProgressLabel",
         },
         "details": [
             {
                 "label": "Tesseract",
+                "label_key": "jobDetailTesseract",
                 "value": (
                     tesseract.version
                     if tesseract.available
@@ -482,6 +503,7 @@ def _ocr_missing_images_runtime() -> dict[str, Any]:
             },
             {
                 "label": "OCR languages",
+                "label_key": "jobDetailOcrLanguages",
                 "value": CONFIG.ocr.languages or "—",
             },
         ],
@@ -626,11 +648,14 @@ def _refresh_search_text_runtime() -> dict[str, Any]:
             "current_key": "objects_checked",
             "total_key": "objects_total",
             "label": "Checked objects",
+            "label_key": "checkedObjectsProgress",
         },
         "details": [
             {
                 "label": "Source",
+                "label_key": "jobDetailSource",
                 "value": "MinIO metadata + OCR cache",
+                "value_key": "jobValueMinioMetadataOcrCache",
             }
         ],
     }
@@ -645,11 +670,14 @@ def _reconcile_scheduled_queue_runtime() -> dict[str, Any]:
             "current_key": "items_checked",
             "total_key": "scheduled_total",
             "label": "Checked scheduled items",
+            "label_key": "checkedScheduledItemsProgress",
         },
         "details": [
             {
                 "label": "Queue source",
+                "label_key": "jobDetailQueueSource",
                 "value": "Valkey scheduled_posts + MinIO objects",
+                "value_key": "jobValueValkeyScheduledMinioObjects",
             }
         ],
     }
@@ -716,7 +744,9 @@ def _purge_expired_trash_runtime() -> dict[str, Any]:
         "details": [
             {
                 "label": "Scope",
+                "label_key": "jobDetailScope",
                 "value": "Trash objects whose Valkey expiration has passed",
+                "value_key": "jobValueTrashExpirationScope",
             }
         ],
     }
@@ -755,11 +785,14 @@ def _sync_trash_registry_runtime() -> dict[str, Any]:
             "current_key": "items_checked",
             "total_key": "trash_objects",
             "label": "Checked trash objects",
+            "label_key": "checkedTrashObjectsProgress",
         },
         "details": [
             {
                 "label": "Queue source",
+                "label_key": "jobDetailQueueSource",
                 "value": "MinIO trash paths + metadata expiration timestamps",
+                "value_key": "jobValueMinioTrashMetadata",
             }
         ],
     }
@@ -819,6 +852,7 @@ def _reconcile_batch_count_runtime() -> dict[str, Any]:
         "details": [
             {
                 "label": "Counter",
+                "label_key": "jobDetailCounter",
                 "value": _redis_key("batch", "size"),
             }
         ],
@@ -889,6 +923,246 @@ def _parse_iso_datetime(value: object) -> datetime.datetime | None:
     return parsed.astimezone(datetime.UTC)
 
 
+def _dedup_hashes_runtime() -> dict[str, Any]:
+    """Return runtime details for the dedup hash rebuild job."""
+
+    return {
+        "can_run": True,
+        "progress": {
+            "current_key": "items_checked",
+            "total_key": "media_objects",
+            "label": "Checked media objects",
+            "label_key": "checkedMediaObjectsProgress",
+        },
+        "details": [
+            {
+                "label": "Source",
+                "label_key": "jobDetailSource",
+                "value": "Submission metadata first, MinIO download fallback",
+                "value_key": "jobValueMetadataFirstMinioFallback",
+            }
+        ],
+    }
+
+
+async def _run_rebuild_dedup_hashes(context: JobRunContext) -> None:
+    """Backfill the approved deduplication corpus from stored media objects."""
+
+    objects = await storage.list_files(BUCKET_MAIN)
+    media_objects = [path for path in objects if _is_image_path(path) or _is_video_path(path)]
+    await context.replace_stats(
+        {
+            "objects_total": len(objects),
+            "media_objects": len(media_objects),
+            "items_checked": 0,
+            "hashes_from_metadata": 0,
+            "hashes_computed": 0,
+            "hashes_added": 0,
+            "objects_skipped": 0,
+            "failed": 0,
+        }
+    )
+
+    if not media_objects:
+        await context.set_status_detail("No media objects found")
+        return
+
+    total = len(media_objects)
+    for index, path in enumerate(media_objects, start=1):
+        await context.wait_if_paused()
+        await context.set_status_detail(
+            f"Hash {index}/{total}: {os.path.basename(path)}"
+        )
+        await context.increment("items_checked")
+
+        lookup_key = _ocr_lookup_key(path)
+        meta = await storage.get_submission_metadata(lookup_key)
+        media_hash = str(meta.get("hash") or "") if meta else ""
+        if media_hash:
+            await context.increment("hashes_from_metadata")
+            if add_approved_hash(media_hash):
+                await context.increment("hashes_added")
+            continue
+
+        temp_path = None
+        try:
+            temp_path, _mime = await download_from_minio(path, BUCKET_MAIN)
+            if not temp_path:
+                await context.increment("failed")
+                continue
+
+            if _is_image_path(path):
+                media_hash = await asyncio.to_thread(calculate_image_hash, temp_path) or ""
+            elif _is_video_path(path):
+                media_hash = await asyncio.to_thread(calculate_video_hash, temp_path) or ""
+            else:
+                await context.increment("objects_skipped")
+                continue
+        except Exception:
+            await context.increment("failed")
+            logger.exception("Failed to rebuild dedup hash for %s", path)
+            continue
+        finally:
+            cleanup_temp_file(temp_path)
+
+        if not media_hash:
+            await context.increment("failed")
+            continue
+
+        await context.increment("hashes_computed")
+        if add_approved_hash(media_hash):
+            await context.increment("hashes_added")
+        if meta is not None:
+            await storage.update_submission_metadata(lookup_key, hash=media_hash)
+
+    await context.set_status_detail(f"Rebuilt dedup hashes for {total} media objects")
+
+
+def _refresh_channel_analytics_runtime() -> dict[str, Any]:
+    """Return runtime details for the analytics refresh job."""
+
+    return {
+        "can_run": True,
+        "details": [
+            {
+                "label": "Execution",
+                "label_key": "jobDetailExecution",
+                "value": "Requested via Valkey and fulfilled by the Telethon client",
+                "value_key": "jobValueTelethonViaValkey",
+            }
+        ],
+    }
+
+
+async def _run_refresh_channel_analytics(context: JobRunContext) -> None:
+    """Request and wait for a forced Telegram analytics cache refresh."""
+
+    request_id = await request_channel_analytics_refresh()
+    await context.replace_stats(
+        {
+            "refresh_requested": 1,
+            "wait_seconds": 0,
+            "channels_total": 0,
+            "channels_with_errors": 0,
+        }
+    )
+    await context.set_status_detail("Waiting for the Telethon client to refresh analytics")
+
+    timeout_seconds = 30
+    for waited in range(timeout_seconds + 1):
+        await context.wait_if_paused()
+        await context.set_stat("wait_seconds", waited)
+        completed_id = await get_completed_channel_analytics_refresh()
+        if completed_id == request_id:
+            payload = await get_cached_channel_analytics()
+            channels = payload.get("channels") if isinstance(payload, dict) else []
+            channel_items = channels if isinstance(channels, list) else []
+            error_count = sum(
+                1
+                for item in channel_items
+                if isinstance(item, dict) and item.get("error")
+            )
+            await context.replace_stats(
+                {
+                    "refresh_requested": 1,
+                    "wait_seconds": waited,
+                    "channels_total": len(channel_items),
+                    "channels_with_errors": error_count,
+                }
+            )
+            await context.set_status_detail("Analytics cache refreshed")
+            return
+        await asyncio.sleep(1)
+
+    raise RuntimeError(
+        "Timed out waiting for the Telethon client to refresh analytics cache"
+    )
+
+
+def _reset_daily_stats_runtime() -> dict[str, Any]:
+    """Return runtime details for the daily stats reset job."""
+
+    return {
+        "can_run": True,
+        "details": [
+            {
+                "label": "Scope",
+                "label_key": "jobDetailScope",
+                "value": "Daily counters and hourly activity buckets",
+                "value_key": "jobValueDailyStatsScope",
+            }
+        ],
+    }
+
+
+async def _run_reset_daily_stats(context: JobRunContext) -> None:
+    """Reset daily statistics and persist the new state."""
+
+    message = await stats.reset_daily_stats()
+    await stats.force_save()
+    await context.replace_stats(
+        {
+            "reset_performed": 1,
+            "message_length": len(message),
+        }
+    )
+    await context.set_status_detail(message)
+
+
+def _reset_leaderboard_runtime() -> dict[str, Any]:
+    """Return runtime details for the leaderboard reset job."""
+
+    return {
+        "can_run": True,
+        "details": [
+            {
+                "label": "Scope",
+                "label_key": "jobDetailScope",
+                "value": "Per-source submissions, approvals, and rejections",
+                "value_key": "jobValueLeaderboardScope",
+            }
+        ],
+    }
+
+
+async def _run_reset_leaderboard(context: JobRunContext) -> None:
+    """Reset leaderboard counters and persist the new state."""
+
+    message = await stats.reset_leaderboard()
+    await stats.force_save()
+    await context.replace_stats(
+        {
+            "reset_performed": 1,
+            "message_length": len(message),
+        }
+    )
+    await context.set_status_detail(message)
+
+
+def _clear_event_history_runtime() -> dict[str, Any]:
+    """Return runtime details for the event history clear job."""
+
+    return {
+        "can_run": True,
+        "details": [
+            {
+                "label": "Scope",
+                "label_key": "jobDetailScope",
+                "value": "Stored administrative event history",
+                "value_key": "jobValueEventHistoryScope",
+            }
+        ],
+    }
+
+
+async def _run_clear_event_history(context: JobRunContext) -> None:
+    """Clear the stored administrative event history."""
+
+    await clear_event_history()
+    await context.replace_stats({"reset_performed": 1})
+    await context.set_status_detail("Event history cleared")
+
+
 job_manager = JobManager()
 job_manager.register(
     JobDefinition(
@@ -942,5 +1216,50 @@ job_manager.register(
         description="Reset the stored batch counter to match the actual number of batch objects in storage.",
         runner=_run_reconcile_batch_count,
         runtime_builder=_reconcile_batch_count_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="rebuild_dedup_hashes",
+        title="Rebuild dedup hashes",
+        description="Backfill the approved media hash corpus from stored metadata and media objects.",
+        runner=_run_rebuild_dedup_hashes,
+        runtime_builder=_dedup_hashes_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="refresh_channel_analytics",
+        title="Refresh channel analytics",
+        description="Ask the Telethon client to force-refresh the cached Telegram analytics payload.",
+        runner=_run_refresh_channel_analytics,
+        runtime_builder=_refresh_channel_analytics_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="reset_daily_stats",
+        title="Reset daily stats",
+        description="Clear daily counters and hourly activity buckets, then persist the new baseline.",
+        runner=_run_reset_daily_stats,
+        runtime_builder=_reset_daily_stats_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="reset_leaderboard",
+        title="Reset leaderboard",
+        description="Clear per-source submission and moderation counters, then persist the reset.",
+        runner=_run_reset_leaderboard,
+        runtime_builder=_reset_leaderboard_runtime,
+    )
+)
+job_manager.register(
+    JobDefinition(
+        name="clear_event_history",
+        title="Clear event history",
+        description="Remove the stored administrative event history from Valkey.",
+        runner=_run_clear_event_history,
+        runtime_builder=_clear_event_history_runtime,
     )
 )

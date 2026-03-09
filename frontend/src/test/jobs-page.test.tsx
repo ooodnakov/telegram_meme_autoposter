@@ -49,11 +49,14 @@ vi.mock("@tanstack/react-query", () => ({
               current_key: "items_checked",
               total_key: "scheduled_total",
               label: "Checked scheduled items",
+              label_key: "checkedScheduledItemsProgress",
             },
             details: [
               {
                 label: "Queue source",
+                label_key: "jobDetailQueueSource",
                 value: "Valkey scheduled_posts + MinIO objects",
+                value_key: "jobValueValkeyScheduledMinioObjects",
               },
             ],
           },
@@ -96,6 +99,18 @@ vi.mock("@/components/SessionProvider", () => ({
       if (key === "scheduledQueue") {
         return "Scheduled queue";
       }
+      if (key === "checkedScheduledItemsProgress") {
+        return "Checked scheduled items";
+      }
+      if (key === "jobDetailQueueSource") {
+        return "Queue source";
+      }
+      if (key === "jobValueValkeyScheduledMinioObjects") {
+        return "Valkey scheduled_posts + MinIO objects";
+      }
+      if (key === "removedStale") {
+        return "Removed stale entries";
+      }
       return params ? `${key}:${JSON.stringify(params)}` : key;
     },
   }),
@@ -113,6 +128,6 @@ describe("JobsPage", () => {
       screen.getByText("Valkey scheduled_posts + MinIO objects"),
     ).toBeInTheDocument();
     expect(screen.getByText("Scheduled queue")).toBeInTheDocument();
-    expect(screen.getByText("Removed Stale")).toBeInTheDocument();
+    expect(screen.getByText("Removed stale entries")).toBeInTheDocument();
   });
 });

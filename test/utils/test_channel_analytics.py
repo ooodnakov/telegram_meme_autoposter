@@ -9,7 +9,11 @@ from telethon import types
 from telegram_auto_poster.utils.channel_analytics import (
     CHANNEL_ANALYTICS_CACHE_TTL_SECONDS,
     get_cached_channel_analytics,
+    get_completed_channel_analytics_refresh,
+    get_requested_channel_analytics_refresh,
+    mark_channel_analytics_refresh_completed,
     refresh_channel_analytics_cache,
+    request_channel_analytics_refresh,
 )
 
 
@@ -135,3 +139,15 @@ async def test_refresh_channel_analytics_cache_uses_existing_cache(analytics_red
 
     assert first == second
     assert client.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_channel_analytics_refresh_request_round_trip(analytics_redis):
+    request_id = await request_channel_analytics_refresh()
+
+    assert await get_requested_channel_analytics_refresh() == request_id
+
+    await mark_channel_analytics_refresh_completed(request_id)
+
+    assert await get_requested_channel_analytics_refresh() is None
+    assert await get_completed_channel_analytics_refresh() == request_id

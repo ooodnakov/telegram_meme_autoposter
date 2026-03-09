@@ -13,12 +13,47 @@ import type { TranslationKey } from "@/lib/i18n";
 
 const statLabels: Partial<Record<string, TranslationKey>> = {
   images_total: "imagesTotal",
+  images_checked: "imagesChecked",
   images_missing_ocr: "imagesMissingOcr",
+  images_skipped: "imagesSkipped",
   images_ocred: "imagesOcred",
   images_with_text: "imagesWithText",
   images_without_text: "imagesWithoutText",
   images_failed: "errors",
+  objects_total: "objectsTotal",
+  objects_checked: "objectsChecked",
+  objects_indexed: "objectsIndexed",
+  objects_changed: "objectsChanged",
+  objects_without_metadata: "objectsWithoutMetadata",
   scheduled_total: "scheduledQueue",
+  items_checked: "itemsChecked",
+  kept_valid: "keptValid",
+  overdue_items: "overdueItems",
+  missing_objects: "missingObjects",
+  removed_stale: "removedStale",
+  trash_objects_before: "trashObjectsBefore",
+  trash_objects_after: "trashObjectsAfter",
+  removed: "removedItems",
+  trash_objects: "trashObjects",
+  registry_synced: "registrySynced",
+  missing_metadata: "missingMetadata",
+  invalid_expiration: "invalidExpiration",
+  already_expired: "alreadyExpired",
+  stored_count: "storedCount",
+  actual_count: "actualCount",
+  delta: "delta",
+  updated: "updatedItems",
+  media_objects: "mediaObjects",
+  hashes_from_metadata: "hashesFromMetadata",
+  hashes_computed: "hashesComputed",
+  hashes_added: "hashesAdded",
+  objects_skipped: "objectsSkipped",
+  refresh_requested: "refreshRequested",
+  wait_seconds: "waitSeconds",
+  channels_total: "channelsTotal",
+  channels_with_errors: "channelsWithErrors",
+  reset_performed: "resetPerformed",
+  message_length: "messageLength",
   failed: "errors",
 };
 
@@ -74,6 +109,17 @@ function metricLabel(key: string, t: (key: TranslationKey, values?: Record<strin
   return startCase(key);
 }
 
+function runtimeLabel(
+  labelKey: TranslationKey | null | undefined,
+  fallback: string | null | undefined,
+  t: (key: TranslationKey, values?: Record<string, string | number>) => string,
+): string {
+  if (labelKey) {
+    return t(labelKey);
+  }
+  return fallback?.trim() || "—";
+}
+
 function resolveProgress(job: JobRecord, stats: Record<string, number | string>) {
   const progress = job.runtime.progress;
   if (!progress) {
@@ -87,7 +133,8 @@ function resolveProgress(job: JobRecord, stats: Record<string, number | string>)
   }
 
   return {
-    label: progress.label ?? "Progress",
+    label: progress.label_key ? null : progress.label ?? "Progress",
+    labelKey: progress.label_key,
     current,
     total,
     value: Math.min(100, (current / total) * 100),
@@ -296,7 +343,9 @@ const JobsPage = () => {
               {(job.status === "running" || job.status === "paused") && progress ? (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{progress.label}</span>
+                    <span className="text-muted-foreground">
+                      {runtimeLabel(progress.labelKey, progress.label, t)}
+                    </span>
                     <span className="font-medium">
                       {progress.current}/{progress.total}
                     </span>
@@ -325,8 +374,12 @@ const JobsPage = () => {
                 {runtimeDetails.map((detail, index) => (
                   <InfoRow
                     key={`${detail.label}-${index}`}
-                    label={detail.label}
-                    value={formatDetailValue(detail.value)}
+                    label={runtimeLabel(detail.label_key, detail.label, t)}
+                    value={
+                      detail.value_key
+                        ? t(detail.value_key)
+                        : formatDetailValue(detail.value)
+                    }
                   />
                 ))}
               </div>

@@ -6,9 +6,14 @@ import pytest
 
 from telegram_auto_poster.config import BUCKET_MAIN
 from telegram_auto_poster.utils.jobs import (
+    _run_clear_event_history,
+    _run_refresh_channel_analytics,
+    _run_rebuild_dedup_hashes,
     _run_purge_expired_trash,
     _run_reconcile_scheduled_queue,
     _run_reconcile_batch_count,
+    _run_reset_daily_stats,
+    _run_reset_leaderboard,
     _run_sync_trash_registry,
     _run_refresh_search_text,
 )
@@ -25,6 +30,9 @@ class _FakeJobContext:
 
     async def increment(self, key: str, amount: int = 1) -> None:
         self.stats[key] = int(self.stats.get(key, 0)) + amount
+
+    async def set_stat(self, key: str, value: int | float | str) -> None:
+        self.stats[key] = value
 
     async def set_status_detail(self, detail: str | None) -> None:
         self.status_detail = detail
@@ -192,3 +200,139 @@ async def test_reconcile_batch_count_job_resets_counter_to_storage_size(
     assert context.stats["delta"] == -2
     assert context.stats["updated"] == 1
     redis.set.assert_awaited_once_with("telegram_auto_poster:batch:size", "3")
+
+
+@pytest.mark.asyncio
+async def test_rebuild_dedup_hashes_job_uses_metadata_then_computes_fallback(
+    mocker,
+) -> None:
+    context = _FakeJobContext()
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.list_files",
+        new=mocker.AsyncMock(
+            return_value=["photos/one.jpg", "videos/two.mp4", "downloads/file.txt"]
+        ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.get_submission_metadata",
+        new=mocker.AsyncMock(side_effect=[{"hash": "meta-hash"}, {}]),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.download_from_minio",
+        new=mocker.AsyncMock(return_value=("/tmp/two.mp4", "video/mp4")),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.calculate_video_hash",
+        return_value="computed-hash",
+    )
+    add_hash = mocker.patch(
+        "telegram_auto_poster.utils.jobs.add_approved_hash",
+        side_effect=[True, True],
+    )
+    update_meta = mocker.patch(
+        "telegram_auto_poster.utils.jobs.storage.update_submission_metadata",
+        new=mocker.AsyncMock(),
+    )
+    cleanup = mocker.patch("telegram_auto_poster.utils.jobs.cleanup_temp_file")
+
+    await _run_rebuild_dedup_hashes(context)
+
+    assert context.stats["objects_total"] == 3
+    assert context.stats["media_objects"] == 2
+    assert context.stats["items_checked"] == 2
+    assert context.stats["hashes_from_metadata"] == 1
+    assert context.stats["hashes_computed"] == 1
+    assert context.stats["hashes_added"] == 2
+    add_hash.assert_any_call("meta-hash")
+    add_hash.assert_any_call("computed-hash")
+    update_meta.assert_awaited_once_with("two.mp4", hash="computed-hash")
+    cleanup.assert_called_once_with("/tmp/two.mp4")
+
+
+@pytest.mark.asyncio
+async def test_refresh_channel_analytics_job_waits_for_acknowledgement(mocker) -> None:
+    context = _FakeJobContext()
+    request = mocker.patch(
+        "telegram_auto_poster.utils.jobs.request_channel_analytics_refresh",
+        new=mocker.AsyncMock(return_value="req-1"),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.get_completed_channel_analytics_refresh",
+        new=mocker.AsyncMock(side_effect=[None, "req-1"]),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.jobs.get_cached_channel_analytics",
+        new=mocker.AsyncMock(
+            return_value={
+                "channels": [
+                    {"peer": "@a"},
+                    {"peer": "@b", "error": "permission denied"},
+                ]
+            }
+        ),
+    )
+    sleep = mocker.patch("telegram_auto_poster.utils.jobs.asyncio.sleep", new=mocker.AsyncMock())
+
+    await _run_refresh_channel_analytics(context)
+
+    assert context.stats["refresh_requested"] == 1
+    assert context.stats["channels_total"] == 2
+    assert context.stats["channels_with_errors"] == 1
+    assert context.stats["wait_seconds"] == 1
+    request.assert_awaited_once()
+    sleep.assert_awaited_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_reset_daily_stats_job_persists_reset(mocker) -> None:
+    context = _FakeJobContext()
+    reset = mocker.patch(
+        "telegram_auto_poster.utils.jobs.stats.reset_daily_stats",
+        new=mocker.AsyncMock(return_value="Daily statistics have been reset."),
+    )
+    save = mocker.patch(
+        "telegram_auto_poster.utils.jobs.stats.force_save",
+        new=mocker.AsyncMock(),
+    )
+
+    await _run_reset_daily_stats(context)
+
+    assert context.stats["reset_performed"] == 1
+    assert context.status_detail == "Daily statistics have been reset."
+    reset.assert_awaited_once()
+    save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reset_leaderboard_job_persists_reset(mocker) -> None:
+    context = _FakeJobContext()
+    reset = mocker.patch(
+        "telegram_auto_poster.utils.jobs.stats.reset_leaderboard",
+        new=mocker.AsyncMock(return_value="Leaderboard has been reset."),
+    )
+    save = mocker.patch(
+        "telegram_auto_poster.utils.jobs.stats.force_save",
+        new=mocker.AsyncMock(),
+    )
+
+    await _run_reset_leaderboard(context)
+
+    assert context.stats["reset_performed"] == 1
+    assert context.status_detail == "Leaderboard has been reset."
+    reset.assert_awaited_once()
+    save.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_clear_event_history_job_clears_history(mocker) -> None:
+    context = _FakeJobContext()
+    clear = mocker.patch(
+        "telegram_auto_poster.utils.jobs.clear_event_history",
+        new=mocker.AsyncMock(),
+    )
+
+    await _run_clear_event_history(context)
+
+    assert context.stats["reset_performed"] == 1
+    assert context.status_detail == "Event history cleared"
+    clear.assert_awaited_once()

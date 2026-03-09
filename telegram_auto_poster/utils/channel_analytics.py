@@ -14,12 +14,25 @@ from telethon import TelegramClient, functions, types
 
 CHANNEL_ANALYTICS_CACHE_TTL_SECONDS = 24 * 60 * 60
 CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS = 60 * 60
+CHANNEL_ANALYTICS_REFRESH_REQUEST_TTL_SECONDS = 10 * 60
 
 
 def _cache_key() -> str:
     """Return the Valkey key used for cached Telegram analytics."""
 
     return _redis_key("cache", "telegram_channel_analytics")
+
+
+def _refresh_request_key() -> str:
+    """Return the Valkey key used to request an analytics refresh."""
+
+    return _redis_key("cache", "telegram_channel_analytics_refresh_request")
+
+
+def _refresh_completed_key() -> str:
+    """Return the Valkey key storing the most recently completed request ID."""
+
+    return _redis_key("cache", "telegram_channel_analytics_refresh_completed")
 
 
 def _serialize_abs_metric(
@@ -309,6 +322,45 @@ async def get_cached_channel_analytics() -> dict[str, object] | None:
     except json.JSONDecodeError:
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+async def request_channel_analytics_refresh() -> str:
+    """Request that the Telethon client force-refresh cached analytics."""
+
+    request_id = now_utc().isoformat()
+    client = get_async_redis_client()
+    await client.setex(
+        _refresh_request_key(),
+        CHANNEL_ANALYTICS_REFRESH_REQUEST_TTL_SECONDS,
+        request_id,
+    )
+    return request_id
+
+
+async def get_requested_channel_analytics_refresh() -> str | None:
+    """Return the pending analytics refresh request ID, if any."""
+
+    client = get_async_redis_client()
+    raw = await client.get(_refresh_request_key())
+    return raw if isinstance(raw, str) and raw else None
+
+
+async def mark_channel_analytics_refresh_completed(request_id: str) -> None:
+    """Mark one analytics refresh request as completed."""
+
+    client = get_async_redis_client()
+    pipe = client.pipeline()
+    pipe.set(_refresh_completed_key(), request_id)
+    pipe.delete(_refresh_request_key())
+    await pipe.execute()
+
+
+async def get_completed_channel_analytics_refresh() -> str | None:
+    """Return the most recently completed analytics refresh request ID."""
+
+    client = get_async_redis_client()
+    raw = await client.get(_refresh_completed_key())
+    return raw if isinstance(raw, str) and raw else None
 
 
 async def refresh_channel_analytics_cache(

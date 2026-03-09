@@ -22,6 +22,8 @@ from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.channel_analytics import (
     CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS,
+    get_requested_channel_analytics_refresh,
+    mark_channel_analytics_refresh_completed,
     refresh_channel_analytics_cache,
 )
 from telegram_auto_poster.utils.channels import (
@@ -148,16 +150,33 @@ class TelegramMemeClient:
     async def _channel_analytics_refresh_loop(self) -> None:
         """Refresh cached Telegram-provided channel analytics while connected."""
 
+        poll_interval_seconds = 5.0
+        next_refresh_at = 0.0
         while self._running:
+            request_id = None
+            force_refresh = False
             try:
-                await refresh_channel_analytics_cache(self.client, self.target_channels)
+                request_id = await get_requested_channel_analytics_refresh()
+                force_refresh = request_id is not None
+                if force_refresh or time.monotonic() >= next_refresh_at:
+                    await refresh_channel_analytics_cache(
+                        self.client,
+                        self.target_channels,
+                        force=force_refresh,
+                    )
+                    if request_id is not None:
+                        await mark_channel_analytics_refresh_completed(request_id)
+                    next_refresh_at = (
+                        time.monotonic()
+                        + CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS
+                    )
             except asyncio.CancelledError:  # pragma: no cover - task cancellation
                 raise
             except Exception as exc:  # pragma: no cover - network dependent
                 logger.warning(
                     f"Failed to refresh Telegram channel analytics cache: {exc}"
                 )
-            await asyncio.sleep(CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS)
+            await asyncio.sleep(poll_interval_seconds)
 
     async def _check_rate_limit(self, chat_id: int, log: "Logger") -> bool:
         """Acquire a token from the rate limiter for the given chat.

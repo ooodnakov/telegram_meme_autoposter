@@ -1,3 +1,5 @@
+import type { TranslationKey } from "@/lib/i18n";
+
 export class ApiError extends Error {
   status: number;
   detail: string;
@@ -117,10 +119,13 @@ export interface JobRuntime {
     current_key: string;
     total_key: string;
     label?: string | null;
+    label_key?: TranslationKey | null;
   } | null;
   details?: Array<{
     label: string;
+    label_key?: TranslationKey | null;
     value: string | number | boolean | null;
+    value_key?: TranslationKey | null;
   }> | null;
   ocr_enabled?: boolean;
   languages?: string | null;
