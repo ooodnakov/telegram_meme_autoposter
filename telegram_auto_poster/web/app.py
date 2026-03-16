@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 import mimetypes
 import os
 import pydoc
@@ -46,6 +47,7 @@ from telegram_auto_poster.utils.db import (
     clear_event_history,
     decrement_batch_count,
     get_batch_count,
+    get_async_redis_client,
     get_event_history,
     get_event_history_count,
     get_scheduled_posts,
@@ -113,6 +115,8 @@ SPA_RESERVED_PATHS = {
     "placeholder.svg",
 }
 METADATA_LOOKUP_BATCH_SIZE = 50
+POSTS_SUMMARY_CACHE_TTL_SECONDS = 30
+POSTS_SUMMARY_CACHE_KEY = "web:posts:summary:v1"
 
 
 class ActionRequest(BaseModel):
@@ -472,6 +476,14 @@ def _sanitize_posts_layout(value: str) -> str:
     return "all"
 
 
+def _sanitize_posts_sort(value: str) -> str:
+    """Return a supported sort order for posts and suggestions."""
+
+    if value == "oldest":
+        return "oldest"
+    return "newest"
+
+
 def _normalize_posts_source(value: str) -> str | None:
     """Return a normalized exact-match source filter."""
 
@@ -580,6 +592,7 @@ def _build_post_summary_item(
         "kind": _media_kind(path, mime),
         "caption": meta.get("caption") if meta else None,
         "source": meta.get("source") if meta else None,
+        "timestamp": _parse_iso_timestamp(meta.get("timestamp") if meta else None),
         "group_id": meta.get("group_id") if meta else None,
         "_search_text": _search_text_for_post(path, meta),
     }
@@ -591,6 +604,13 @@ def _build_post_summary_group(
     """Build a lightweight group payload for filtering and pagination."""
 
     payload = _group_payload(items, dict(meta) if meta else None)
+    timestamps = [
+        value
+        for item in items
+        for value in [item.get("timestamp")]
+        if isinstance(value, str) and value
+    ]
+    payload["timestamp"] = max(timestamps) if timestamps else None
     payload["_search_text"] = " ".join(
         item["_search_text"]
         for item in items
@@ -599,10 +619,83 @@ def _build_post_summary_group(
     return payload
 
 
-async def _collect_post_summary_groups(
-    only_suggestions: bool,
+def _post_group_sort_key(group: Mapping[str, object]) -> tuple[datetime.datetime, str]:
+    """Return sorting key for one post group."""
+
+    timestamp = group.get("timestamp")
+    if isinstance(timestamp, str) and timestamp:
+        try:
+            parsed = datetime.datetime.fromisoformat(timestamp)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed, str(group.get("group_id") or "")
+        except ValueError:
+            pass
+    return datetime.datetime.min.replace(tzinfo=UTC), str(group.get("group_id") or "")
+
+
+def _sort_posts_groups(
+    groups: Sequence[dict[str, object]], sort: str
 ) -> list[dict[str, object]]:
-    """Collect post groups without generating presigned URLs."""
+    """Return groups sorted by their submission timestamp."""
+
+    reverse = sort != "oldest"
+    return sorted(groups, key=_post_group_sort_key, reverse=reverse)
+
+
+def _posts_cache_key() -> str:
+    """Return the Valkey key used for serialized posts summary groups."""
+
+    prefix = CONFIG.valkey.prefix
+    return f"{prefix}:{POSTS_SUMMARY_CACHE_KEY}" if prefix else POSTS_SUMMARY_CACHE_KEY
+
+
+async def _get_cached_posts_summary_groups() -> list[dict[str, object]] | None:
+    """Return cached summary groups when available."""
+
+    try:
+        cache = get_async_redis_client()
+        payload = await cache.get(_posts_cache_key())
+        if not payload:
+            return None
+        parsed = json.loads(payload)
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, dict)]
+    except Exception:
+        logger.exception("Failed to read cached posts summary groups")
+    return None
+
+
+async def _store_cached_posts_summary_groups(groups: Sequence[dict[str, object]]) -> None:
+    """Persist summary groups for reuse across requests."""
+
+    try:
+        cache = get_async_redis_client()
+        await cache.setex(
+            _posts_cache_key(),
+            POSTS_SUMMARY_CACHE_TTL_SECONDS,
+            json.dumps(groups),
+        )
+    except Exception:
+        logger.exception("Failed to cache posts summary groups")
+
+
+async def _invalidate_posts_summary_cache() -> None:
+    """Clear cached summary groups after queue mutations."""
+
+    try:
+        cache = get_async_redis_client()
+        await cache.delete(_posts_cache_key())
+    except Exception:
+        logger.exception("Failed to invalidate cached posts summary groups")
+
+
+async def _collect_all_post_summary_groups() -> list[dict[str, object]]:
+    """Collect all processed post groups, using Valkey cache when available."""
+
+    cached = await _get_cached_posts_summary_groups()
+    if cached is not None:
+        return cached
 
     objects = await _list_media("processed")
     meta_items = await _get_metas_for_paths(objects)
@@ -610,12 +703,6 @@ async def _collect_post_summary_groups(
     grouped: dict[str, dict[str, object]] = {}
 
     for path, meta in meta_items:
-        is_suggestion = bool(meta and meta.get("user_id"))
-        if only_suggestions and not is_suggestion:
-            continue
-        if not only_suggestions and is_suggestion:
-            continue
-
         item = _build_post_summary_item(path, meta)
         group_id = meta.get("group_id") if meta else None
         if group_id:
@@ -631,7 +718,29 @@ async def _collect_post_summary_groups(
                 bucket.get("meta"),  # type: ignore[arg-type]
             )
         )
+
+    await _store_cached_posts_summary_groups(posts)
     return posts
+
+
+async def _collect_post_summary_groups(
+    only_suggestions: bool,
+) -> list[dict[str, object]]:
+    """Collect post groups without generating presigned URLs."""
+
+    posts = await _collect_all_post_summary_groups()
+    filtered: list[dict[str, object]] = []
+    for post in posts:
+        submitter = post.get("submitter")
+        is_suggestion = bool(
+            isinstance(submitter, dict) and submitter.get("is_suggestion")
+        )
+        if only_suggestions and not is_suggestion:
+            continue
+        if not only_suggestions and is_suggestion:
+            continue
+        filtered.append(post)
+    return filtered
 
 
 async def _hydrate_post_groups(
@@ -1234,6 +1343,7 @@ async def _perform_action(
     else:
         raise HTTPException(status_code=400, detail="Unsupported action")
 
+    await _invalidate_posts_summary_cache()
     await _record_event(action, origin=origin, request=request, items=metas)
     return {"status": "ok"}
 
@@ -1266,6 +1376,7 @@ async def _send_batch_now(request: Request) -> dict[str, object]:
             processed_groups += 1
         except Exception:
             logger.exception("Failed to send batch group")
+    await _invalidate_posts_summary_cache()
     if event_items:
         await _record_event(
             "batch_send",
@@ -1301,6 +1412,7 @@ async def _manual_schedule_batch(
         await _schedule_post_at(item_path, next_ts)
         next_ts += MANUAL_SCHEDULE_INTERVAL_SECONDS
 
+    await _invalidate_posts_summary_cache()
     if metas:
         await _record_event(
             "manual_schedule",
@@ -1329,6 +1441,7 @@ async def _schedule_queue_item(path: str, scheduled_at: str) -> dict[str, object
 async def _unschedule_queue_item(path: str) -> dict[str, object]:
     """Remove a post from the scheduled queue."""
 
+    await _invalidate_posts_summary_cache()
     await run_in_threadpool(remove_scheduled_post, path)
     await stats.record_unscheduled()
     try:
@@ -1782,12 +1895,15 @@ async def api_dashboard() -> JSONResponse:
 
 
 @app.get("/api/suggestions")
-async def api_suggestions(page: int = 1) -> JSONResponse:
+async def api_suggestions(page: int = 1, sort: str = "newest") -> JSONResponse:
     """Return paginated suggestions awaiting review."""
 
-    count = await _get_suggestions_count()
+    sanitized_sort = _sanitize_posts_sort(sort)
+    suggestions = await _collect_post_summary_groups(True)
+    sorted_suggestions = _sort_posts_groups(suggestions, sanitized_sort)
+    count = len(sorted_suggestions)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = await _gather_posts(True, offset=offset, limit=ITEMS_PER_PAGE)
+    items = await _hydrate_post_groups(sorted_suggestions[offset : offset + ITEMS_PER_PAGE])
     return JSONResponse(
         {
             "items": items,
@@ -1795,6 +1911,7 @@ async def api_suggestions(page: int = 1) -> JSONResponse:
             "per_page": ITEMS_PER_PAGE,
             "total_pages": total_pages,
             "total_items": count,
+            "sort": sanitized_sort,
         }
     )
 
@@ -1806,12 +1923,14 @@ async def api_posts(
     kind: str = "all",
     layout: str = "all",
     source: str = "all",
+    sort: str = "newest",
 ) -> JSONResponse:
     """Return paginated processed posts awaiting publication."""
 
     sanitized_kind = _sanitize_posts_kind(kind)
     sanitized_layout = _sanitize_posts_layout(layout)
     normalized_source = _normalize_posts_source(source)
+    sanitized_sort = _sanitize_posts_sort(sort)
     normalized_query = q.strip()
 
     posts = await _collect_post_summary_groups(False)
@@ -1823,13 +1942,13 @@ async def api_posts(
             if isinstance(source_name, str) and source_name
         }
     )
-    filtered_posts = _filter_posts_groups(
+    filtered_posts = _sort_posts_groups(_filter_posts_groups(
         posts,
         query=normalized_query,
         kind=sanitized_kind,
         layout=sanitized_layout,
         source=normalized_source,
-    )
+    ), sanitized_sort)
     count = len(filtered_posts)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
     items = await _hydrate_post_groups(filtered_posts[offset : offset + ITEMS_PER_PAGE])
@@ -1845,6 +1964,7 @@ async def api_posts(
                 "kind": sanitized_kind,
                 "layout": sanitized_layout,
                 "source": normalized_source or "all",
+                "sort": sanitized_sort,
                 "sources": sources,
             },
         }

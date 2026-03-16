@@ -65,6 +65,7 @@ export interface PostsFilters {
   kind: "all" | "image" | "video";
   layout: "all" | "single" | "group";
   source: string;
+  sort: "newest" | "oldest";
 }
 
 export interface PostsFiltersPayload extends PostsFilters {
@@ -328,8 +329,8 @@ export const api = {
     }),
   logout: () => apiRequest<{ status: string }>("/logout", { method: "POST" }),
   getDashboard: () => apiRequest<DashboardSummary>("/api/dashboard"),
-  getSuggestions: (page: number) =>
-    apiRequest<PaginatedResponse<MediaGroup>>(`/api/suggestions?page=${page}`),
+  getSuggestions: (page: number, sort: "newest" | "oldest" = "newest") =>
+    apiRequest<PaginatedResponse<MediaGroup>>(`/api/suggestions?page=${page}&sort=${sort}`),
   getPosts: (page: number, filters?: Partial<PostsFilters>) => {
     const params = new URLSearchParams({ page: String(page) });
     if (filters?.q) {
@@ -343,6 +344,9 @@ export const api = {
     }
     if (filters?.source && filters.source !== "all") {
       params.set("source", filters.source);
+    }
+    if (filters?.sort) {
+      params.set("sort", filters.sort);
     }
     return apiRequest<PostsResponse>(`/api/posts?${params.toString()}`);
   },

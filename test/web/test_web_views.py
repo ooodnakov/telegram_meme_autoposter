@@ -296,6 +296,7 @@ def test_posts_api_filters_items_and_returns_filter_metadata(
         "kind": "video",
         "layout": "group",
         "source": "@dogs",
+        "sort": "newest",
         "sources": ["@cats", "@dogs"],
     }
 
@@ -346,6 +347,80 @@ def test_posts_api_ignores_invalid_filter_values(mocker, auth_client: TestClient
     assert payload["filters"]["kind"] == "all"
     assert payload["filters"]["layout"] == "all"
     assert payload["filters"]["source"] == "all"
+
+
+def test_posts_api_applies_oldest_sort(mocker, auth_client: TestClient):
+    mocker.patch(
+        "telegram_auto_poster.web.app._collect_post_summary_groups",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "items": [{"path": "photos/processed_new.jpg", "name": "processed_new.jpg", "kind": "image"}],
+                    "count": 1,
+                    "is_group": False,
+                    "source": "@a",
+                    "timestamp": "2024-01-02T00:00:00+00:00",
+                },
+                {
+                    "items": [{"path": "photos/processed_old.jpg", "name": "processed_old.jpg", "kind": "image"}],
+                    "count": 1,
+                    "is_group": False,
+                    "source": "@a",
+                    "timestamp": "2024-01-01T00:00:00+00:00",
+                },
+            ]
+        ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._hydrate_post_groups",
+        new=mocker.AsyncMock(side_effect=lambda groups: list(groups)),
+    )
+
+    resp = auth_client.get("/api/posts", params={"sort": "oldest"})
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert [item["items"][0]["path"] for item in payload["items"]] == [
+        "photos/processed_old.jpg",
+        "photos/processed_new.jpg",
+    ]
+    assert payload["filters"]["sort"] == "oldest"
+
+
+def test_suggestions_api_supports_sort(mocker, auth_client: TestClient):
+    mocker.patch(
+        "telegram_auto_poster.web.app._collect_post_summary_groups",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "items": [{"path": "photos/processed_new.jpg", "name": "processed_new.jpg", "kind": "image"}],
+                    "count": 1,
+                    "is_group": False,
+                    "timestamp": "2024-01-02T00:00:00+00:00",
+                },
+                {
+                    "items": [{"path": "photos/processed_old.jpg", "name": "processed_old.jpg", "kind": "image"}],
+                    "count": 1,
+                    "is_group": False,
+                    "timestamp": "2024-01-01T00:00:00+00:00",
+                },
+            ]
+        ),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._hydrate_post_groups",
+        new=mocker.AsyncMock(side_effect=lambda groups: list(groups)),
+    )
+
+    resp = auth_client.get("/api/suggestions", params={"sort": "oldest"})
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["sort"] == "oldest"
+    assert [item["items"][0]["path"] for item in payload["items"]] == [
+        "photos/processed_old.jpg",
+        "photos/processed_new.jpg",
+    ]
 
 
 def test_action_api_push_group(mocker, auth_client: TestClient):

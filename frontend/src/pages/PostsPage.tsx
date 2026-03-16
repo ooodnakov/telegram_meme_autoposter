@@ -25,6 +25,7 @@ const PostsPage = () => {
     kind: "all",
     layout: "all",
     source: "all",
+    sort: "newest",
   });
   const queryClient = useQueryClient();
   const { t } = useSession();
@@ -33,20 +34,22 @@ const PostsPage = () => {
     deferredQuery.length > 0 ||
     filters.kind !== "all" ||
     filters.layout !== "all" ||
-    filters.source !== "all";
+    filters.source !== "all" ||
+    filters.sort !== "newest";
 
   useEffect(() => {
     setPage(1);
-  }, [deferredQuery, filters.kind, filters.layout, filters.source]);
+  }, [deferredQuery, filters.kind, filters.layout, filters.source, filters.sort]);
 
   const query = useQuery({
-    queryKey: ["posts", page, deferredQuery, filters.kind, filters.layout, filters.source],
+    queryKey: ["posts", page, deferredQuery, filters.kind, filters.layout, filters.source, filters.sort],
     queryFn: () =>
       api.getPosts(page, {
         q: deferredQuery,
         kind: filters.kind,
         layout: filters.layout,
         source: filters.source,
+        sort: filters.sort,
       }),
     placeholderData: (previousData) => previousData,
   });
@@ -102,6 +105,7 @@ const PostsPage = () => {
                   kind: "all",
                   layout: "all",
                   source: "all",
+                  sort: "newest",
                 })
               }
               disabled={!activeFilters}
@@ -127,7 +131,7 @@ const PostsPage = () => {
           className="mb-4"
         />
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-2">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {t("search")}
@@ -215,6 +219,29 @@ const PostsPage = () => {
                 <SelectItem value="all">{t("allLayouts")}</SelectItem>
                 <SelectItem value="single">{t("singlePosts")}</SelectItem>
                 <SelectItem value="group">{t("groupedPosts")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("sortOrder")}
+            </span>
+            <Select
+              value={filters.sort}
+              onValueChange={(value: PostsFilters["sort"]) =>
+                setFilters((current) => ({
+                  ...current,
+                  sort: value,
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">{t("newestFirst")}</SelectItem>
+                <SelectItem value="oldest">{t("oldestFirst")}</SelectItem>
               </SelectContent>
             </Select>
           </label>
