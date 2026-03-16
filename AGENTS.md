@@ -1,95 +1,126 @@
 # AGENTS Code Assistant Context
 
-This document provides context for the AGENTS Code Assistant to understand the project structure, technologies used, and development conventions.
+This file describes the current project architecture, tooling, and conventions for contributors and code assistants.
 
 ## Project Overview
 
-This project is a Telegram bot that automatically posts memes to a specified channel. It watches multiple source channels for new media (images and videos), adds a watermark, and forwards the content to a target channel after an administrator's approval. The system also sends feedback to submitters, maintains usage statistics, and includes a simple web dashboard for reviewing queued media.
+Telegram Meme Autoposter is a Python-based moderation and publishing pipeline for Telegram media content.
 
-The project is written in Python and uses the following technologies:
+It ingests media from:
+- configured source channels (via Telethon), and
+- direct user submissions to the bot (via python-telegram-bot).
 
-* **Telegram Bot API**: `python-telegram-bot` drives the interactive bot.
-* **Telegram User API**: `Telethon` monitors channels for new media.
-* **MinIO**: Stores original and processed media.
-* **Valkey**: Keeps statistics in memory.
-* **Docker**: Provides containerized deployment via `Dockerfile` and `docker-compose.yaml`.
+Content is then processed (watermarking/deduplication/metadata), reviewed by admins, and either:
+- scheduled or posted to destination channels,
+- kept in batch flows, or
+- moved to trash with restore/delete options.
 
-The application is divided into three main components:
+A FastAPI backend serves a React SPA dashboard for moderation, analytics, and operational controls.
 
-1. **Bot (`bot.py`)** – handles user commands, content submission, feedback, and admin approvals.
-2. **Client (`client.py`)** – watches source channels and downloads media for processing.
-3. **Web Dashboard (`web/`)** – FastAPI app for reviewing queued items and viewing analytics.
+## Runtime Architecture
 
-## Building and Running
+### 1) Entry point and orchestration
+- `telegram_auto_poster/main.py`
+  - Loads config
+  - Starts bot polling and Telethon watcher concurrently
+  - Handles graceful shutdown and stats flush
+
+### 2) Bot runtime
+- `telegram_auto_poster/bot/`
+  - `bot.py`: bot initialization and lifecycle
+  - `commands.py`, `callbacks.py`, `handlers.py`: command and moderation flows
+  - `permissions.py`: role and access controls
+
+### 3) Channel watcher
+- `telegram_auto_poster/client/client.py`
+  - Subscribes to source channels
+  - Fetches incoming media/messages for processing pipeline
+
+### 4) Media processing
+- `telegram_auto_poster/media/photo.py`
+- `telegram_auto_poster/media/video.py`
+  - Watermark and transform photo/video assets
+
+### 5) Web API + dashboard shell
+- `telegram_auto_poster/web/app.py`
+  - Authentication/session handling
+  - API endpoints for suggestions, queue, batch, posts, trash, events, stats, leaderboard, and settings
+  - Serves frontend build from `frontend/dist`
+
+### 6) Shared services/utilities
+- `telegram_auto_poster/utils/`
+  - Storage layer (MinIO), stats/leaderboard (Valkey), scheduling/jobs, channel analytics, i18n, trash lifecycle, helpers
+
+### 7) Frontend SPA
+- `frontend/`
+  - Vite + React + TypeScript admin dashboard
+  - Route-based moderation/operations UI
+
+## Storage and State
+
+- **MinIO**: object storage for originals, processed media, and metadata sidecars.
+- **Valkey**: in-memory counters, analytics, and leaderboard/event-related state.
+
+## Build and Run
 
 ### Prerequisites
+- Python 3.12
+- `uv`
+- Node.js + npm (for frontend)
+- MinIO and Valkey instances
+- Telegram Bot token + Telegram API credentials
 
-* Python 3.12 and [uv](https://github.com/astral-sh/uv)
-* MinIO server
-* Valkey server
-* A Telegram bot token and API credentials
+### Install
+```bash
+cp config.example.ini config.ini
+cp .env.example .env
+uv sync
+cd frontend && npm install && cd ..
+```
 
-### Installation
-
-1. Clone the repository.
-2. Create configuration files:
-   ```bash
-   cp config.example.ini config.ini
-   cp .env.example .env
-   ```
-3. Install the dependencies:
-   ```bash
-   uv sync
-   ```
-
-### Running the Application
-
-To run the bot, use:
-
+### Run backend (bot + watcher)
 ```bash
 uv run python -m telegram_auto_poster.main
 ```
 
-You can also run both the bot and the dashboard in the background:
-
+### Run dashboard API server directly
 ```bash
-./run_bg.sh
+uv run uvicorn telegram_auto_poster.web.app:app --host 0.0.0.0 --port 8000
 ```
 
-### Running with Docker
-
-The project can be run with Docker:
-
+### Build frontend for FastAPI serving
 ```bash
-docker-compose up -d
+cd frontend && npm run build && cd ..
+```
+
+### Docker
+```bash
+docker-compose up -d --build
 ```
 
 ## Development Conventions
 
-### Code Style
-
-Use `ruff` to keep imports sorted and code formatted:
-
+### Formatting and linting
+Use Ruff:
 ```bash
 uv run ruff check --select I --fix
 uv run ruff check
 uv run ruff format
 ```
 
-Configuration for `ruff` resides in `pyproject.toml`.
-
 ### Testing
-
-Tests live in the `test/` directory and are executed with:
-
+Backend tests:
 ```bash
 uv run pytest -n auto
 ```
 
-### Logging
+Frontend tests (inside `frontend/`):
+```bash
+npm test
+```
 
-Logging uses `loguru` with configuration in `telegram_auto_poster/utils/logger_setup.py`.
+### Logging
+- `loguru` configuration is in `telegram_auto_poster/utils/logger_setup.py`.
 
 ### Configuration
-
-Settings are loaded from `config.ini` and environment variables by `load_config()` in `telegram_auto_poster/config.py`.
+- Loaded from `config.ini` + environment variables via `load_config()` in `telegram_auto_poster/config.py`.

@@ -1,6 +1,26 @@
 # Telegram Meme Autoposter
 
-A Telegram bot + watcher that monitors source channels for media (photos/videos), watermarks and queues them for admin review, then posts to a target channel. Includes feedback to submitters, usage stats, and a React dashboard served by FastAPI.
+A Telegram automation platform that ingests media from source channels and direct bot submissions, processes it (watermarking, deduplication, metadata), and routes it through moderation flows before publishing to destination channels. The app includes a Python backend, a React SPA admin dashboard, and background scheduling/analytics utilities.
+
+## Current Architecture
+
+The application is split into clear runtime layers:
+
+1. **Ingestion layer**
+   - `telegram_auto_poster/client/client.py` uses Telethon to monitor source channels and download candidate media.
+   - `telegram_auto_poster/bot/handlers.py` accepts user submissions through `python-telegram-bot`.
+2. **Processing layer**
+   - `telegram_auto_poster/media/photo.py` and `telegram_auto_poster/media/video.py` apply watermarks and transformations.
+   - `telegram_auto_poster/utils/deduplication.py`, `caption.py`, and related helpers normalize posts before review.
+3. **Moderation & publishing layer**
+   - `telegram_auto_poster/web/app.py` exposes API endpoints consumed by the SPA for queue review, scheduling, trash/restore, events, settings, and stats.
+   - Moderation actions move objects between storage prefixes (`processed`, `scheduled`, `posted`, `trash`) and can trigger immediate posting or scheduled publishing.
+4. **Storage and state layer**
+   - MinIO stores media binaries and metadata sidecars.
+   - Valkey-backed utilities in `telegram_auto_poster/utils/stats.py` and related modules store counters, leaderboard data, and event snapshots.
+5. **Frontend layer**
+   - `frontend/` is a Vite + React + TypeScript SPA with route-based pages for suggestions, queue, batch, posts, trash, stats, leaderboard, jobs, and settings.
+   - Built assets are served by FastAPI from `frontend/dist`.
 
 ## Quick Setup
 
@@ -76,13 +96,15 @@ Key topics to start with:
 
 ## Project Structure
 
-- `telegram_auto_poster/main.py`: App entrypoint wiring bot + client
-- `telegram_auto_poster/bot/`: Bot commands, handlers, permissions
-- `telegram_auto_poster/client/`: Telethon client watching channels
-- `telegram_auto_poster/web/`: FastAPI dashboard app
-- `telegram_auto_poster/utils/`: Logging, storage, helpers
-- `telegram_auto_poster/locales/`: I18n files and scripts
-- `wiki/`: Project Wiki (git submodule)
+- `telegram_auto_poster/main.py`: Async entrypoint orchestrating bot polling + channel watcher lifecycle.
+- `telegram_auto_poster/bot/`: Bot runtime (`bot.py`) and command/callback/handler modules.
+- `telegram_auto_poster/client/`: Telethon ingestion client for monitored channels.
+- `telegram_auto_poster/media/`: Image/video processing pipelines.
+- `telegram_auto_poster/web/`: FastAPI app providing auth, API endpoints, and static SPA serving.
+- `telegram_auto_poster/utils/`: Shared services (storage, stats, scheduler, jobs, i18n, trash, analytics).
+- `frontend/`: React admin dashboard source code and tests.
+- `test/`: Python test suite for backend behavior.
+- `wiki/`: Project Wiki content (submodule).
 
 ## Web Dashboard & Docs
 
