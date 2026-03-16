@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import ContentLayoutSelect, {
+  type ContentLayoutMode,
+} from "@/components/ContentLayoutSelect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lightbulb } from "lucide-react";
 import { toast } from "sonner";
@@ -20,6 +23,7 @@ import { api } from "@/lib/api";
 const SuggestionsPage = () => {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
+  const [layoutMode, setLayoutMode] = useState<ContentLayoutMode>("comfortable");
   const queryClient = useQueryClient();
   const { t } = useSession();
 
@@ -70,6 +74,7 @@ const SuggestionsPage = () => {
         icon={Lightbulb}
         actions={
           <div className="flex items-center gap-2">
+            <ContentLayoutSelect value={layoutMode} onChange={setLayoutMode} />
             <Select value={sort} onValueChange={(value: "newest" | "oldest") => setSort(value)}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -89,7 +94,15 @@ const SuggestionsPage = () => {
       {query.data.items.length === 0 ? (
         <LoadingState label={t("noSuggestions")} />
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div
+          className={`grid grid-cols-1 ${
+            layoutMode === "list"
+              ? "gap-4"
+              : layoutMode === "compact"
+                ? "gap-3 md:grid-cols-2 2xl:grid-cols-3"
+                : "gap-4 xl:grid-cols-2"
+          }`}
+        >
           {query.data.items.map((group) => (
             <MediaGroupCard
               key={group.items.map((item) => item.path).join("|")}

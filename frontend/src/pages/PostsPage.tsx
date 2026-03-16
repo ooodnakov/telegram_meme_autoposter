@@ -1,4 +1,7 @@
 import { useDeferredValue, useEffect, useState } from "react";
+import ContentLayoutSelect, {
+  type ContentLayoutMode,
+} from "@/components/ContentLayoutSelect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +30,7 @@ const PostsPage = () => {
     source: "all",
     sort: "newest",
   });
+  const [layoutMode, setLayoutMode] = useState<ContentLayoutMode>("comfortable");
   const queryClient = useQueryClient();
   const { t } = useSession();
   const deferredQuery = useDeferredValue(filters.q.trim());
@@ -96,6 +100,7 @@ const PostsPage = () => {
         icon={FileText}
         actions={
           <>
+            <ContentLayoutSelect value={layoutMode} onChange={setLayoutMode} />
             <Button
               variant="ghost"
               size="sm"
@@ -258,9 +263,13 @@ const PostsPage = () => {
         ) : (
           <div className="relative">
             <div
-              className={`grid grid-cols-1 gap-4 transition-opacity xl:grid-cols-2 ${
-                query.isFetching ? "opacity-60" : "opacity-100"
-              }`}
+              className={`grid grid-cols-1 transition-opacity ${
+                layoutMode === "list"
+                  ? "gap-4"
+                  : layoutMode === "compact"
+                    ? "gap-3 md:grid-cols-2 2xl:grid-cols-3"
+                    : "gap-4 xl:grid-cols-2"
+              } ${query.isFetching ? "opacity-60" : "opacity-100"}`}
             >
               {query.data.items.map((group) => (
                 <MediaGroupCard

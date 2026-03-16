@@ -1,4 +1,7 @@
 import { useState } from "react";
+import ContentLayoutSelect, {
+  type ContentLayoutMode,
+} from "@/components/ContentLayoutSelect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock3, Hash, Layers3 } from "lucide-react";
 import { toast } from "sonner";
@@ -39,6 +42,7 @@ function QueueSummaryCard({
 
 const QueuePage = () => {
   const [page, setPage] = useState(1);
+  const [layoutMode, setLayoutMode] = useState<ContentLayoutMode>("comfortable");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
   const { t } = useSession();
@@ -113,9 +117,12 @@ const QueuePage = () => {
         })}`}
         icon={Clock3}
         actions={
-          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-            {t("refresh")}
-          </Button>
+          <>
+            <ContentLayoutSelect value={layoutMode} onChange={setLayoutMode} />
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t("refresh")}
+            </Button>
+          </>
         }
       />
 
@@ -142,7 +149,15 @@ const QueuePage = () => {
       {query.data.items.length === 0 ? (
         <LoadingState label={t("noQueue")} />
       ) : (
-        <div className="space-y-4">
+        <div
+          className={`grid ${
+            layoutMode === "list"
+              ? "grid-cols-1 gap-4"
+              : layoutMode === "compact"
+                ? "grid-cols-1 gap-3 2xl:grid-cols-2"
+                : "grid-cols-1 gap-4 xl:grid-cols-2"
+          }`}
+        >
           {query.data.items.map((item) => {
             const draftValue = getDraftValue(item);
             const isSavingItem =
