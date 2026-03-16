@@ -82,6 +82,48 @@ def _format_graph_x(value: Any) -> tuple[str, str]:
     return str(value), str(value)
 
 
+def _to_hour_bucket(value: Any) -> int | None:
+    """Convert graph x-value into an hour bucket [0..23] when possible."""
+
+    if isinstance(value, (int, float)):
+        numeric = float(value)
+        if 0 <= numeric <= 23:
+            return int(numeric)
+        ts = numeric / 1000 if numeric > 10_000_000_000 else numeric
+        dt = datetime.datetime.fromtimestamp(ts, tz=datetime.UTC)
+        return dt.hour
+    return None
+
+
+def _normalize_top_hours_points(
+    points: list[dict[str, Any]], series_keys: Sequence[str]
+) -> list[dict[str, Any]]:
+    """Return exactly 24 hourly buckets for Telegram ``top_hours`` charts."""
+
+    buckets: list[dict[str, Any]] = []
+    for hour in range(24):
+        point: dict[str, Any] = {
+            "x": str(hour),
+            "label": hour,
+            "raw_x": hour,
+        }
+        for series_key in series_keys:
+            point[series_key] = 0
+        buckets.append(point)
+
+    for point in points:
+        hour = _to_hour_bucket(point.get("raw_x"))
+        if hour is None or hour < 0 or hour > 23:
+            continue
+        bucket = buckets[hour]
+        for series_key in series_keys:
+            value = point.get(series_key)
+            if isinstance(value, (int, float)):
+                bucket[series_key] += value
+
+    return buckets
+
+
 async def _resolve_graph(
     client: TelegramClient, graph: types.TypeStatsGraph
 ) -> types.TypeStatsGraph:
@@ -155,6 +197,9 @@ async def _serialize_graph(
         }
         for series_key in keyed_columns
     ]
+    if key == "top_hours":
+        points = _normalize_top_hours_points(points, [item["key"] for item in series])
+
     if not series or not points:
         return None
 

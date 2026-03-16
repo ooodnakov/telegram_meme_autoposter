@@ -121,6 +121,14 @@ async def test_refresh_channel_analytics_cache_serializes_broadcast_stats(
     assert payload["channels"][0]["summary_metrics"][0]["current"] == 1200.0
     assert payload["channels"][0]["ratio_metrics"][0]["percentage"] == pytest.approx(35.0)
     assert payload["channels"][0]["graphs"][0]["series"][0]["label"] == "Followers"
+    top_hours_graph = next(
+        graph for graph in payload["channels"][0]["graphs"] if graph["key"] == "top_hours"
+    )
+    assert len(top_hours_graph["points"]) == 24
+    assert top_hours_graph["points"][0]["label"] == 0
+    assert top_hours_graph["points"][-1]["label"] == 23
+    assert top_hours_graph["points"][0]["y0"] == 220
+    assert top_hours_graph["points"][0]["y1"] == 95
     assert payload["channels"][0]["recent_posts"][0]["link"] == "https://t.me/mychannel/101"
 
     cached = await get_cached_channel_analytics()
