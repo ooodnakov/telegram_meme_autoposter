@@ -20,6 +20,14 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import type { MediaAsset, MediaGroup } from "@/lib/api";
@@ -189,6 +197,7 @@ const SwipeModerationDeck = ({
   const [dismissedAction, setDismissedAction] = useState<SwipeAction | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [previewAsset, setPreviewAsset] = useState<MediaAsset | null>(null);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const pointerIdRef = useRef<number | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -218,6 +227,10 @@ const SwipeModerationDeck = ({
       timeoutRef.current = null;
     }
   }, [activeGroup?.group_id, activeGroup?.items[0]?.path]);
+
+  useEffect(() => {
+    setIsInfoOpen(false);
+  }, [previewAsset?.path]);
 
   useEffect(() => {
     return () => {
@@ -349,6 +362,9 @@ const SwipeModerationDeck = ({
     setPreviewAsset(item);
   }
 
+  const previewSource = previewAsset?.source ?? activeGroup?.source ?? activeGroup?.submitter?.source ?? t("unknown");
+  const previewCaption = previewAsset?.caption ?? activeGroup?.caption ?? t("noCaption");
+
   if (!activeGroup || !activeItem) {
     return (
       <div className="glass-card p-10 text-center">
@@ -373,17 +389,45 @@ const SwipeModerationDeck = ({
   return (
     <>
       <Dialog open={previewAsset !== null} onOpenChange={(open) => !open && setPreviewAsset(null)}>
-        <DialogContent className="z-[140] w-[98vw] max-w-[98vw] border-none bg-black/95 p-0 shadow-none sm:rounded-2xl">
+        <DialogContent className="z-[140] h-screen w-screen max-w-none border-none bg-black p-0 shadow-none sm:rounded-none">
           <DialogTitle className="sr-only">{previewAsset?.caption ?? previewAsset?.name ?? "Preview"}</DialogTitle>
           <DialogDescription className="sr-only">
             Preview the selected media in full screen.
           </DialogDescription>
           {previewAsset ? (
-            <img
-              src={previewAsset.url}
-              alt={previewAsset.caption ?? previewAsset.name}
-              className="max-h-[94vh] w-full rounded-2xl object-contain"
-            />
+            <div className="relative h-full w-full bg-black">
+              <img
+                src={previewAsset.url}
+                alt={previewAsset.caption ?? previewAsset.name}
+                className="h-full w-full object-contain"
+              />
+
+              <Drawer open={isInfoOpen} onOpenChange={setIsInfoOpen}>
+                <DrawerTrigger asChild>
+                  <button
+                    type="button"
+                    className="absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-1 bg-gradient-to-t from-black/85 to-transparent pb-5 pt-12 text-white/90"
+                  >
+                    <span className="h-1.5 w-12 rounded-full bg-white/60" />
+                    <span className="text-xs font-medium tracking-wide">{t("swipeUpForInfo")}</span>
+                  </button>
+                </DrawerTrigger>
+                <DrawerContent className="z-[150] max-h-[70vh] rounded-t-3xl border-white/15 bg-zinc-950 text-white">
+                  <DrawerHeader>
+                    <DrawerTitle>{t("mediaDetails")}</DrawerTitle>
+                    <DrawerDescription className="text-white/70">{t("swipeDownToClose")}</DrawerDescription>
+                  </DrawerHeader>
+                  <div className="grid gap-3 px-4 pb-6 text-sm md:px-6">
+                    <InfoRow label={t("source")} value={previewSource} />
+                    <InfoRow label={t("mediaType")} value={previewAsset.kind} />
+                    <InfoRow label={t("file")} value={previewAsset.name} />
+                    <InfoRow label={t("path")} value={previewAsset.path} />
+                    <InfoRow label={t("groupId")} value={previewAsset.group_id ?? activeGroup?.group_id ?? t("unknown")} />
+                    <InfoRow label={t("textExtracted")} value={previewCaption} multiline />
+                  </div>
+                </DrawerContent>
+              </Drawer>
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>
@@ -422,25 +466,17 @@ const SwipeModerationDeck = ({
                   <div
                     key={group.items.map((item) => item.path).join("|")}
                     className={cn(
-                      "pointer-events-none absolute inset-0 mx-auto overflow-hidden rounded-[2rem] border border-border/50 bg-card/50 shadow-[0_35px_120px_-70px_hsl(var(--primary)/0.8)] backdrop-blur-md",
+                      "pointer-events-none absolute inset-0 mx-auto overflow-hidden rounded-[2rem] border border-border/50 bg-card/70 shadow-[0_35px_120px_-70px_hsl(var(--primary)/0.8)] backdrop-blur-md",
                       isMobile ? "top-3 w-[92%]" : "top-5 w-[92%]",
                     )}
                     style={{
                       transform: `translateY(${(index + 1) * (isMobile ? 12 : 22)}px) scale(${0.95 - index * 0.04})`,
-                      opacity: 0.38 - index * 0.12,
+                      opacity: 0.22 - index * 0.09,
                       zIndex: 10 - index,
                     }}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/10 to-black/60" />
-                    {previewItem.kind === "image" ? (
-                      <img
-                        src={previewItem.url}
-                        alt={previewItem.caption ?? previewItem.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <video className="h-full w-full object-cover" preload="metadata" src={previewItem.url} />
-                    )}
+                    <div className="absolute inset-0 bg-gradient-to-b from-card/80 via-card/70 to-card/40" />
+                    <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/20 to-transparent" />
                   </div>
                 );
               })}
@@ -669,6 +705,24 @@ const SwipeModerationDeck = ({
     </>
   );
 };
+
+
+function InfoRow({
+  label,
+  value,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="space-y-1 rounded-xl border border-white/10 bg-white/5 p-3">
+      <p className="text-xs uppercase tracking-wide text-white/55">{label}</p>
+      <p className={cn("text-sm text-white", multiline && "whitespace-pre-wrap break-words")}>{value}</p>
+    </div>
+  );
+}
 
 function tabDirectionLabel(
   action: SwipeAction | null,
