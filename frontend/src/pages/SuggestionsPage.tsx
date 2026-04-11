@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lightbulb } from "lucide-react";
 import { toast } from "sonner";
@@ -8,16 +8,28 @@ import { ErrorState, LoadingState } from "@/components/PageState";
 import SectionHeader from "@/components/SectionHeader";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/components/SessionProvider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/api";
 
 const SuggestionsPage = () => {
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const queryClient = useQueryClient();
   const { t } = useSession();
 
+  useEffect(() => {
+    setPage(1);
+  }, [sort]);
+
   const query = useQuery({
-    queryKey: ["suggestions", page],
-    queryFn: () => api.getSuggestions(page),
+    queryKey: ["suggestions", page, sort],
+    queryFn: () => api.getSuggestions(page, sort),
   });
 
   const mutation = useMutation({
@@ -57,9 +69,20 @@ const SuggestionsPage = () => {
         description={t("totalItems", { count: query.data.total_items })}
         icon={Lightbulb}
         actions={
-          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-            {t("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Select value={sort} onValueChange={(value: "newest" | "oldest") => setSort(value)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">{t("newestFirst")}</SelectItem>
+                <SelectItem value="oldest">{t("oldestFirst")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t("refresh")}
+            </Button>
+          </div>
         }
       />
 
