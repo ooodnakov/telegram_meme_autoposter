@@ -1,4 +1,7 @@
 import { useState } from "react";
+import ContentLayoutSelect, {
+  type ContentLayoutMode,
+} from "@/components/ContentLayoutSelect";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Hash, Layers3, Send } from "lucide-react";
 import { toast } from "sonner";
@@ -42,6 +45,7 @@ const getGroupKey = (paths: string[]) => paths.join("|");
 
 const BatchPage = () => {
   const [page, setPage] = useState(1);
+  const [layoutMode, setLayoutMode] = useState<ContentLayoutMode>("comfortable");
   const [scheduleInputs, setScheduleInputs] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
   const { t } = useSession();
@@ -124,6 +128,7 @@ const BatchPage = () => {
         icon={Layers3}
         actions={
           <>
+            <ContentLayoutSelect value={layoutMode} onChange={setLayoutMode} />
             <Button
               size="sm"
               onClick={() => sendMutation.mutate()}
@@ -162,7 +167,15 @@ const BatchPage = () => {
       {query.data.items.length === 0 ? (
         <LoadingState label={t("noBatch")} />
       ) : (
-        <div className="space-y-4">
+        <div
+          className={`grid ${
+            layoutMode === "list"
+              ? "grid-cols-1 gap-4"
+              : layoutMode === "compact"
+                ? "grid-cols-1 gap-3 2xl:grid-cols-2"
+                : "grid-cols-1 gap-4 xl:grid-cols-2"
+          }`}
+        >
           {query.data.items.map((group) => {
             const groupKey = getGroupKey(group.items.map((item) => item.path));
             const activeAction =
