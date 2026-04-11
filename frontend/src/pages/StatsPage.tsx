@@ -489,7 +489,15 @@ const StatsPage = () => {
                                   >
                                     <ComposedChart data={points}>
                                       <CartesianGrid vertical={false} />
-                                      <XAxis dataKey="label" minTickGap={24} />
+                                      <XAxis
+                                        dataKey="label"
+                                        minTickGap={graph.key === "top_hours" ? 8 : 24}
+                                        tickFormatter={(value) =>
+                                          graph.key === "top_hours" && typeof value === "number"
+                                            ? formatHourLabel(value)
+                                            : String(value)
+                                        }
+                                      />
                                       <YAxis
                                         allowDecimals={!graph.percentage}
                                         tickFormatter={(value) =>
@@ -498,7 +506,18 @@ const StatsPage = () => {
                                             : String(value)
                                         }
                                       />
-                                      <ChartTooltip content={<ChartTooltipContent />} />
+                                      <ChartTooltip
+                                        content={
+                                          <ChartTooltipContent
+                                            labelFormatter={(value) =>
+                                              graph.key === "top_hours" &&
+                                              typeof value === "number"
+                                                ? formatHourLabel(value)
+                                                : String(value)
+                                            }
+                                          />
+                                        }
+                                      />
                                       <ChartLegend content={<ChartLegendContent />} />
                                       {seriesWithColors.map((item) =>
                                         item.type === "bar" ? (
