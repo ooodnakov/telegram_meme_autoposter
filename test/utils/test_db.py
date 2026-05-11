@@ -87,3 +87,24 @@ async def test_clear_event_history(mock_async_redis):
 
     events = await db.get_event_history()
     assert events == []
+
+def test_add_scheduled_post(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    # Add a scheduled post
+    db.add_scheduled_post(100, "foo")
+
+    zset_key = db._redis_key("scheduled_posts", "schedule")
+    hash_key = db._redis_key("scheduled_posts", "scheduled_at")
+
+    # Verify internal state
+    assert fake.zscore(zset_key, "foo") == 100.0
+    assert fake.hget(hash_key, "foo") == "100"
+
+    # Update the scheduled post
+    db.add_scheduled_post(200, "foo")
+
+    # Verify updated internal state
+    assert fake.zscore(zset_key, "foo") == 200.0
+    assert fake.hget(hash_key, "foo") == "200"
