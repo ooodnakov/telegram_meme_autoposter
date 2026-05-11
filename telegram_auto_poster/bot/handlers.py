@@ -55,7 +55,6 @@ MAX_RETRIES = 5
 RETRY_DELAY = 1
 
 
-
 @dataclass
 class ProcessContext:
     """Context object containing parameters for media processing."""
