@@ -498,3 +498,43 @@ session_secret = secret
     assert cached.telegram.api_id == 123
     assert refreshed.telegram.api_id == 999
     assert refreshed is not first
+
+
+def test_load_config(monkeypatch, mocker):
+    import telegram_auto_poster.config as config_module
+
+    mock_ini = {
+        "telegram": {
+            "api_id": 123,
+            "api_hash": "abc",
+            "username": "test",
+            "target_channels": ["@test"],
+        },
+        "bot": {"bot_token": "tok", "bot_username": "bot", "bot_chat_id": 1},
+        "chats": {"selected_chats": ["@chat"], "luba_chat": ""},
+        "web": {"session_secret": "sec"},
+    }
+    mock_env = {"telegram": {"api_id": 456}}
+
+    mock_load_ini = mocker.patch.object(
+        config_module, "_load_ini", return_value=mock_ini
+    )
+    mock_load_env = mocker.patch.object(
+        config_module, "_load_env", return_value=mock_env
+    )
+
+    mock_logger_bind = mocker.patch.object(config_module.logger, "bind")
+    mock_logger_info = mock_logger_bind.return_value.info
+
+    monkeypatch.setenv("CONFIG_PATH", "custom_path.ini")
+
+    conf = config_module.load_config()
+
+    mock_load_ini.assert_called_once_with("custom_path.ini")
+    mock_load_env.assert_called_once()
+
+    assert conf.telegram.api_id == 456
+
+    mock_logger_bind.assert_called_once_with(event="config_loaded")
+    mock_logger_info.assert_called_once()
+    assert "Config loaded:" in mock_logger_info.call_args[0][0]
