@@ -949,7 +949,9 @@ async def _run_rebuild_dedup_hashes(context: JobRunContext) -> None:
     """Backfill the approved deduplication corpus from stored media objects."""
 
     objects = await storage.list_files(BUCKET_MAIN)
-    media_objects = [path for path in objects if _is_image_path(path) or _is_video_path(path)]
+    media_objects = [
+        path for path in objects if _is_image_path(path) or _is_video_path(path)
+    ]
     await context.replace_stats(
         {
             "objects_total": len(objects),
@@ -992,9 +994,13 @@ async def _run_rebuild_dedup_hashes(context: JobRunContext) -> None:
                 continue
 
             if _is_image_path(path):
-                media_hash = await asyncio.to_thread(calculate_image_hash, temp_path) or ""
+                media_hash = (
+                    await asyncio.to_thread(calculate_image_hash, temp_path) or ""
+                )
             elif _is_video_path(path):
-                media_hash = await asyncio.to_thread(calculate_video_hash, temp_path) or ""
+                media_hash = (
+                    await asyncio.to_thread(calculate_video_hash, temp_path) or ""
+                )
             else:
                 await context.increment("objects_skipped")
                 continue
@@ -1046,7 +1052,9 @@ async def _run_refresh_channel_analytics(context: JobRunContext) -> None:
             "channels_with_errors": 0,
         }
     )
-    await context.set_status_detail("Waiting for the Telethon client to refresh analytics")
+    await context.set_status_detail(
+        "Waiting for the Telethon client to refresh analytics"
+    )
 
     timeout_seconds = 30
     for waited in range(timeout_seconds + 1):
