@@ -13,7 +13,7 @@ import os
 from loguru import logger
 
 from telegram_auto_poster.utils.general import MinioError
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import UploadMetadata, storage
 
 
 async def upload_processed_media(
@@ -50,12 +50,18 @@ async def upload_processed_media(
         file_path,
         bucket,
         object_name,
-        user_id=(meta or {}).get("user_id"),
-        chat_id=(meta or {}).get("chat_id"),
-        message_id=(meta or {}).get("message_id"),
-        media_hash=media_hash,
-        group_id=group_id,
-        source=(meta or {}).get("source"),
+        metadata=(
+            UploadMetadata(
+                user_id=(meta or {}).get("user_id"),
+                chat_id=(meta or {}).get("chat_id"),
+                message_id=(meta or {}).get("message_id"),
+                media_hash=media_hash,
+                group_id=group_id,
+                source=(meta or {}).get("source"),
+            )
+            if meta or media_hash or group_id
+            else None
+        ),
     )
 
     if not uploaded:

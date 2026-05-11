@@ -55,10 +55,11 @@ async def test_add_watermark_to_image(mocker, sample_image):
     assert call_args[1] == BUCKET_MAIN
     assert call_args[2] == f"{PHOTOS_PATH}/output.jpg"
     call_kwargs = mock_upload.await_args.kwargs
-    assert call_kwargs["user_id"] == 123
-    assert call_kwargs["chat_id"] == 456
-    assert call_kwargs["message_id"] == 789
-    assert call_kwargs["media_hash"] == "some_hash"
+    metadata = call_kwargs["metadata"]
+    assert metadata.user_id == 123
+    assert metadata.chat_id == 456
+    assert metadata.message_id == 789
+    assert metadata.media_hash == "some_hash"
 
     # Check that the EXIF data was correct
     mock_piexif_dump.assert_called_once()
@@ -174,10 +175,11 @@ async def test_add_watermark_to_video(mocker: MockerFixture, sample_video):
     assert call_args[1] == BUCKET_MAIN
     assert call_args[2] == f"{VIDEOS_PATH}/output.mp4"
     call_kwargs = mock_upload.await_args.kwargs
-    assert call_kwargs["user_id"] == 123
-    assert call_kwargs["chat_id"] == 456
-    assert call_kwargs["message_id"] == 789
-    assert call_kwargs["media_hash"] == "some_hash"
+    metadata = call_kwargs["metadata"]
+    assert metadata.user_id == 123
+    assert metadata.chat_id == 456
+    assert metadata.message_id == 789
+    assert metadata.media_hash == "some_hash"
 
 
 @pytest.mark.asyncio

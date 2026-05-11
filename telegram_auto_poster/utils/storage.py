@@ -4,6 +4,7 @@ import asyncio
 import os
 import tempfile
 import time
+from dataclasses import dataclass
 from datetime import timedelta
 from inspect import iscoroutinefunction
 from typing import Mapping
@@ -101,6 +102,18 @@ def build_submission_search_text(
         seen.add(part)
         parts.append(part)
     return " ".join(parts)
+
+
+@dataclass
+class UploadMetadata:
+    """Metadata for an uploaded file."""
+
+    user_id: int | None = None
+    chat_id: int | None = None
+    message_id: int | None = None
+    media_hash: str | None = None
+    group_id: str | None = None
+    source: str | None = None
 
 
 class MinioStorage:
@@ -495,12 +508,7 @@ class MinioStorage:
         file_path: str,
         bucket: str | None = None,
         object_name: str | None = None,
-        user_id: int | None = None,
-        chat_id: int | None = None,
-        message_id: int | None = None,
-        media_hash: str | None = None,
-        group_id: str | None = None,
-        source: str | None = None,
+        metadata: UploadMetadata | None = None,
     ) -> bool:
         """Upload a file to MinIO and record how long the operation took.
 
@@ -514,13 +522,7 @@ class MinioStorage:
                 extension).
             object_name: Name for the object in MinIO (defaults to the file
                 name).
-            user_id: Optional ``user_id`` of the submitter for feedback.
-            chat_id: Optional ``chat_id`` where the submission was made.
-            message_id: Optional Telegram ``message_id`` of the original
-                submission.
-            media_hash: Optional hash of the file for deduplication purposes.
-            group_id: Optional identifier for media groups/albums.
-            source: Optional channel or username of the submitter.
+            metadata: Optional metadata for the uploaded file.
 
         Returns:
             bool: ``True`` if upload was successful, ``False`` otherwise.
@@ -571,19 +573,25 @@ class MinioStorage:
                     f"Failed to cache object list entry for {bucket}/{object_name}: {e}"
                 )
             # Store submission metadata in-memory as well
-            if any(
+            if metadata and any(
                 x is not None
-                for x in (user_id, chat_id, group_id, media_hash, message_id)
+                for x in (
+                    metadata.user_id,
+                    metadata.chat_id,
+                    metadata.group_id,
+                    metadata.media_hash,
+                    metadata.message_id,
+                )
             ):
                 await self.store_submission_metadata(
                     object_name,
-                    user_id,
-                    chat_id,
+                    metadata.user_id,
+                    metadata.chat_id,
                     media_type,
-                    message_id,
-                    media_hash,
-                    group_id,
-                    source=source,
+                    metadata.message_id,
+                    metadata.media_hash,
+                    metadata.group_id,
+                    source=metadata.source,
                 )
 
             duration = time.time() - start_time

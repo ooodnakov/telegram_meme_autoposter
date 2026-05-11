@@ -46,8 +46,8 @@ from telegram_auto_poster.utils.db import (
     add_scheduled_post,
     clear_event_history,
     decrement_batch_count,
-    get_batch_count,
     get_async_redis_client,
+    get_batch_count,
     get_event_history,
     get_event_history_count,
     get_scheduled_posts,
@@ -72,7 +72,11 @@ from telegram_auto_poster.utils.i18n import set_locale
 from telegram_auto_poster.utils.jobs import job_manager
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import build_submission_search_text, storage
+from telegram_auto_poster.utils.storage import (
+    UploadMetadata,
+    build_submission_search_text,
+    storage,
+)
 from telegram_auto_poster.utils.timezone import UTC, now_utc, parse_to_utc_timestamp
 from telegram_auto_poster.utils.trash import (
     delete_from_trash,
@@ -666,7 +670,9 @@ async def _get_cached_posts_summary_groups() -> list[dict[str, object]] | None:
     return None
 
 
-async def _store_cached_posts_summary_groups(groups: Sequence[dict[str, object]]) -> None:
+async def _store_cached_posts_summary_groups(
+    groups: Sequence[dict[str, object]],
+) -> None:
     """Persist summary groups for reuse across requests."""
 
     try:
@@ -1254,18 +1260,20 @@ async def _get_stats_payload() -> dict[str, object]:
         "current_batch_count": batch_count,
         "current_scheduled_count": scheduled_count,
         "decision_total_24h": decision_total,
-        "rejection_rate_24h": (rejected_today / decision_total * 100)
-        if decision_total
-        else 0.0,
-        "error_rate_24h": (daily_errors / int(daily["media_received"]) * 100)
-        if int(daily["media_received"])
-        else 0.0,
-        "publish_per_approval_24h": (published_today / approved_today * 100)
-        if approved_today
-        else 0.0,
-        "deliveries_per_post_24h": (deliveries_today / published_today)
-        if published_today
-        else 0.0,
+        "rejection_rate_24h": (
+            (rejected_today / decision_total * 100) if decision_total else 0.0
+        ),
+        "error_rate_24h": (
+            (daily_errors / int(daily["media_received"]) * 100)
+            if int(daily["media_received"])
+            else 0.0
+        ),
+        "publish_per_approval_24h": (
+            (published_today / approved_today * 100) if approved_today else 0.0
+        ),
+        "deliveries_per_post_24h": (
+            (deliveries_today / published_today) if published_today else 0.0
+        ),
         "telegram_channel_analytics": telegram_channel_analytics,
     }
 
@@ -1359,9 +1367,9 @@ async def _send_batch_now(request: Request) -> dict[str, object]:
     for post in posts:
         all_paths.extend(
             [
-            item["path"]
-            for item in post["items"]
-            if isinstance(item, dict) and isinstance(item.get("path"), str)
+                item["path"]
+                for item in post["items"]
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
             ]
         )
 
@@ -1676,11 +1684,17 @@ async def _ok_post(path: str) -> None:
             temp_path,
             BUCKET_MAIN,
             f"{prefix}/{batch_name}",
-            user_id=meta.get("user_id") if meta else None,
-            chat_id=meta.get("chat_id") if meta else None,
-            message_id=meta.get("message_id") if meta else None,
-            group_id=meta.get("group_id") if meta else None,
-            source=meta.get("source") if meta else None,
+            metadata=(
+                UploadMetadata(
+                    user_id=meta.get("user_id") if meta else None,
+                    chat_id=meta.get("chat_id") if meta else None,
+                    message_id=meta.get("message_id") if meta else None,
+                    group_id=meta.get("group_id") if meta else None,
+                    source=meta.get("source") if meta else None,
+                )
+                if meta
+                else None
+            ),
         )
         await storage.delete_file(path, BUCKET_MAIN)
         count = await increment_batch_count()
@@ -1903,7 +1917,9 @@ async def api_suggestions(page: int = 1, sort: str = "newest") -> JSONResponse:
     sorted_suggestions = _sort_posts_groups(suggestions, sanitized_sort)
     count = len(sorted_suggestions)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = await _hydrate_post_groups(sorted_suggestions[offset : offset + ITEMS_PER_PAGE])
+    items = await _hydrate_post_groups(
+        sorted_suggestions[offset : offset + ITEMS_PER_PAGE]
+    )
     return JSONResponse(
         {
             "items": items,
@@ -1942,13 +1958,16 @@ async def api_posts(
             if isinstance(source_name, str) and source_name
         }
     )
-    filtered_posts = _sort_posts_groups(_filter_posts_groups(
-        posts,
-        query=normalized_query,
-        kind=sanitized_kind,
-        layout=sanitized_layout,
-        source=normalized_source,
-    ), sanitized_sort)
+    filtered_posts = _sort_posts_groups(
+        _filter_posts_groups(
+            posts,
+            query=normalized_query,
+            kind=sanitized_kind,
+            layout=sanitized_layout,
+            source=normalized_source,
+        ),
+        sanitized_sort,
+    )
     count = len(filtered_posts)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
     items = await _hydrate_post_groups(filtered_posts[offset : offset + ITEMS_PER_PAGE])
