@@ -167,8 +167,7 @@ class TelegramMemeClient:
                     if request_id is not None:
                         await mark_channel_analytics_refresh_completed(request_id)
                     next_refresh_at = (
-                        time.monotonic()
-                        + CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS
+                        time.monotonic() + CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS
                     )
             except asyncio.CancelledError:  # pragma: no cover - task cancellation
                 raise
