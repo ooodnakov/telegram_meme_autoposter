@@ -138,7 +138,8 @@ async def handle_media_type(
         with tempfile.NamedTemporaryFile(
             delete=False, suffix=details.file_extension
         ) as temp_file:
-            temp_path = temp_file.name
+            pass
+        temp_path = temp_file.name
 
         start_time = time.time()
         f = await context.bot.get_file(file_id)
