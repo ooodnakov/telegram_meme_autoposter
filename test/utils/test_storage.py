@@ -1,3 +1,4 @@
+from telegram_auto_poster.utils.storage import SubmissionMetadata
 import pytest
 from miniopy_async.error import MinioException
 from pytest_mock import MockerFixture
@@ -179,13 +180,15 @@ async def test_store_and_get_submission_metadata(storage):
     """Test storing and retrieving submission metadata."""
     await storage.store_submission_metadata(
         "obj1",
-        123,
-        456,
-        "photo",
-        message_id=789,
-        media_hash="hash1",
-        group_id="g1",
-        source="src1",
+        SubmissionMetadata(
+            user_id=123,
+            chat_id=456,
+            media_type="photo",
+            message_id=789,
+            media_hash="hash1",
+            group_id="g1",
+            source="src1",
+        ),
     )
     meta = await storage.get_submission_metadata("obj1")
     assert meta["user_id"] == 123
@@ -198,7 +201,7 @@ async def test_store_and_get_submission_metadata(storage):
 async def test_get_submission_metadata_normalizes_prefix(storage):
     """Return metadata when only the basename is provided."""
     object_name = f"{PHOTOS_PATH}/obj3"
-    await storage.store_submission_metadata(object_name, 1, 2, "photo")
+    await storage.store_submission_metadata(object_name, SubmissionMetadata(user_id=1, chat_id=2, media_type="photo"))
     meta = await storage.get_submission_metadata("obj3")
     assert meta is not None
 
@@ -210,13 +213,15 @@ async def test_get_submission_metadata_from_redis(
     """Metadata is retrieved from Redis when not in memory."""
     await storage.store_submission_metadata(
         "obj_redis",
-        111,
-        222,
-        "photo",
-        message_id=333,
-        media_hash="hash2",
-        group_id="g2",
-        source="src2",
+        SubmissionMetadata(
+            user_id=111,
+            chat_id=222,
+            media_type="photo",
+            message_id=333,
+            media_hash="hash2",
+            group_id="g2",
+            source="src2",
+        ),
     )
     # Clear in-memory cache to force Redis lookup
     storage.submission_metadata = {}
@@ -232,14 +237,16 @@ async def test_submission_metadata_round_trip_includes_caption_and_source(storag
     """Round-trip Redis serialization should preserve caption and source."""
     await storage.store_submission_metadata(
         "obj_full",
-        321,
-        654,
-        "photo",
-        message_id=987,
-        media_hash="hash-full",
-        group_id="group-full",
-        caption="hello world",
-        source="source-full",
+        SubmissionMetadata(
+            user_id=321,
+            chat_id=654,
+            media_type="photo",
+            message_id=987,
+            media_hash="hash-full",
+            group_id="group-full",
+            caption="hello world",
+            source="source-full",
+        ),
     )
 
     storage.submission_metadata = {}
@@ -258,11 +265,13 @@ async def test_update_submission_metadata_preserves_caption_and_source(storage):
     """Updating unrelated fields must not remove caption/source."""
     await storage.store_submission_metadata(
         "obj_update",
-        100,
-        200,
-        "photo",
-        caption="keep me",
-        source="keep source",
+        SubmissionMetadata(
+            user_id=100,
+            chat_id=200,
+            media_type="photo",
+            caption="keep me",
+            source="keep source",
+        ),
     )
 
     updated = await storage.update_submission_metadata(
@@ -280,11 +289,13 @@ async def test_update_submission_metadata_resolves_prefixed_key(storage):
 
     await storage.store_submission_metadata(
         f"{PHOTOS_PATH}/batch_obj.jpg",
-        100,
-        200,
-        "photo",
-        caption="keep me",
-        source="keep source",
+        SubmissionMetadata(
+            user_id=100,
+            chat_id=200,
+            media_type="photo",
+            caption="keep me",
+            source="keep source",
+        ),
     )
 
     updated = await storage.update_submission_metadata(
@@ -305,11 +316,13 @@ async def test_refresh_submission_search_text_rebuilds_cached_value(storage):
 
     await storage.store_submission_metadata(
         "ocr_item.jpg",
-        1,
-        2,
-        "photo",
-        caption="hello",
-        source="@source",
+        SubmissionMetadata(
+            user_id=1,
+            chat_id=2,
+            media_type="photo",
+            caption="hello",
+            source="@source",
+        ),
     )
     await storage.update_submission_metadata("ocr_item.jpg", ocr_text="top text")
     await storage.update_submission_metadata("ocr_item.jpg", search_text="")
@@ -332,7 +345,7 @@ async def test_get_submission_metadata_missing(storage, mock_minio_client):
 @pytest.mark.asyncio
 async def test_mark_notified(storage, mock_redis_client):
     """Test marking a submission as notified."""
-    await storage.store_submission_metadata("obj1", 123, 456, "photo")
+    await storage.store_submission_metadata("obj1", SubmissionMetadata(user_id=123, chat_id=456, media_type="photo"))
     meta = await storage.get_submission_metadata("obj1")
     assert meta["notified"] is False
     await storage.mark_notified("obj1")

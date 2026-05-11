@@ -37,7 +37,7 @@ from telegram_auto_poster.utils.general import (
 )
 from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import storage, SubmissionMetadata
 from telegram_auto_poster.utils.timezone import now_utc
 from telegram_auto_poster.utils.ui import approval_keyboard
 
@@ -328,20 +328,22 @@ async def _send_to_review(
     if user_metadata:
         await storage.store_submission_metadata(
             processed_name,
-            user_metadata.get("user_id"),
-            user_metadata.get("chat_id"),
-            user_metadata.get("media_type"),
-            user_metadata.get("message_id"),
-            media_hash=media_hash,
-            group_id=user_metadata.get("group_id"),
-            caption=caption,
-            source=user_metadata.get("source"),
-            ocr_text=ocr_text,
-            ocr_status=ocr_status,
-            ocr_error=ocr_error,
-            ocr_checked_at=ocr_checked_at,
-            ocr_duration_seconds=ocr_duration_seconds,
-            ocr_languages=ocr_languages,
+            SubmissionMetadata(
+                user_id=user_metadata.get("user_id"),
+                chat_id=user_metadata.get("chat_id"),
+                media_type=user_metadata.get("media_type"),
+                message_id=user_metadata.get("message_id"),
+                media_hash=media_hash,
+                group_id=user_metadata.get("group_id"),
+                caption=caption,
+                source=user_metadata.get("source"),
+                ocr_text=ocr_text,
+                ocr_status=ocr_status,
+                ocr_error=ocr_error,
+                ocr_checked_at=ocr_checked_at,
+                ocr_duration_seconds=ocr_duration_seconds,
+                ocr_languages=ocr_languages,
+            ),
         )
     elif media_type == "photo":
         await storage.update_submission_metadata(

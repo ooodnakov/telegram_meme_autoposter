@@ -7,6 +7,7 @@ import time
 from datetime import timedelta
 from inspect import iscoroutinefunction
 from typing import Mapping
+from dataclasses import dataclass
 from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
@@ -25,6 +26,24 @@ from telegram_auto_poster.config import (
 )
 from telegram_auto_poster.utils.db import _redis_key, get_async_redis_client
 from telegram_auto_poster.utils.timezone import now_utc
+
+
+@dataclass
+class SubmissionMetadata:
+    user_id: int | None = None
+    chat_id: int | None = None
+    media_type: str | None = None
+    message_id: int | None = None
+    media_hash: str | None = None
+    group_id: str | None = None
+    caption: str | None = None
+    source: str | None = None
+    ocr_text: str | None = None
+    ocr_status: str | None = None
+    ocr_error: str | None = None
+    ocr_checked_at: str | None = None
+    ocr_duration_seconds: float | None = None
+    ocr_languages: str | None = None
 
 
 def _minio_connection_params() -> tuple[str, bool, str, str, str]:
@@ -219,20 +238,7 @@ class MinioStorage:
     async def store_submission_metadata(
         self,
         object_name: str,
-        user_id: int | None = None,
-        chat_id: int | None = None,
-        media_type: str | None = None,
-        message_id: int | None = None,
-        media_hash: str | None = None,
-        group_id: str | None = None,
-        caption: str | None = None,
-        source: str | None = None,
-        ocr_text: str | None = None,
-        ocr_status: str | None = None,
-        ocr_error: str | None = None,
-        ocr_checked_at: str | None = None,
-        ocr_duration_seconds: float | None = None,
-        ocr_languages: str | None = None,
+        metadata: SubmissionMetadata,
     ) -> None:
         """Store information about who submitted a particular media object.
 
@@ -241,34 +247,26 @@ class MinioStorage:
 
         Args:
             object_name: Name of the object in MinIO.
-            user_id: The Telegram ``user_id`` of the submitter.
-            chat_id: The Telegram ``chat_id`` where the media was submitted.
-            media_type: Type of media (``'photo'`` or ``'video'``).
-            message_id: Optional Telegram ``message_id`` of the original
-                submission.
-            media_hash: Optional hash used for deduplication.
-            group_id: Optional identifier for media groups/albums.
-            caption: Optional caption suggestion.
-            source: Optional identifier of the originating channel or user.
+            metadata: SubmissionMetadata dataclass instance.
 
         """
         meta: dict[str, object] = {
-            "user_id": user_id,
-            "chat_id": chat_id,
-            "media_type": media_type,
+            "user_id": metadata.user_id,
+            "chat_id": metadata.chat_id,
+            "media_type": metadata.media_type,
             "timestamp": now_utc().isoformat(),
             "notified": False,
-            "message_id": message_id,
-            "hash": media_hash,
-            "group_id": group_id,
-            "caption": caption,
-            "source": source,
-            "ocr_text": ocr_text,
-            "ocr_status": ocr_status,
-            "ocr_error": ocr_error,
-            "ocr_checked_at": ocr_checked_at,
-            "ocr_duration_seconds": ocr_duration_seconds,
-            "ocr_languages": ocr_languages,
+            "message_id": metadata.message_id,
+            "hash": metadata.media_hash,
+            "group_id": metadata.group_id,
+            "caption": metadata.caption,
+            "source": metadata.source,
+            "ocr_text": metadata.ocr_text,
+            "ocr_status": metadata.ocr_status,
+            "ocr_error": metadata.ocr_error,
+            "ocr_checked_at": metadata.ocr_checked_at,
+            "ocr_duration_seconds": metadata.ocr_duration_seconds,
+            "ocr_languages": metadata.ocr_languages,
         }
         meta["search_text"] = build_submission_search_text(object_name, meta)
         meta["search_text_updated_at"] = now_utc().isoformat()
@@ -284,12 +282,12 @@ class MinioStorage:
         logger.debug(
             "Stored metadata for {}: user_id={}, chat_id={}, message_id={}, group_id={}, caption={}, source={}".format(
                 object_name,
-                user_id,
-                chat_id,
-                message_id,
-                group_id,
-                caption,
-                source,
+                metadata.user_id,
+                metadata.chat_id,
+                metadata.message_id,
+                metadata.group_id,
+                metadata.caption,
+                metadata.source,
             )
         )
 
@@ -577,13 +575,15 @@ class MinioStorage:
             ):
                 await self.store_submission_metadata(
                     object_name,
-                    user_id,
-                    chat_id,
-                    media_type,
-                    message_id,
-                    media_hash,
-                    group_id,
-                    source=source,
+                    SubmissionMetadata(
+                        user_id=user_id,
+                        chat_id=chat_id,
+                        media_type=media_type,
+                        message_id=message_id,
+                        media_hash=media_hash,
+                        group_id=group_id,
+                        source=source,
+                    ),
                 )
 
             duration = time.time() - start_time
