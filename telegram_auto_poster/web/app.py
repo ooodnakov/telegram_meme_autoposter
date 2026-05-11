@@ -13,7 +13,7 @@ from pydoc import locate
 from typing import Awaitable, Callable, Mapping, Sequence
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, Form, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -161,6 +161,26 @@ class ResetRequest(BaseModel):
     """JSON payload for reset actions."""
 
     next: str = "/"
+
+
+class PostQueryParams:
+    """Query parameters for posts and suggestions endpoints."""
+
+    def __init__(
+        self,
+        page: int = 1,
+        q: str = "",
+        kind: str = "all",
+        layout: str = "all",
+        source: str = "all",
+        sort: str = "newest",
+    ) -> None:
+        self.page = page
+        self.q = q
+        self.kind = kind
+        self.layout = layout
+        self.source = source
+        self.sort = sort
 
 
 class ChannelSettingsRequest(BaseModel):
@@ -666,7 +686,9 @@ async def _get_cached_posts_summary_groups() -> list[dict[str, object]] | None:
     return None
 
 
-async def _store_cached_posts_summary_groups(groups: Sequence[dict[str, object]]) -> None:
+async def _store_cached_posts_summary_groups(
+    groups: Sequence[dict[str, object]],
+) -> None:
     """Persist summary groups for reuse across requests."""
 
     try:
@@ -1359,9 +1381,9 @@ async def _send_batch_now(request: Request) -> dict[str, object]:
     for post in posts:
         all_paths.extend(
             [
-            item["path"]
-            for item in post["items"]
-            if isinstance(item, dict) and isinstance(item.get("path"), str)
+                item["path"]
+                for item in post["items"]
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
             ]
         )
 
@@ -1895,15 +1917,19 @@ async def api_dashboard() -> JSONResponse:
 
 
 @app.get("/api/suggestions")
-async def api_suggestions(page: int = 1, sort: str = "newest") -> JSONResponse:
+async def api_suggestions(
+    params: PostQueryParams = Depends(PostQueryParams),
+) -> JSONResponse:
     """Return paginated suggestions awaiting review."""
 
-    sanitized_sort = _sanitize_posts_sort(sort)
+    sanitized_sort = _sanitize_posts_sort(params.sort)
     suggestions = await _collect_post_summary_groups(True)
     sorted_suggestions = _sort_posts_groups(suggestions, sanitized_sort)
     count = len(sorted_suggestions)
-    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = await _hydrate_post_groups(sorted_suggestions[offset : offset + ITEMS_PER_PAGE])
+    page, total_pages, offset = _paginate(count, params.page, ITEMS_PER_PAGE)
+    items = await _hydrate_post_groups(
+        sorted_suggestions[offset : offset + ITEMS_PER_PAGE]
+    )
     return JSONResponse(
         {
             "items": items,
@@ -1918,20 +1944,15 @@ async def api_suggestions(page: int = 1, sort: str = "newest") -> JSONResponse:
 
 @app.get("/api/posts")
 async def api_posts(
-    page: int = 1,
-    q: str = "",
-    kind: str = "all",
-    layout: str = "all",
-    source: str = "all",
-    sort: str = "newest",
+    params: PostQueryParams = Depends(PostQueryParams),
 ) -> JSONResponse:
     """Return paginated processed posts awaiting publication."""
 
-    sanitized_kind = _sanitize_posts_kind(kind)
-    sanitized_layout = _sanitize_posts_layout(layout)
-    normalized_source = _normalize_posts_source(source)
-    sanitized_sort = _sanitize_posts_sort(sort)
-    normalized_query = q.strip()
+    sanitized_kind = _sanitize_posts_kind(params.kind)
+    sanitized_layout = _sanitize_posts_layout(params.layout)
+    normalized_source = _normalize_posts_source(params.source)
+    sanitized_sort = _sanitize_posts_sort(params.sort)
+    normalized_query = params.q.strip()
 
     posts = await _collect_post_summary_groups(False)
     sources = sorted(
@@ -1942,15 +1963,18 @@ async def api_posts(
             if isinstance(source_name, str) and source_name
         }
     )
-    filtered_posts = _sort_posts_groups(_filter_posts_groups(
-        posts,
-        query=normalized_query,
-        kind=sanitized_kind,
-        layout=sanitized_layout,
-        source=normalized_source,
-    ), sanitized_sort)
+    filtered_posts = _sort_posts_groups(
+        _filter_posts_groups(
+            posts,
+            query=normalized_query,
+            kind=sanitized_kind,
+            layout=sanitized_layout,
+            source=normalized_source,
+        ),
+        sanitized_sort,
+    )
     count = len(filtered_posts)
-    page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
+    page, total_pages, offset = _paginate(count, params.page, ITEMS_PER_PAGE)
     items = await _hydrate_post_groups(filtered_posts[offset : offset + ITEMS_PER_PAGE])
     return JSONResponse(
         {
