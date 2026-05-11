@@ -6,6 +6,7 @@ import tempfile
 import time
 import uuid
 from typing import IO, Any, Awaitable, Callable, Protocol, TypedDict
+from dataclasses import dataclass
 
 from loguru import logger
 from telegram import InputMediaPhoto, InputMediaVideo, Message, Update
@@ -77,6 +78,13 @@ class MediaConfig(TypedDict):
     process_func: MediaProcessor
 
 
+@dataclass
+class MediaTypeDetails:
+    media_type: str
+    file_extension: str
+    hash_function: Callable[[str], str | None]
+
+
 # Helper function to handle common errors and return appropriate user messages
 def get_user_friendly_error_message(error: Exception) -> str:
     """Convert system errors to user-friendly messages."""
@@ -102,17 +110,15 @@ async def handle_media_type(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
-    media_type: str,
-    file_extension: str,
-    hash_function: Callable[[str], str | None],
+    details: MediaTypeDetails,
 ) -> None:
     """Handle media uploads generically."""
     set_locale(resolve_locale(update))
-    config = MEDIA_TYPE_CONFIG.get(media_type)
+    config = MEDIA_TYPE_CONFIG.get(details.media_type)
     if not config:
         raise ValueError("Unsupported media type")
 
-    if media_type == "video":
+    if details.media_type == "video":
         logger.info(f"Video from chat {chat_id} has started downloading!")
 
     file_id = config["get_file_id"](update.message)
@@ -120,16 +126,16 @@ async def handle_media_type(
 
     message_id = update.message.message_id
     user_id = update.effective_user.id
-    file_name = f"{media_type}_{chat_id}_{message_id}{file_extension}"
+    file_name = f"{details.media_type}_{chat_id}_{message_id}{details.file_extension}"
     source_name = (
         update.effective_user.username or update.effective_chat.username or str(user_id)
     )
 
-    await stats.record_received(media_type)
+    await stats.record_received(details.media_type)
 
     temp_path = None
     try:
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=file_extension)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=details.file_extension)
         temp_path = temp_file.name
         temp_file.close()
 
@@ -138,16 +144,16 @@ async def handle_media_type(
         await f.download_to_drive(temp_path)
         download_time = time.time() - start_time
         logger.info(
-            f"{media_type.capitalize()} from chat {chat_id} has downloaded in {download_time:.2f}s"
+            f"{details.media_type.capitalize()} from chat {chat_id} has downloaded in {download_time:.2f}s"
         )
 
-        media_hash = hash_function(temp_path)
+        media_hash = details.hash_function(temp_path)
         if is_duplicate_hash(media_hash):
             logger.info(
-                f"Duplicate {media_type} detected, hash: {media_hash}. Skipping."
+                f"Duplicate {details.media_type} detected, hash: {media_hash}. Skipping."
             )
             await stats.record_rejected(
-                media_type, file_name, "duplicate", source=source_name
+                details.media_type, file_name, "duplicate", source=source_name
             )
             await update.message.reply_text(
                 _("Этот пост уже есть в канале."),
@@ -160,7 +166,7 @@ async def handle_media_type(
             "user_id": user_id,
             "chat_id": chat_id,
             "message_id": message_id,
-            "media_type": media_type,
+            "media_type": details.media_type,
             "source": source_name,
         }
 
@@ -178,7 +184,7 @@ async def handle_media_type(
             _(
                 "Спасибо за вашу предложку! Мы рассмотрим её и сообщим вам, если она будет одобрена."
             )
-            if media_type == "photo"
+            if details.media_type == "photo"
             else _(
                 "Спасибо за ваше видео! Мы его рассмотрим и сообщим, если оно будет одобрено."
             )
@@ -186,13 +192,13 @@ async def handle_media_type(
 
         await update.message.reply_text(success_message, do_quote=True)
     except Exception as e:
-        logger.error(f"Error handling {media_type}: {e}")
-        await stats.record_error("processing", f"Error handling {media_type}: {str(e)}")
+        logger.error(f"Error handling {details.media_type}: {e}")
+        await stats.record_error("processing", f"Error handling {details.media_type}: {str(e)}")
         error_message = (
             _(
                 "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже."
             )
-            if media_type == "photo"
+            if details.media_type == "photo"
             else _(
                 "Произошла ошибка при обработке вашего видео. Пожалуйста, попробуйте позже."
             )
@@ -212,9 +218,11 @@ async def handle_photo(
         update,
         context,
         chat_id,
-        "photo",
-        ".jpg",
-        calculate_image_hash,
+        MediaTypeDetails(
+            media_type="photo",
+            file_extension=".jpg",
+            hash_function=calculate_image_hash,
+        )
     )
 
 
@@ -228,9 +236,11 @@ async def handle_video(
         update,
         context,
         chat_id,
-        "video",
-        ".mp4",
-        calculate_video_hash,
+        MediaTypeDetails(
+            media_type="video",
+            file_extension=".mp4",
+            hash_function=calculate_video_hash,
+        )
     )
 
 
