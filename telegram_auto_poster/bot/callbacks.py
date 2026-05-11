@@ -794,8 +794,8 @@ async def send_batch_preview(ctx: BatchPreviewContext) -> Message:
             InlineKeyboardButton("Next", callback_data=f"/batch_next:{ctx.index}"),
         ]
     ]
-    channels = ctx.target_channels or []
-    if ctx.prompt_channel and len(channels) > 1:
+    channels = ctx.ctx.target_channels or []
+    if ctx.ctx.prompt_channel and len(channels) > 1:
         for ch in channels:
             buttons.append(
                 [
@@ -818,12 +818,12 @@ async def send_batch_preview(ctx: BatchPreviewContext) -> Message:
     markup = InlineKeyboardMarkup(buttons)
     temp_path = None
     try:
-        temp_path, _ = await download_from_minio(ctx.file_path, BUCKET_MAIN)
+        temp_path, _ = await download_from_minio(ctx.ctx.file_path, BUCKET_MAIN)
         message = await send_media_to_telegram(
-            ctx.bot,
-            ctx.chat_id,
+            ctx.ctx.bot,
+            ctx.ctx.chat_id,
             temp_path,
-            caption=ctx.file_path,
+            caption=ctx.ctx.file_path,
             supports_streaming=_is_streaming_video(temp_path),
         )
         await message.edit_reply_markup(reply_markup=markup)
