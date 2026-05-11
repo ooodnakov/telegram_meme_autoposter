@@ -63,6 +63,35 @@ def test_schedule_roundtrip(mocker):
     assert db.get_scheduled_time("foo") is None
 
 
+
+def test_get_scheduled_posts_count(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    # Initially 0
+    assert db.get_scheduled_posts_count() == 0
+
+    db.add_scheduled_post(100, "foo")
+    db.add_scheduled_post(200, "bar")
+    db.add_scheduled_post(300, "baz")
+
+    # All posts
+    assert db.get_scheduled_posts_count() == 3
+
+    # With min_score
+    assert db.get_scheduled_posts_count(min_score=150) == 2
+
+    # With max_score
+    assert db.get_scheduled_posts_count(max_score=250) == 2
+
+    # With min_score and max_score
+    assert db.get_scheduled_posts_count(min_score=150, max_score=250) == 1
+
+    # Out of bounds
+    assert db.get_scheduled_posts_count(min_score=400) == 0
+    assert db.get_scheduled_posts_count(max_score=50) == 0
+
+
 @pytest.mark.asyncio
 async def test_event_history_roundtrip(mock_async_redis):
     entry_one = {"action": "ok", "timestamp": "2024-01-01T00:00:00+00:00"}
