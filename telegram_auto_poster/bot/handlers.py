@@ -6,6 +6,7 @@ import tempfile
 import time
 import uuid
 from typing import IO, Any, Awaitable, Callable, Protocol, TypedDict
+from dataclasses import dataclass
 
 from loguru import logger
 from telegram import InputMediaPhoto, InputMediaVideo, Message, Update
@@ -54,18 +55,26 @@ MAX_RETRIES = 5
 RETRY_DELAY = 1
 
 
+
+@dataclass
+class ProcessContext:
+    """Context object containing parameters for media processing."""
+
+    custom_text: str
+    input_path: str
+    original_name: str
+    bot_chat_id: str
+    application: Application
+    user_metadata: dict[str, Any] | None = None
+    media_hash: str | None = None
+
+
 class MediaProcessor(Protocol):
     """Protocol for processing a single media file."""
 
     async def __call__(
         self,
-        custom_text: str,
-        input_path: str,
-        original_name: str,
-        bot_chat_id: str,
-        application: Application,
-        user_metadata: dict[str, Any] | None = ...,
-        media_hash: str | None = ...,
+        context: ProcessContext,
     ) -> bool:  # pragma: no cover - signature only
         """Process the media file and send it for review."""
 
@@ -164,15 +173,16 @@ async def handle_media_type(
             "source": source_name,
         }
 
-        await process_func(
-            "New suggestion in bot",
-            temp_path,
-            file_name,
-            context.bot_data["chat_id"],
-            context.application,
+        process_ctx = ProcessContext(
+            custom_text="New suggestion in bot",
+            input_path=temp_path,
+            original_name=file_name,
+            bot_chat_id=context.bot_data["chat_id"],
+            application=context.application,
             user_metadata=user_metadata,
             media_hash=media_hash,
         )
+        await process_func(process_ctx)
 
         success_message = (
             _(
@@ -371,26 +381,18 @@ async def _send_to_review(
     return True
 
 
-async def process_photo(
-    custom_text: str,
-    input_path: str,
-    original_name: str,
-    bot_chat_id: str,
-    application: Application,
-    user_metadata: dict[str, Any] | None = None,
-    media_hash: str | None = None,
-) -> bool:
+async def process_photo(ctx: ProcessContext) -> bool:
     """Process a photo by adding watermark and sending to review bot."""
     start_time = time.time()
     try:
         # Add watermark and upload to MinIO
-        processed_name = f"processed_{os.path.basename(original_name)}"
+        processed_name = f"processed_{os.path.basename(ctx.original_name)}"
 
         await add_watermark_to_image(
-            input_path,
+            ctx.input_path,
             processed_name,
-            user_metadata=user_metadata,
-            media_hash=media_hash,
+            user_metadata=ctx.user_metadata,
+            media_hash=ctx.media_hash,
         )
 
         # Record processing time
@@ -422,10 +424,10 @@ async def process_photo(
         async def _send(
             media_file: IO[bytes], caption: str, keyboard: object
         ) -> Message:
-            return await application.bot.send_photo(
-                bot_chat_id,
+            return await ctx.application.bot.send_photo(
+                ctx.bot_chat_id,
                 media_file,
-                custom_text
+                ctx.custom_text
                 + "\nNew post found\n"
                 + f"{PHOTOS_PATH}/{processed_name}"
                 + (f"\nSuggested caption:\n{caption}" if caption else ""),
@@ -441,10 +443,10 @@ async def process_photo(
             PHOTOS_PATH,
             ".jpg",
             _send,
-            user_metadata,
-            media_hash,
+            ctx.user_metadata,
+            ctx.media_hash,
             "photo",
-            application,
+            ctx.application,
         )
         return True
     except MinioError as e:
@@ -459,27 +461,19 @@ async def process_photo(
     return False
 
 
-async def process_video(
-    custom_text: str,
-    input_path: str,
-    original_name: str,
-    bot_chat_id: str,
-    application: Application,
-    user_metadata: dict[str, Any] | None = None,
-    media_hash: str | None = None,
-) -> bool:
+async def process_video(ctx: ProcessContext) -> bool:
     """Process a video and send to review bot."""
     start_time = time.time()
     try:
         # Add watermark and upload to MinIO
-        processed_name = f"processed_{os.path.basename(original_name)}"
+        processed_name = f"processed_{os.path.basename(ctx.original_name)}"
 
         # Add watermark to video and upload to MinIO
         await add_watermark_to_video(
-            input_path,
+            ctx.input_path,
             processed_name,
-            user_metadata=user_metadata,
-            media_hash=media_hash,
+            user_metadata=ctx.user_metadata,
+            media_hash=ctx.media_hash,
         )
 
         # Record processing time
@@ -511,10 +505,10 @@ async def process_video(
         async def _send(
             media_file: IO[bytes], caption: str, keyboard: object
         ) -> Message:
-            return await application.bot.send_video(
-                chat_id=bot_chat_id,
+            return await ctx.application.bot.send_video(
+                chat_id=ctx.bot_chat_id,
                 video=media_file,
-                caption=custom_text
+                caption=ctx.custom_text
                 + "\nNew post found\n"
                 + f"{VIDEOS_PATH}/{processed_name}"
                 + (f"\nSuggested caption:\n{caption}" if caption else ""),
@@ -531,10 +525,10 @@ async def process_video(
             VIDEOS_PATH,
             ".mp4",
             _send,
-            user_metadata,
-            media_hash,
+            ctx.user_metadata,
+            ctx.media_hash,
             "video",
-            application,
+            ctx.application,
         )
         return True
     except MinioError as e:
