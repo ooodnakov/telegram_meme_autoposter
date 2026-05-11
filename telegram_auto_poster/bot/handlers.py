@@ -132,8 +132,8 @@ async def handle_media_type(
     )
 
     await stats.record_received(details.media_type)
-
     temp_path = None
+
     try:
         with tempfile.NamedTemporaryFile(
             delete=False, suffix=details.file_extension
