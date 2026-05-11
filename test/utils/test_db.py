@@ -87,3 +87,57 @@ async def test_clear_event_history(mock_async_redis):
 
     events = await db.get_event_history()
     assert events == []
+
+
+def test_get_scheduled_posts_with_limits(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    # Add multiple posts
+    db.add_scheduled_post(100, "post1")
+    db.add_scheduled_post(200, "post2")
+    db.add_scheduled_post(300, "post3")
+    db.add_scheduled_post(400, "post4")
+    db.add_scheduled_post(500, "post5")
+
+    # Test min and max score limits
+    assert db.get_scheduled_posts(min_score=200, max_score=400) == [
+        ("post2", 200.0),
+        ("post3", 300.0),
+        ("post4", 400.0),
+    ]
+
+    # Test max score only
+    assert db.get_scheduled_posts(max_score=300) == [
+        ("post1", 100.0),
+        ("post2", 200.0),
+        ("post3", 300.0),
+    ]
+
+    # Test offset and limit
+    assert db.get_scheduled_posts(offset=1, limit=2) == [
+        ("post2", 200.0),
+        ("post3", 300.0),
+    ]
+
+    # Test offset, limit, and scores
+    assert db.get_scheduled_posts(min_score=200, offset=1, limit=1) == [
+        ("post3", 300.0),
+    ]
+
+
+def test_get_scheduled_posts_count(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    # Add multiple posts
+    db.add_scheduled_post(100, "post1")
+    db.add_scheduled_post(200, "post2")
+    db.add_scheduled_post(300, "post3")
+    db.add_scheduled_post(400, "post4")
+    db.add_scheduled_post(500, "post5")
+
+    assert db.get_scheduled_posts_count() == 5
+    assert db.get_scheduled_posts_count(min_score=200) == 4
+    assert db.get_scheduled_posts_count(max_score=300) == 3
+    assert db.get_scheduled_posts_count(min_score=200, max_score=400) == 3
