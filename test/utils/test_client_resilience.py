@@ -29,7 +29,7 @@ def test_backoff_delay_jitter(mock_uniform):
     mock_uniform.return_value = 0.15
     delay = backoff_delay(2, base=1.0, cap=5.0, jitter=0.1)
     mock_uniform.assert_called_once_with(-0.2, 0.2)
-    assert delay == 2.15
+    assert delay == pytest.approx(2.15)
 
 
 @patch("telegram_auto_poster.utils.general.random.uniform")
@@ -38,7 +38,7 @@ def test_backoff_delay_negative_jitter(mock_uniform):
     mock_uniform.return_value = -0.15
     delay = backoff_delay(2, base=1.0, cap=5.0, jitter=0.1)
     mock_uniform.assert_called_once_with(-0.2, 0.2)
-    assert delay == 1.85
+    assert delay == pytest.approx(1.85)
 
 
 @pytest.mark.asyncio
