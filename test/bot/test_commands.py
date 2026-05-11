@@ -1,3 +1,4 @@
+from telegram_auto_poster.bot.callbacks import BatchPreviewContext
 from types import SimpleNamespace
 
 import pytest
@@ -436,7 +437,7 @@ async def test_batch_command_uses_preview(mocker: MockerFixture, commands):
 
     await commands.batch_command(update, context)
 
-    preview.assert_awaited_once_with(context.bot, 99, "p1.jpg", 0, None, False)
+    preview.assert_awaited_once_with(BatchPreviewContext(bot=context.bot, chat_id=99, file_path="p1.jpg", index=0, target_channels=None, prompt_channel=False))
 
 
 @pytest.mark.asyncio
