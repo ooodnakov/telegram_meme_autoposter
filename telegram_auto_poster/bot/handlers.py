@@ -135,9 +135,10 @@ async def handle_media_type(
 
     temp_path = None
     try:
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=details.file_extension)
-        temp_path = temp_file.name
-        temp_file.close()
+        with tempfile.NamedTemporaryFile(
+            delete=False, suffix=details.file_extension
+        ) as temp_file:
+            temp_path = temp_file.name
 
         start_time = time.time()
         f = await context.bot.get_file(file_id)
@@ -193,7 +194,9 @@ async def handle_media_type(
         await update.message.reply_text(success_message, do_quote=True)
     except Exception as e:
         logger.error(f"Error handling {details.media_type}: {e}")
-        await stats.record_error("processing", f"Error handling {details.media_type}: {str(e)}")
+        await stats.record_error(
+            "processing", f"Error handling {details.media_type}: {str(e)}"
+        )
         error_message = (
             _(
                 "Произошла ошибка при обработке вашего фото. Пожалуйста, попробуйте позже."
@@ -222,7 +225,7 @@ async def handle_photo(
             media_type="photo",
             file_extension=".jpg",
             hash_function=calculate_image_hash,
-        )
+        ),
     )
 
 
@@ -240,7 +243,7 @@ async def handle_video(
             media_type="video",
             file_extension=".mp4",
             hash_function=calculate_video_hash,
-        )
+        ),
     )
 
 
