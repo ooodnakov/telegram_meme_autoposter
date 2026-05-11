@@ -55,10 +55,10 @@ MAX_RETRIES = 5
 RETRY_DELAY = 1
 
 
-
 @dataclass
 class MediaProcessContext:
     """Context for processing media files."""
+
     custom_text: str
     input_path: str
     original_name: str
@@ -67,10 +67,13 @@ class MediaProcessContext:
     user_metadata: dict[str, Any] | None = None
     media_hash: str | None = None
 
+
 class MediaProcessor(Protocol):
     """Protocol for processing a single media file."""
 
-    async def __call__(self, context: MediaProcessContext) -> bool:  # pragma: no cover - signature only
+    async def __call__(
+        self, context: MediaProcessContext
+    ) -> bool:  # pragma: no cover - signature only
         """Process the media file and send it for review."""
 
 
