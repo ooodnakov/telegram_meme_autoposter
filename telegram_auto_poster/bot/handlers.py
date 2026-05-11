@@ -5,6 +5,7 @@ import os
 import tempfile
 import time
 import uuid
+from dataclasses import dataclass
 from typing import IO, Any, Awaitable, Callable, Protocol, TypedDict
 
 from loguru import logger
@@ -54,18 +55,23 @@ MAX_RETRIES = 5
 RETRY_DELAY = 1
 
 
+@dataclass
+class MediaProcessRequest:
+    custom_text: str
+    input_path: str
+    original_name: str
+    bot_chat_id: str
+    application: Application
+    user_metadata: dict[str, Any] | None = None
+    media_hash: str | None = None
+
+
 class MediaProcessor(Protocol):
     """Protocol for processing a single media file."""
 
     async def __call__(
         self,
-        custom_text: str,
-        input_path: str,
-        original_name: str,
-        bot_chat_id: str,
-        application: Application,
-        user_metadata: dict[str, Any] | None = ...,
-        media_hash: str | None = ...,
+        request: MediaProcessRequest,
     ) -> bool:  # pragma: no cover - signature only
         """Process the media file and send it for review."""
 
@@ -165,13 +171,15 @@ async def handle_media_type(
         }
 
         await process_func(
-            "New suggestion in bot",
-            temp_path,
-            file_name,
-            context.bot_data["chat_id"],
-            context.application,
-            user_metadata=user_metadata,
-            media_hash=media_hash,
+            MediaProcessRequest(
+                custom_text="New suggestion in bot",
+                input_path=temp_path,
+                original_name=file_name,
+                bot_chat_id=context.bot_data["chat_id"],
+                application=context.application,
+                user_metadata=user_metadata,
+                media_hash=media_hash,
+            )
         )
 
         success_message = (
@@ -372,15 +380,16 @@ async def _send_to_review(
 
 
 async def process_photo(
-    custom_text: str,
-    input_path: str,
-    original_name: str,
-    bot_chat_id: str,
-    application: Application,
-    user_metadata: dict[str, Any] | None = None,
-    media_hash: str | None = None,
+    request: MediaProcessRequest,
 ) -> bool:
     """Process a photo by adding watermark and sending to review bot."""
+    custom_text = request.custom_text
+    input_path = request.input_path
+    original_name = request.original_name
+    bot_chat_id = request.bot_chat_id
+    application = request.application
+    user_metadata = request.user_metadata
+    media_hash = request.media_hash
     start_time = time.time()
     try:
         # Add watermark and upload to MinIO
@@ -460,15 +469,16 @@ async def process_photo(
 
 
 async def process_video(
-    custom_text: str,
-    input_path: str,
-    original_name: str,
-    bot_chat_id: str,
-    application: Application,
-    user_metadata: dict[str, Any] | None = None,
-    media_hash: str | None = None,
+    request: MediaProcessRequest,
 ) -> bool:
     """Process a video and send to review bot."""
+    custom_text = request.custom_text
+    input_path = request.input_path
+    original_name = request.original_name
+    bot_chat_id = request.bot_chat_id
+    application = request.application
+    user_metadata = request.user_metadata
+    media_hash = request.media_hash
     start_time = time.time()
     try:
         # Add watermark and upload to MinIO
