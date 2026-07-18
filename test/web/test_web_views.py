@@ -215,6 +215,94 @@ def test_queue_api_lists_posts(mocker, auth_client: TestClient):
     assert payload["items"][0]["caption"] == "caption"
 
 
+def test_queue_unschedule_restores_photo_to_processed_posts(
+    mocker, auth_client: TestClient
+):
+    copy_object = mocker.AsyncMock()
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.client",
+        new=mocker.Mock(copy_object=copy_object),
+    )
+    file_exists = mocker.patch(
+        "telegram_auto_poster.web.app.storage.file_exists",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    delete_file = mocker.patch(
+        "telegram_auto_poster.web.app.storage.delete_file",
+        new=mocker.AsyncMock(),
+    )
+    remove_scheduled = mocker.patch(
+        "telegram_auto_poster.web.app.remove_scheduled_post"
+    )
+    record_unscheduled = mocker.patch(
+        "telegram_auto_poster.web.app.stats.record_unscheduled",
+        new=mocker.AsyncMock(),
+    )
+    invalidate_cache = mocker.patch(
+        "telegram_auto_poster.web.app._invalidate_posts_summary_cache",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post(
+        "/api/queue/unschedule", json={"paths": ["scheduled/processed.jpg"]}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "path": "photos/processed.jpg"}
+    invalidate_cache.assert_awaited_once()
+    file_exists.assert_awaited_once_with(
+        "scheduled/processed.jpg", "telegram-auto-poster"
+    )
+    copy_object.assert_awaited_once()
+    assert copy_object.await_args.args[:2] == (
+        "telegram-auto-poster",
+        "photos/processed.jpg",
+    )
+    delete_file.assert_awaited_once_with(
+        "scheduled/processed.jpg", "telegram-auto-poster"
+    )
+    remove_scheduled.assert_called_once_with("scheduled/processed.jpg")
+    record_unscheduled.assert_awaited_once()
+
+
+def test_queue_unschedule_restores_video_to_processed_posts(
+    mocker, auth_client: TestClient
+):
+    copy_object = mocker.AsyncMock()
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.client",
+        new=mocker.Mock(copy_object=copy_object),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.file_exists",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.delete_file",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch("telegram_auto_poster.web.app.remove_scheduled_post")
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.record_unscheduled",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._invalidate_posts_summary_cache",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post(
+        "/api/queue/unschedule", json={"paths": ["scheduled/processed.mp4"]}
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["path"] == "videos/processed.mp4"
+    assert copy_object.await_args.args[:2] == (
+        "telegram-auto-poster",
+        "videos/processed.mp4",
+    )
+
+
 def test_posts_api_filters_items_and_returns_filter_metadata(
     mocker, auth_client: TestClient
 ):
@@ -355,14 +443,26 @@ def test_posts_api_applies_oldest_sort(mocker, auth_client: TestClient):
         new=mocker.AsyncMock(
             return_value=[
                 {
-                    "items": [{"path": "photos/processed_new.jpg", "name": "processed_new.jpg", "kind": "image"}],
+                    "items": [
+                        {
+                            "path": "photos/processed_new.jpg",
+                            "name": "processed_new.jpg",
+                            "kind": "image",
+                        }
+                    ],
                     "count": 1,
                     "is_group": False,
                     "source": "@a",
                     "timestamp": "2024-01-02T00:00:00+00:00",
                 },
                 {
-                    "items": [{"path": "photos/processed_old.jpg", "name": "processed_old.jpg", "kind": "image"}],
+                    "items": [
+                        {
+                            "path": "photos/processed_old.jpg",
+                            "name": "processed_old.jpg",
+                            "kind": "image",
+                        }
+                    ],
                     "count": 1,
                     "is_group": False,
                     "source": "@a",
@@ -393,13 +493,25 @@ def test_suggestions_api_supports_sort(mocker, auth_client: TestClient):
         new=mocker.AsyncMock(
             return_value=[
                 {
-                    "items": [{"path": "photos/processed_new.jpg", "name": "processed_new.jpg", "kind": "image"}],
+                    "items": [
+                        {
+                            "path": "photos/processed_new.jpg",
+                            "name": "processed_new.jpg",
+                            "kind": "image",
+                        }
+                    ],
                     "count": 1,
                     "is_group": False,
                     "timestamp": "2024-01-02T00:00:00+00:00",
                 },
                 {
-                    "items": [{"path": "photos/processed_old.jpg", "name": "processed_old.jpg", "kind": "image"}],
+                    "items": [
+                        {
+                            "path": "photos/processed_old.jpg",
+                            "name": "processed_old.jpg",
+                            "kind": "image",
+                        }
+                    ],
                     "count": 1,
                     "is_group": False,
                     "timestamp": "2024-01-01T00:00:00+00:00",
