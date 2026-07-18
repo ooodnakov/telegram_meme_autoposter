@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity, Files, SlidersHorizontal, Users } from "lucide-react";
 import { toast } from "sonner";
+import DestructiveActionDialog from "@/components/DestructiveActionDialog";
 import EventFeed from "@/components/EventFeed";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
@@ -132,9 +133,18 @@ const EventsPage = () => {
             <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
               {t("refresh")}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
-              {t("clearHistory")}
-            </Button>
+            <DestructiveActionDialog
+              title={t("resetEventsConfirmTitle")}
+              description={t("resetEventsConfirmDescription")}
+              confirmLabel={t("clearHistory")}
+              onConfirm={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending}
+              trigger={
+                <Button variant="destructive" size="sm" disabled={resetMutation.isPending}>
+                  {resetMutation.isPending ? t("resetting") : t("clearHistory")}
+                </Button>
+              }
+            />
           </>
         }
       />

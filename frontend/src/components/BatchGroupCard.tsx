@@ -1,5 +1,6 @@
 import { Clock3, FileText, Layers3, Send, Trash2 } from "lucide-react";
 import BadgeStatus from "@/components/BadgeStatus";
+import DestructiveActionDialog from "@/components/DestructiveActionDialog";
 import ClickableImage from "@/components/ClickableImage";
 import ScheduleDateTimePicker from "@/components/ScheduleDateTimePicker";
 import { useSession } from "@/components/SessionProvider";
@@ -178,14 +179,19 @@ const BatchGroupCard = ({
                 <Clock3 className="h-4 w-4" />
                 {activeAction === "schedule" ? t("loading") : t("schedule")}
               </Button>
-              <Button
-                variant="destructive"
-                onClick={() => onAction("remove_batch")}
+              <DestructiveActionDialog
+                title={t("removeBatchConfirmTitle")}
+                description={t("removeBatchConfirmDescription")}
+                confirmLabel={t("remove")}
+                onConfirm={() => onAction("remove_batch")}
                 disabled={isBusy}
-              >
-                <Trash2 className="h-4 w-4" />
-                {activeAction === "remove_batch" ? t("loading") : t("remove")}
-              </Button>
+                trigger={
+                  <Button variant="destructive" disabled={isBusy}>
+                    <Trash2 className="h-4 w-4" />
+                    {activeAction === "remove_batch" ? t("loading") : t("remove")}
+                  </Button>
+                }
+              />
             </div>
           </div>
         </div>

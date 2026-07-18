@@ -497,7 +497,7 @@ const LeaderboardPage = () => {
             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" disabled={resetMutation.isPending}>
+                <Button variant="destructive" size="sm" disabled={resetMutation.isPending}>
                   <RotateCcw className="h-4 w-4" />
                   {resetMutation.isPending ? t("resetting") : t("resetLeaderboard")}
                 </Button>

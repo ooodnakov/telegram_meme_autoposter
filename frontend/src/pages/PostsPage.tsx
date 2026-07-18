@@ -5,6 +5,7 @@ import ContentLayoutSelect, {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
+import DestructiveActionDialog from "@/components/DestructiveActionDialog";
 import MediaGroupCard from "@/components/MediaGroupCard";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
@@ -312,18 +313,22 @@ const PostsPage = () => {
                       >
                         {t("pushNow")}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() =>
+                      <DestructiveActionDialog
+                        title={t("rejectConfirmTitle")}
+                        description={t("rejectConfirmDescription")}
+                        confirmLabel={t("reject")}
+                        onConfirm={() =>
                           mutation.mutate({
                             action: "notok",
                             paths: group.items.map((item) => item.path),
                           })
                         }
-                      >
-                        {t("reject")}
-                      </Button>
+                        trigger={
+                          <Button size="sm" variant="destructive">
+                            {t("reject")}
+                          </Button>
+                        }
+                      />
                     </>
                   }
                 />
