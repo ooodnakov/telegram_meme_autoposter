@@ -104,7 +104,7 @@ SPA_PUBLIC_PATHS = {
     "/robots.txt",
     "/placeholder.svg",
 }
-SPA_PUBLIC_PREFIXES = ("/assets", "/pydoc")
+SPA_PUBLIC_PREFIXES = ("/assets",)
 SPA_RESERVED_PREFIXES = ("api/", "assets/", "pydoc/")
 SPA_RESERVED_PATHS = {
     "auth",
@@ -2401,7 +2401,7 @@ async def placeholder() -> Response:
 
 @app.get("/pydoc/{module:path}", response_class=HTMLResponse)
 async def render_pydoc(module: str = "") -> HTMLResponse:
-    """Serve pydoc-generated documentation for the given module."""
+    """Serve admin-only pydoc-generated documentation for the given module."""
 
     if module and not module.startswith("telegram_auto_poster"):
         return HTMLResponse(
