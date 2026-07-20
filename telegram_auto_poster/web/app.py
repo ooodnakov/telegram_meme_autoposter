@@ -1444,7 +1444,7 @@ def _processed_path_for_scheduled_item(path: str) -> str:
     """Return the processed-media path that should receive a scheduled item."""
 
     file_name = os.path.basename(path)
-    kind = _media_kind(file_name)
+    kind = _media_kind(path)
     prefix = VIDEOS_PATH if kind == "video" else PHOTOS_PATH
     return f"{prefix}/{file_name}"
 
