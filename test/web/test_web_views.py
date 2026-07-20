@@ -303,6 +303,41 @@ def test_queue_unschedule_restores_video_to_processed_posts(
     )
 
 
+def test_queue_unschedule_restores_batch_count(mocker, auth_client: TestClient):
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.client",
+        new=mocker.Mock(copy_object=mocker.AsyncMock()),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.file_exists",
+        new=mocker.AsyncMock(return_value=True),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app.storage.delete_file",
+        new=mocker.AsyncMock(),
+    )
+    increment_batch = mocker.patch(
+        "telegram_auto_poster.web.app.increment_batch_count",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch("telegram_auto_poster.web.app.remove_scheduled_post")
+    mocker.patch(
+        "telegram_auto_poster.web.app.stats.record_unscheduled",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "telegram_auto_poster.web.app._invalidate_posts_summary_cache",
+        new=mocker.AsyncMock(),
+    )
+
+    resp = auth_client.post(
+        "/api/queue/unschedule", json={"paths": ["scheduled/batch_item.jpg"]}
+    )
+
+    assert resp.status_code == 200
+    increment_batch.assert_awaited_once()
+
+
 def test_posts_api_filters_items_and_returns_filter_metadata(
     mocker, auth_client: TestClient
 ):

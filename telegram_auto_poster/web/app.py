@@ -1458,6 +1458,8 @@ async def _unschedule_queue_item(path: str) -> dict[str, object]:
         source = CopySource(BUCKET_MAIN, path)
         await storage.client.copy_object(BUCKET_MAIN, destination_path, source)
         await storage.delete_file(path, BUCKET_MAIN)
+        if _is_batch_item(destination_path):
+            await increment_batch_count()
 
     await run_in_threadpool(remove_scheduled_post, path)
     await stats.record_unscheduled()
