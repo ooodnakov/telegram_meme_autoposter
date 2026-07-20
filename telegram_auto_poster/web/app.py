@@ -1440,18 +1440,30 @@ async def _schedule_queue_item(path: str, scheduled_at: str) -> dict[str, object
     return {"status": "ok"}
 
 
+def _processed_path_for_scheduled_item(path: str) -> str:
+    """Return the processed-media path that should receive a scheduled item."""
+
+    file_name = os.path.basename(path)
+    kind = _media_kind(path)
+    prefix = VIDEOS_PATH if kind == "video" else PHOTOS_PATH
+    return f"{prefix}/{file_name}"
+
+
 async def _unschedule_queue_item(path: str) -> dict[str, object]:
-    """Remove a post from the scheduled queue."""
+    """Move a scheduled post back to processed media and remove its schedule."""
 
     await _invalidate_posts_summary_cache()
+    destination_path = _processed_path_for_scheduled_item(path)
+    if await storage.file_exists(path, BUCKET_MAIN):
+        source = CopySource(BUCKET_MAIN, path)
+        await storage.client.copy_object(BUCKET_MAIN, destination_path, source)
+        await storage.delete_file(path, BUCKET_MAIN)
+        if _is_batch_item(destination_path):
+            await increment_batch_count()
+
     await run_in_threadpool(remove_scheduled_post, path)
     await stats.record_unscheduled()
-    try:
-        if await storage.file_exists(path, BUCKET_MAIN):
-            await storage.delete_file(path, BUCKET_MAIN)
-    except Exception:
-        logger.exception("Failed to delete scheduled object %s after unschedule", path)
-    return {"status": "ok"}
+    return {"status": "ok", "path": destination_path}
 
 
 async def _restore_trash_items(
