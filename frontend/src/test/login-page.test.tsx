@@ -8,12 +8,14 @@ vi.mock("@/components/SessionProvider", () => ({
   }),
 }));
 
+const originalConfig = window.__TELEGRAM_AUTO_POSTER__;
+
 const setBotUsername = (botUsername?: string) => {
   window.__TELEGRAM_AUTO_POSTER__ = botUsername ? { botUsername } : {};
 };
 
 afterEach(() => {
-  delete window.__TELEGRAM_AUTO_POSTER__;
+  window.__TELEGRAM_AUTO_POSTER__ = originalConfig;
 });
 
 describe("LoginPage", () => {
