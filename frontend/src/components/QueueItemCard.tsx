@@ -1,5 +1,6 @@
 import { Clock3, FileText, Save, Trash2 } from "lucide-react";
 import BadgeStatus from "@/components/BadgeStatus";
+import DestructiveActionDialog from "@/components/DestructiveActionDialog";
 import ClickableImage from "@/components/ClickableImage";
 import ScheduleDateTimePicker from "@/components/ScheduleDateTimePicker";
 import { useSession } from "@/components/SessionProvider";
@@ -118,14 +119,19 @@ const QueueItemCard = ({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="destructive"
-                onClick={onUnschedule}
+              <DestructiveActionDialog
+                title={t("unscheduleConfirmTitle")}
+                description={t("unscheduleConfirmDescription")}
+                confirmLabel={t("unschedule")}
+                onConfirm={onUnschedule}
                 disabled={isSaving || isUnscheduling}
-              >
-                <Trash2 className="h-4 w-4" />
-                {isUnscheduling ? t("loading") : t("unschedule")}
-              </Button>
+                trigger={
+                  <Button variant="destructive" disabled={isSaving || isUnscheduling}>
+                    <Trash2 className="h-4 w-4" />
+                    {isUnscheduling ? t("loading") : t("unschedule")}
+                  </Button>
+                }
+              />
             </div>
           </div>
         </div>

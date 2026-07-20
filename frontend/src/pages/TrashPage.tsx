@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import DestructiveActionDialog from "@/components/DestructiveActionDialog";
 import MediaGroupCard from "@/components/MediaGroupCard";
 import PagePagination from "@/components/PagePagination";
 import { ErrorState, LoadingState } from "@/components/PageState";
@@ -83,15 +84,17 @@ const TrashPage = () => {
                   >
                     {t("restore")}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() =>
-                      deleteMutation.mutate(group.items.map((item) => item.path))
+                  <DestructiveActionDialog
+                    title={t("deleteTrashConfirmTitle")}
+                    description={t("deleteTrashConfirmDescription")}
+                    confirmLabel={t("deleteForever")}
+                    onConfirm={() => deleteMutation.mutate(group.items.map((item) => item.path))}
+                    trigger={
+                      <Button size="sm" variant="destructive">
+                        {t("deleteForever")}
+                      </Button>
                     }
-                  >
-                    {t("deleteForever")}
-                  </Button>
+                  />
                 </>
               }
             />

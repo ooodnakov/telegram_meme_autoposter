@@ -22,6 +22,7 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import DestructiveActionDialog from "@/components/DestructiveActionDialog";
 import { ErrorState, LoadingState } from "@/components/PageState";
 import SectionHeader from "@/components/SectionHeader";
 import StatCard from "@/components/StatCard";
@@ -332,9 +333,18 @@ const StatsPage = () => {
             <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
               {t("refresh")}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => resetMutation.mutate()}>
-              {t("resetStats")}
-            </Button>
+            <DestructiveActionDialog
+              title={t("resetStatsConfirmTitle")}
+              description={t("resetStatsConfirmDescription")}
+              confirmLabel={t("resetStats")}
+              onConfirm={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending}
+              trigger={
+                <Button variant="destructive" size="sm" disabled={resetMutation.isPending}>
+                  {resetMutation.isPending ? t("resetting") : t("resetStats")}
+                </Button>
+              }
+            />
           </>
         }
       />
