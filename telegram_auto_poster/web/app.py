@@ -666,7 +666,9 @@ async def _get_cached_posts_summary_groups() -> list[dict[str, object]] | None:
     return None
 
 
-async def _store_cached_posts_summary_groups(groups: Sequence[dict[str, object]]) -> None:
+async def _store_cached_posts_summary_groups(
+    groups: Sequence[dict[str, object]],
+) -> None:
     """Persist summary groups for reuse across requests."""
 
     try:
@@ -1359,9 +1361,9 @@ async def _send_batch_now(request: Request) -> dict[str, object]:
     for post in posts:
         all_paths.extend(
             [
-            item["path"]
-            for item in post["items"]
-            if isinstance(item, dict) and isinstance(item.get("path"), str)
+                item["path"]
+                for item in post["items"]
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
             ]
         )
 
@@ -1903,7 +1905,9 @@ async def api_suggestions(page: int = 1, sort: str = "newest") -> JSONResponse:
     sorted_suggestions = _sort_posts_groups(suggestions, sanitized_sort)
     count = len(sorted_suggestions)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = await _hydrate_post_groups(sorted_suggestions[offset : offset + ITEMS_PER_PAGE])
+    items = await _hydrate_post_groups(
+        sorted_suggestions[offset : offset + ITEMS_PER_PAGE]
+    )
     return JSONResponse(
         {
             "items": items,
@@ -1942,13 +1946,16 @@ async def api_posts(
             if isinstance(source_name, str) and source_name
         }
     )
-    filtered_posts = _sort_posts_groups(_filter_posts_groups(
-        posts,
-        query=normalized_query,
-        kind=sanitized_kind,
-        layout=sanitized_layout,
-        source=normalized_source,
-    ), sanitized_sort)
+    filtered_posts = _sort_posts_groups(
+        _filter_posts_groups(
+            posts,
+            query=normalized_query,
+            kind=sanitized_kind,
+            layout=sanitized_layout,
+            source=normalized_source,
+        ),
+        sanitized_sort,
+    )
     count = len(filtered_posts)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
     items = await _hydrate_post_groups(filtered_posts[offset : offset + ITEMS_PER_PAGE])
