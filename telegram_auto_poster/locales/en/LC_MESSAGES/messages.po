@@ -591,11 +591,11 @@ msgid "Toggle Preview"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/queue.html:42
-msgid "Unschedule this item?"
+msgid "Return this item to processed posts?"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/queue.html:44
-msgid "Unschedule"
+msgid "Return to posts"
 msgstr ""
 
 #: telegram_auto_poster/web/templates/queue.html:51

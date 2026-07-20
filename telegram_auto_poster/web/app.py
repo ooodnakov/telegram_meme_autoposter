@@ -104,7 +104,7 @@ SPA_PUBLIC_PATHS = {
     "/robots.txt",
     "/placeholder.svg",
 }
-SPA_PUBLIC_PREFIXES = ("/assets", "/pydoc")
+SPA_PUBLIC_PREFIXES = ("/assets",)
 SPA_RESERVED_PREFIXES = ("api/", "assets/", "pydoc/")
 SPA_RESERVED_PATHS = {
     "auth",
@@ -666,7 +666,9 @@ async def _get_cached_posts_summary_groups() -> list[dict[str, object]] | None:
     return None
 
 
-async def _store_cached_posts_summary_groups(groups: Sequence[dict[str, object]]) -> None:
+async def _store_cached_posts_summary_groups(
+    groups: Sequence[dict[str, object]],
+) -> None:
     """Persist summary groups for reuse across requests."""
 
     try:
@@ -1359,9 +1361,9 @@ async def _send_batch_now(request: Request) -> dict[str, object]:
     for post in posts:
         all_paths.extend(
             [
-            item["path"]
-            for item in post["items"]
-            if isinstance(item, dict) and isinstance(item.get("path"), str)
+                item["path"]
+                for item in post["items"]
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
             ]
         )
 
@@ -1438,18 +1440,30 @@ async def _schedule_queue_item(path: str, scheduled_at: str) -> dict[str, object
     return {"status": "ok"}
 
 
+def _processed_path_for_scheduled_item(path: str) -> str:
+    """Return the processed-media path that should receive a scheduled item."""
+
+    file_name = os.path.basename(path)
+    kind = _media_kind(path)
+    prefix = VIDEOS_PATH if kind == "video" else PHOTOS_PATH
+    return f"{prefix}/{file_name}"
+
+
 async def _unschedule_queue_item(path: str) -> dict[str, object]:
-    """Remove a post from the scheduled queue."""
+    """Move a scheduled post back to processed media and remove its schedule."""
 
     await _invalidate_posts_summary_cache()
+    destination_path = _processed_path_for_scheduled_item(path)
+    if await storage.file_exists(path, BUCKET_MAIN):
+        source = CopySource(BUCKET_MAIN, path)
+        await storage.client.copy_object(BUCKET_MAIN, destination_path, source)
+        await storage.delete_file(path, BUCKET_MAIN)
+        if _is_batch_item(destination_path):
+            await increment_batch_count()
+
     await run_in_threadpool(remove_scheduled_post, path)
     await stats.record_unscheduled()
-    try:
-        if await storage.file_exists(path, BUCKET_MAIN):
-            await storage.delete_file(path, BUCKET_MAIN)
-    except Exception:
-        logger.exception("Failed to delete scheduled object %s after unschedule", path)
-    return {"status": "ok"}
+    return {"status": "ok", "path": destination_path}
 
 
 async def _restore_trash_items(
@@ -1903,7 +1917,9 @@ async def api_suggestions(page: int = 1, sort: str = "newest") -> JSONResponse:
     sorted_suggestions = _sort_posts_groups(suggestions, sanitized_sort)
     count = len(sorted_suggestions)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
-    items = await _hydrate_post_groups(sorted_suggestions[offset : offset + ITEMS_PER_PAGE])
+    items = await _hydrate_post_groups(
+        sorted_suggestions[offset : offset + ITEMS_PER_PAGE]
+    )
     return JSONResponse(
         {
             "items": items,
@@ -1942,13 +1958,16 @@ async def api_posts(
             if isinstance(source_name, str) and source_name
         }
     )
-    filtered_posts = _sort_posts_groups(_filter_posts_groups(
-        posts,
-        query=normalized_query,
-        kind=sanitized_kind,
-        layout=sanitized_layout,
-        source=normalized_source,
-    ), sanitized_sort)
+    filtered_posts = _sort_posts_groups(
+        _filter_posts_groups(
+            posts,
+            query=normalized_query,
+            kind=sanitized_kind,
+            layout=sanitized_layout,
+            source=normalized_source,
+        ),
+        sanitized_sort,
+    )
     count = len(filtered_posts)
     page, total_pages, offset = _paginate(count, page, ITEMS_PER_PAGE)
     items = await _hydrate_post_groups(filtered_posts[offset : offset + ITEMS_PER_PAGE])
@@ -2401,7 +2420,7 @@ async def placeholder() -> Response:
 
 @app.get("/pydoc/{module:path}", response_class=HTMLResponse)
 async def render_pydoc(module: str = "") -> HTMLResponse:
-    """Serve pydoc-generated documentation for the given module."""
+    """Serve admin-only pydoc-generated documentation for the given module."""
 
     if module and not module.startswith("telegram_auto_poster"):
         return HTMLResponse(

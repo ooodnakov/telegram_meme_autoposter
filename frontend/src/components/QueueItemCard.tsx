@@ -1,4 +1,4 @@
-import { Clock3, FileText, Save, Trash2 } from "lucide-react";
+import { Clock3, FileText, RotateCcw, Save } from "lucide-react";
 import BadgeStatus from "@/components/BadgeStatus";
 import ClickableImage from "@/components/ClickableImage";
 import ScheduleDateTimePicker from "@/components/ScheduleDateTimePicker";
@@ -119,11 +119,11 @@ const QueueItemCard = ({
 
             <div className="flex flex-wrap gap-2">
               <Button
-                variant="destructive"
+                variant="secondary"
                 onClick={onUnschedule}
                 disabled={isSaving || isUnscheduling}
               >
-                <Trash2 className="h-4 w-4" />
+                <RotateCcw className="h-4 w-4" />
                 {isUnscheduling ? t("loading") : t("unschedule")}
               </Button>
             </div>

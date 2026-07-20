@@ -22,6 +22,22 @@ def test_login_shell_is_public():
         assert 'id="root"' in resp.text
 
 
+def test_pydoc_requires_login_redirect():
+    with TestClient(app) as client:
+        resp = client.get(
+            "/pydoc/telegram_auto_poster.web.app", follow_redirects=False
+        )
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/login"
+        assert "Administrative dashboard API" not in resp.text
+
+
+def test_authenticated_admin_pydoc_route_serves_docs(auth_client: TestClient):
+    resp = auth_client.get("/pydoc/telegram_auto_poster.web.app")
+    assert resp.status_code == 200
+    assert "telegram_auto_poster.web.app" in resp.text
+
+
 def test_auth_post_sets_session_cookie():
     with TestClient(app) as client:
         payload = login_payload(CONFIG.bot.admin_ids[0])
