@@ -104,7 +104,7 @@ SPA_PUBLIC_PATHS = {
     "/robots.txt",
     "/placeholder.svg",
 }
-SPA_PUBLIC_PREFIXES = ("/assets", "/pydoc")
+SPA_PUBLIC_PREFIXES = ("/assets/",)
 SPA_RESERVED_PREFIXES = ("api/", "assets/", "pydoc/")
 SPA_RESERVED_PATHS = {
     "auth",
