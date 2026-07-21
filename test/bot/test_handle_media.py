@@ -94,7 +94,11 @@ async def test_handle_photo_wrapper(mocker: MockerFixture, mock_config):
     await handlers.handle_photo("update", "context", 1)
 
     handle_media_type_mock.assert_awaited_once_with(
-        "update", "context", 1, "photo", ".jpg", handlers.calculate_image_hash
+        "update", "context", 1, handlers.MediaTypeDetails(
+            media_type="photo",
+            file_extension=".jpg",
+            hash_function=handlers.calculate_image_hash,
+        )
     )
 
 
@@ -107,5 +111,9 @@ async def test_handle_video_wrapper(mocker: MockerFixture, mock_config):
     await handlers.handle_video("update", "context", 1)
 
     handle_media_type_mock.assert_awaited_once_with(
-        "update", "context", 1, "video", ".mp4", handlers.calculate_video_hash
+        "update", "context", 1, handlers.MediaTypeDetails(
+            media_type="video",
+            file_extension=".mp4",
+            hash_function=handlers.calculate_video_hash,
+        )
     )
