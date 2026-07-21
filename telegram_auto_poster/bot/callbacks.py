@@ -46,7 +46,7 @@ from telegram_auto_poster.utils.general import (
 from telegram_auto_poster.utils.i18n import _ as i18n_
 from telegram_auto_poster.utils.scheduler import find_next_available_slot
 from telegram_auto_poster.utils.stats import stats
-from telegram_auto_poster.utils.storage import storage
+from telegram_auto_poster.utils.storage import UploadMetadata, storage
 from telegram_auto_poster.utils.timezone import (
     DISPLAY_TZ,
     UTC,
@@ -298,11 +298,17 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                     temp_path,
                     BUCKET_MAIN,
                     f"{target_prefix}/{new_object_name}",
-                    user_id=src_meta.get("user_id") if src_meta else None,
-                    chat_id=src_meta.get("chat_id") if src_meta else None,
-                    message_id=src_meta.get("message_id") if src_meta else None,
-                    media_hash=media_hash,
-                    source=src_meta.get("source") if src_meta else None,
+                    metadata=(
+                        UploadMetadata(
+                            user_id=src_meta.get("user_id") if src_meta else None,
+                            chat_id=src_meta.get("chat_id") if src_meta else None,
+                            message_id=src_meta.get("message_id") if src_meta else None,
+                            media_hash=media_hash,
+                            source=src_meta.get("source") if src_meta else None,
+                        )
+                        if src_meta or media_hash
+                        else None
+                    ),
                 )
 
                 user_metadata = await storage.get_submission_metadata(new_object_name)
