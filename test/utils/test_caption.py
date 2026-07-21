@@ -90,3 +90,33 @@ def test_generate_caption_translation_prompt(monkeypatch):
     monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
     generate_caption("dummy.jpg", "fr")
     assert "fr" in holder["model"].prompt
+
+def test_configure_gemini_without_genai(monkeypatch):
+    import telegram_auto_poster.utils.caption as caption_module
+    monkeypatch.setattr(caption_module, "genai", None)
+    # Should not raise any error
+    caption_module.configure_gemini()
+
+
+def test_configure_gemini_without_api_key(monkeypatch):
+    monkeypatch.setattr(CONFIG.gemini, "api_key", None)
+    import telegram_auto_poster.utils.caption as caption_module
+    # We patch genai so that if configure is somehow called, it fails the test
+    class MockGenai:
+        def configure(self, api_key):
+            raise AssertionError("configure should not be called")
+    monkeypatch.setattr(caption_module, "genai", MockGenai())
+    caption_module.configure_gemini()
+
+
+def test_configure_gemini_with_api_key(monkeypatch):
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("test_api_key"))
+    import telegram_auto_poster.utils.caption as caption_module
+    configured_api_key = None
+    class MockGenai:
+        def configure(self, api_key):
+            nonlocal configured_api_key
+            configured_api_key = api_key
+    monkeypatch.setattr(caption_module, "genai", MockGenai())
+    caption_module.configure_gemini()
+    assert configured_api_key == "test_api_key"
