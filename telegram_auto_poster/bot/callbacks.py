@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
@@ -114,42 +115,45 @@ def _compute_media_hash(temp_path: str, media_type: str) -> str | None:
     )
 
 
-async def _add_media_hash(
-    file_name: str,
-    media_type: str,
-    file_prefix: str,
-    temp_path: str | None,
-    metadata: dict[str, Any] | None,
-    context_name: str,
-) -> str | None:
-    """Ensure ``file_name`` is present in the deduplication corpus."""
+@dataclass
+class MediaContext:
+    file_name: str
+    media_type: str
+    file_prefix: str
+    context_name: str
+    temp_path: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+async def _add_media_hash(ctx: MediaContext) -> str | None:
+    """Ensure ``ctx.file_name`` is present in the deduplication corpus."""
     media_hash = None
     try:
-        meta = metadata or await storage.get_submission_metadata(file_name)
+        meta = ctx.metadata or await storage.get_submission_metadata(ctx.file_name)
         if meta and meta.get("hash"):
             media_hash = meta.get("hash")
         else:
-            if temp_path is None:
-                temp_path, _ = await download_from_minio(
-                    file_prefix + file_name, BUCKET_MAIN
+            if ctx.temp_path is None:
+                ctx.temp_path, _ = await download_from_minio(
+                    ctx.file_prefix + ctx.file_name, BUCKET_MAIN
                 )
                 temp_created = True
             else:
                 temp_created = False
             try:
-                media_hash = _compute_media_hash(temp_path, media_type)
+                media_hash = _compute_media_hash(ctx.temp_path, ctx.media_type)
             finally:
                 if temp_created:
-                    cleanup_temp_file(temp_path)
+                    cleanup_temp_file(ctx.temp_path)
         if media_hash:
             add_approved_hash(media_hash)
     except MinioError as _e:
         logger.warning(
-            f"MinIO error while adding approved hash for {file_name} in {context_name}: {_e}"
+            f"MinIO error while adding approved hash for {ctx.file_name} in {ctx.context_name}: {_e}"
         )
     except Exception as _e:
         logger.warning(
-            f"Unexpected error when adding approved hash for {file_name} in {context_name}: {_e}"
+            f"Unexpected error when adding approved hash for {ctx.file_name} in {ctx.context_name}: {_e}"
         )
     return media_hash
 
@@ -207,12 +211,12 @@ async def schedule_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             # 2. Add to approved dedup corpus (use stored hash or compute)
             media_type = "photo" if file_path.startswith(f"{PHOTOS_PATH}/") else "video"
             await _add_media_hash(
-                file_name,
-                media_type,
-                file_prefix,
-                None,
-                None,
-                "schedule_callback",
+                MediaContext(
+                    file_name=file_name,
+                    media_type=media_type,
+                    file_prefix=file_prefix,
+                    context_name="schedule_callback",
+                )
             )
 
             # 3. Move file in MinIO
@@ -287,12 +291,14 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 target_prefix = PHOTOS_PATH if media_type == "photo" else VIDEOS_PATH
                 src_meta = await storage.get_submission_metadata(file_name)
                 media_hash = await _add_media_hash(
-                    file_name,
-                    media_type,
-                    file_prefix,
-                    temp_path,
-                    src_meta,
-                    "ok_callback(batch)",
+                    MediaContext(
+                        file_name=file_name,
+                        media_type=media_type,
+                        file_prefix=file_prefix,
+                        temp_path=temp_path,
+                        metadata=src_meta,
+                        context_name="ok_callback(batch)",
+                    )
                 )
                 await storage.upload_file(
                     temp_path,
@@ -382,12 +388,14 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             user_metadata = item["meta"]
             try:
                 await _add_media_hash(
-                    file_name,
-                    media_type,
-                    file_prefix,
-                    temp_path,
-                    user_metadata,
-                    "push_callback",
+                    MediaContext(
+                        file_name=file_name,
+                        media_type=media_type,
+                        file_prefix=file_prefix,
+                        temp_path=temp_path,
+                        metadata=user_metadata,
+                        context_name="push_callback",
+                    )
                 )
 
                 # Delete from MinIO
