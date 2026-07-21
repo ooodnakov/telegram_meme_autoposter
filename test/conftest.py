@@ -141,6 +141,7 @@ def mock_config(mocker):
         Config,
         WebConfig,
         TelegramConfig,
+        I18nConfig,
     )
 
     mocker.patch(
@@ -163,5 +164,6 @@ def mock_config(mocker):
                 selected_chats=["@test1", "@test2"],
                 luba_chat="@luba",
             ),
+            i18n=I18nConfig(default="ru", users={}),
         ),
     )
