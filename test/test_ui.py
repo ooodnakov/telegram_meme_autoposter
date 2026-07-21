@@ -1,4 +1,9 @@
-from telegram_auto_poster.utils.ui import approval_keyboard, CALLBACK_PUSH
+from telegram_auto_poster.utils.ui import (
+    approval_keyboard,
+    trashed_keyboard,
+    CALLBACK_PUSH,
+    CALLBACK_RESTORE,
+)
 
 
 def test_approval_keyboard_default_push():
@@ -14,3 +19,9 @@ def test_approval_keyboard_channel_prompt():
     assert f"{CALLBACK_PUSH}:@c1" in callbacks
     assert f"{CALLBACK_PUSH}:@c2" in callbacks
     assert f"{CALLBACK_PUSH}:all" in callbacks
+
+
+def test_trashed_keyboard():
+    markup = trashed_keyboard()
+    callbacks = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert callbacks == [CALLBACK_RESTORE]
