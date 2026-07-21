@@ -503,3 +503,37 @@ async def test_count_files_uses_cache(storage, mock_minio_client, mock_redis_cli
     assert await storage.count_files(BUCKET_MAIN) == 2
     assert await storage.count_files(BUCKET_MAIN, prefix="a") == 1
     mock_minio_client.list_objects.assert_not_called()
+
+
+def test_build_submission_search_text_no_meta():
+    from telegram_auto_poster.utils.storage import build_submission_search_text
+
+    assert build_submission_search_text("my_file.jpg") == "my_file.jpg"
+
+
+def test_build_submission_search_text_full():
+    from telegram_auto_poster.utils.storage import build_submission_search_text
+
+    meta = {
+        "caption": "A cool picture",
+        "source": "Reddit",
+        "ocr_text": "Some text on image",
+    }
+    assert (
+        build_submission_search_text("my_file.jpg", meta)
+        == "my_file.jpg a cool picture reddit some text on image"
+    )
+
+
+def test_build_submission_search_text_normalization_and_deduplication():
+    from telegram_auto_poster.utils.storage import build_submission_search_text
+
+    meta = {"caption": "  My_file.jpg  ", "source": "Reddit", "ocr_text": "Reddit"}
+    # "my_file.jpg" is duplicate, "reddit" is duplicate
+    assert build_submission_search_text("my_file.jpg", meta) == "my_file.jpg reddit"
+
+
+def test_build_submission_search_text_with_path():
+    from telegram_auto_poster.utils.storage import build_submission_search_text
+
+    assert build_submission_search_text("photos/123/my_file.jpg") == "my_file.jpg"
