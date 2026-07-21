@@ -24,18 +24,18 @@ from telegram_auto_poster.utils.channel_analytics import (
     get_completed_channel_analytics_refresh,
     request_channel_analytics_refresh,
 )
-from telegram_auto_poster.utils.deduplication import (
-    add_approved_hash,
-    calculate_image_hash,
-    calculate_video_hash,
-)
 from telegram_auto_poster.utils.db import (
-    add_trashed_post,
     _redis_key,
+    add_trashed_post,
     clear_event_history,
     get_async_redis_client,
     get_scheduled_posts,
     remove_scheduled_post,
+)
+from telegram_auto_poster.utils.deduplication import (
+    add_approved_hash,
+    calculate_image_hash,
+    calculate_video_hash,
 )
 from telegram_auto_poster.utils.general import cleanup_temp_file, download_from_minio
 from telegram_auto_poster.utils.stats import stats

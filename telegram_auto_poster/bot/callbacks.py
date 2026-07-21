@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from loguru import logger
@@ -67,6 +68,16 @@ from telegram_auto_poster.utils.ui import (
     approval_keyboard,
     trashed_keyboard,
 )
+
+
+@dataclass(slots=True)
+class BatchPreviewContext:
+    bot: Bot
+    chat_id: int
+    file_path: str
+    index: int
+    target_channels: list[str] | None = None
+    prompt_channel: bool = False
 
 
 def _is_streaming_video(file_path: str) -> bool:
@@ -774,48 +785,45 @@ async def list_batch_files() -> list[str]:
     return photo_batch + video_batch
 
 
-async def send_batch_preview(
-    bot: Bot,
-    chat_id: int,
-    file_path: str,
-    index: int,
-    target_channels: list[str] | None = None,
-    prompt_channel: bool = False,
-) -> Message:
+async def send_batch_preview(ctx: BatchPreviewContext) -> Message:
     """Show a preview of a batch file with navigation buttons."""
     buttons = [
         [
-            InlineKeyboardButton("Prev", callback_data=f"/batch_prev:{index}"),
-            InlineKeyboardButton("Remove", callback_data=f"/batch_remove:{index}"),
-            InlineKeyboardButton("Next", callback_data=f"/batch_next:{index}"),
+            InlineKeyboardButton("Prev", callback_data=f"/batch_prev:{ctx.index}"),
+            InlineKeyboardButton("Remove", callback_data=f"/batch_remove:{ctx.index}"),
+            InlineKeyboardButton("Next", callback_data=f"/batch_next:{ctx.index}"),
         ]
     ]
-    channels = target_channels or []
-    if prompt_channel and len(channels) > 1:
+    channels = ctx.ctx.target_channels or []
+    if ctx.ctx.prompt_channel and len(channels) > 1:
         for ch in channels:
             buttons.append(
                 [
                     InlineKeyboardButton(
-                        f"Push {ch}", callback_data=f"/batch_push:{index}:{ch}"
+                        f"Push {ch}", callback_data=f"/batch_push:{ctx.index}:{ch}"
                     )
                 ]
             )
         buttons.append(
-            [InlineKeyboardButton("Push all", callback_data=f"/batch_push:{index}:all")]
+            [
+                InlineKeyboardButton(
+                    "Push all", callback_data=f"/batch_push:{ctx.index}:all"
+                )
+            ]
         )
     else:
         buttons[0].insert(
-            2, InlineKeyboardButton("Push", callback_data=f"/batch_push:{index}")
+            2, InlineKeyboardButton("Push", callback_data=f"/batch_push:{ctx.index}")
         )
     markup = InlineKeyboardMarkup(buttons)
     temp_path = None
     try:
-        temp_path, _ = await download_from_minio(file_path, BUCKET_MAIN)
+        temp_path, _ = await download_from_minio(ctx.ctx.file_path, BUCKET_MAIN)
         message = await send_media_to_telegram(
-            bot,
-            chat_id,
+            ctx.ctx.bot,
+            ctx.ctx.chat_id,
             temp_path,
-            caption=file_path,
+            caption=ctx.ctx.file_path,
             supports_streaming=_is_streaming_video(temp_path),
         )
         await message.edit_reply_markup(reply_markup=markup)
@@ -854,12 +862,18 @@ async def batch_browser_callback(
             await query.message.delete()
             file_path = batch_files[idx]
             await send_batch_preview(
-                context.bot,
-                query.message.chat_id,
-                file_path,
-                idx,
-                getattr(context, "bot_data", {}).get("target_channel_ids"),
-                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
+                BatchPreviewContext(
+                    bot=context.bot,
+                    chat_id=query.message.chat_id,
+                    file_path=file_path,
+                    index=idx,
+                    target_channels=getattr(context, "bot_data", {}).get(
+                        "target_channel_ids"
+                    ),
+                    prompt_channel=bool(
+                        getattr(context, "bot_data", {}).get("prompt_target_channel")
+                    ),
+                )
             )
             return
         if action == "remove":
@@ -878,12 +892,18 @@ async def batch_browser_callback(
             await query.message.delete()
             next_idx = min(idx, len(batch_files) - 1)
             await send_batch_preview(
-                context.bot,
-                query.message.chat_id,
-                batch_files[next_idx],
-                next_idx,
-                getattr(context, "bot_data", {}).get("target_channel_ids"),
-                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
+                BatchPreviewContext(
+                    bot=context.bot,
+                    chat_id=query.message.chat_id,
+                    file_path=batch_files[next_idx],
+                    index=next_idx,
+                    target_channels=getattr(context, "bot_data", {}).get(
+                        "target_channel_ids"
+                    ),
+                    prompt_channel=bool(
+                        getattr(context, "bot_data", {}).get("prompt_target_channel")
+                    ),
+                )
             )
             return
         if action == "push":
@@ -922,12 +942,18 @@ async def batch_browser_callback(
             await query.message.delete()
             next_idx = min(idx, len(batch_files) - 1)
             await send_batch_preview(
-                context.bot,
-                query.message.chat_id,
-                batch_files[next_idx],
-                next_idx,
-                getattr(context, "bot_data", {}).get("target_channel_ids"),
-                bool(getattr(context, "bot_data", {}).get("prompt_target_channel")),
+                BatchPreviewContext(
+                    bot=context.bot,
+                    chat_id=query.message.chat_id,
+                    file_path=batch_files[next_idx],
+                    index=next_idx,
+                    target_channels=getattr(context, "bot_data", {}).get(
+                        "target_channel_ids"
+                    ),
+                    prompt_channel=bool(
+                        getattr(context, "bot_data", {}).get("prompt_target_channel")
+                    ),
+                )
             )
     except Exception as e:
         logger.error(f"Error in batch_browser_callback: {e}")
