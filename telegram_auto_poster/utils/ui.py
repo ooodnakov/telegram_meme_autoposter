@@ -11,11 +11,31 @@ CALLBACK_SCHEDULE = "/schedule"
 CALLBACK_PUSH = "/push"
 CALLBACK_NOTOK = "/notok"
 CALLBACK_RESTORE = "/restore"
+CALLBACK_COMMENT = "/comment"
+
+
+def comment_enabled_from_message(message: object) -> bool:
+    """Read the comment toggle state encoded in a review message keyboard.
+
+    Review messages carry the state in the callback data so the setting survives
+    until the admin presses Push without introducing another storage dependency.
+    New or legacy messages default to comments enabled.
+    """
+    markup = getattr(message, "reply_markup", None)
+    for row in getattr(markup, "inline_keyboard", ()):
+        for button in row:
+            callback_data = getattr(button, "callback_data", "")
+            if callback_data == f"{CALLBACK_COMMENT}:0":
+                return False
+            if callback_data == f"{CALLBACK_COMMENT}:1":
+                return True
+    return True
 
 
 def approval_keyboard(
     target_channels: Iterable[str] | None = None,
     prompt_channel: bool = False,
+    comment_enabled: bool = True,
 ) -> InlineKeyboardMarkup:
     """Return the approval keyboard markup.
 
@@ -55,6 +75,14 @@ def approval_keyboard(
                 InlineKeyboardButton(_("No!"), callback_data=CALLBACK_NOTOK),
             ]
         )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                f"comment {'✔️' if comment_enabled else '✖️'}",
+                callback_data=f"{CALLBACK_COMMENT}:{int(comment_enabled)}",
+            )
+        ]
+    )
     return InlineKeyboardMarkup(rows)
 
 

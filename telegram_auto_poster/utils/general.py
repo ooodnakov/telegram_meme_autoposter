@@ -430,13 +430,16 @@ async def send_media_to_telegram(
     return last_message
 
 
-async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
+async def prepare_group_items(
+    paths: List[str], *, include_suggestion_caption: bool = True
+) -> Tuple[List[dict], str]:
     """Prepare media items for grouped sending.
 
     Downloads each path from MinIO, ensuring files are not empty, and returns
     a tuple of ``(items, caption)`` where ``items`` contains metadata required
     for sending and ``caption`` is applied to the first element of the group if
-    any item originates from user suggestions.
+    any item originates from user suggestions and
+    ``include_suggestion_caption`` is enabled.
     """
     items: List[dict] = []
     caption = ""
@@ -447,7 +450,7 @@ async def prepare_group_items(paths: List[str]) -> Tuple[List[dict], str]:
         file_prefix = f"{PHOTOS_PATH}/" if media_type == "photo" else f"{VIDEOS_PATH}/"
 
         meta = await storage.get_submission_metadata(file_name)
-        if meta and meta.get("user_id"):
+        if include_suggestion_caption and meta and meta.get("user_id"):
             caption = SUGGESTION_CAPTION
 
         temp_path, _ = await download_from_minio(path, BUCKET_MAIN)

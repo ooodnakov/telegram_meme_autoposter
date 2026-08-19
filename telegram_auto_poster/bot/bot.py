@@ -16,6 +16,7 @@ from telegram.ext import (
 # Import callbacks from callbacks.py
 from telegram_auto_poster.bot.callbacks import (
     batch_browser_callback,
+    comment_callback,
     notok_callback,
     ok_callback,
     push_callback,
@@ -51,6 +52,7 @@ from telegram_auto_poster.bot.handlers import handle_media
 from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils.timezone import now_utc
 from telegram_auto_poster.utils.ui import (
+    CALLBACK_COMMENT,
     CALLBACK_NOTOK,
     CALLBACK_OK,
     CALLBACK_PUSH,
@@ -134,6 +136,11 @@ class TelegramMemeBot:
         logger.info("Registering callback handlers...")
         application.add_handler(
             CallbackQueryHandler(ok_callback, pattern=rf"^{CALLBACK_OK}$")
+        )
+        application.add_handler(
+            CallbackQueryHandler(
+                comment_callback, pattern=rf"^{CALLBACK_COMMENT}:[01]$"
+            )
         )
         application.add_handler(
             CallbackQueryHandler(push_callback, pattern=rf"^{CALLBACK_PUSH}(:.*)?$")

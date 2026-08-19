@@ -12,6 +12,7 @@ from telegram_auto_poster.utils.general import (
     extract_filename,
     extract_paths_from_message,
     get_file_extension,
+    prepare_group_items,
     send_group_media,
 )
 from telegram_auto_poster.utils.stats import stats
@@ -134,7 +135,9 @@ def test_get_file_extension(filename, expected_extension):
 
 
 @pytest.mark.asyncio
-async def test_download_from_minio_missing_object_records_error_and_cleanup(monkeypatch):
+async def test_download_from_minio_missing_object_records_error_and_cleanup(
+    monkeypatch,
+):
     object_name = "photos/example.jpg"
     bucket = "bucket"
 
@@ -160,6 +163,30 @@ async def test_download_from_minio_missing_object_records_error_and_cleanup(monk
     assert len(unlink_calls) == 1
     assert unlink_calls[0].endswith(".jpg")
     storage.client.get_object.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_prepare_group_items_can_omit_suggestion_caption(mocker, tmp_path):
+    media_path = tmp_path / "meme.jpg"
+    media_path.write_bytes(b"data")
+
+    mocker.patch.object(
+        storage,
+        "get_submission_metadata",
+        new=AsyncMock(return_value={"user_id": 123}),
+    )
+    mocker.patch(
+        "telegram_auto_poster.utils.general.download_from_minio",
+        new=AsyncMock(return_value=(str(media_path), ".jpg")),
+    )
+
+    items, caption = await prepare_group_items(
+        ["photos/meme.jpg"], include_suggestion_caption=False
+    )
+
+    assert caption == ""
+    assert len(items) == 1
+    items[0]["file_obj"].close()
 
 
 @pytest.mark.asyncio

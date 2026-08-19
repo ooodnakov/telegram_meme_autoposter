@@ -59,12 +59,14 @@ from telegram_auto_poster.utils.trash import (
     restore_from_trash,
 )
 from telegram_auto_poster.utils.ui import (
+    CALLBACK_COMMENT,
     CALLBACK_NOTOK,
     CALLBACK_OK,
     CALLBACK_PUSH,
     CALLBACK_RESTORE,
     CALLBACK_SCHEDULE,
     approval_keyboard,
+    comment_enabled_from_message,
     trashed_keyboard,
 )
 
@@ -341,6 +343,28 @@ async def ok_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
 
 
+async def comment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Toggle whether a suggestion attribution is added on publish."""
+    logger.info(
+        f"Received {CALLBACK_COMMENT} callback from user "
+        f"{update.callback_query.from_user.id}"
+    )
+    query = update.callback_query
+    if not await check_callback_admin_rights(update, context):
+        return
+    await query.answer()
+
+    current_enabled = (query.data or "").rsplit(":", 1)[-1] == "1"
+    comment_enabled = not current_enabled
+    await query.edit_message_reply_markup(
+        reply_markup=approval_keyboard(
+            context.bot_data.get("target_channel_ids"),
+            bool(context.bot_data.get("prompt_target_channel")),
+            comment_enabled=comment_enabled,
+        )
+    )
+
+
 async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle direct publish of approved media."""
     logger.info(
@@ -364,7 +388,11 @@ async def push_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     try:
-        media_items, caption_to_send = await prepare_group_items(paths)
+        comment_enabled = comment_enabled_from_message(query.message)
+        media_items, caption_to_send = await prepare_group_items(
+            paths,
+            include_suggestion_caption=comment_enabled,
+        )
         sent_counts = {"photo": 0, "video": 0}
 
         await send_group_media(
