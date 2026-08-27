@@ -1,5 +1,3 @@
-import types
-
 from pydantic import SecretStr
 from telegram_auto_poster.config import (
     Config,
@@ -9,12 +7,14 @@ from telegram_auto_poster.config import (
     I18nConfig,
     WebConfig,
 )
-from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale, gettext
+from telegram_auto_poster.utils.i18n import _, resolve_locale, set_locale
+
 
 class DummyUser:
     def __init__(self, user_id, language_code=None):
         self.id = user_id
         self.language_code = language_code
+
 
 class DummyUpdate:
     def __init__(self, user):
@@ -45,10 +45,35 @@ def test_resolve_locale_precedence():
 
 def test_gettext_translates():
     set_locale("en")
-    assert _(
-        "Привет! Присылай сюда свои мемы)"
-    ) == "Hello! Send your memes here"
+    assert _("Привет! Присылай сюда свои мемы)") == "Hello! Send your memes here"
     set_locale("ru")
-    assert _(
-        "Привет! Присылай сюда свои мемы)"
-    ) == "Привет! Присылай сюда свои мемы)"
+    assert _("Привет! Присылай сюда свои мемы)") == "Привет! Присылай сюда свои мемы)"
+
+
+def test_resolve_locale_none_update():
+    cfg = minimal_config(I18nConfig(default="ru", users={}))
+    assert resolve_locale(None, cfg) == "ru"
+
+
+def test_resolve_locale_no_effective_user():
+    cfg = minimal_config(I18nConfig(default="ru", users={}))
+    upd = DummyUpdate(None)
+    assert resolve_locale(upd, cfg) == "ru"
+
+
+def test_resolve_locale_no_id_user():
+    cfg = minimal_config(I18nConfig(default="ru", users={}))
+    upd = DummyUpdate(DummyUser(None))
+    assert resolve_locale(upd, cfg) == "ru"
+
+
+def test_resolve_locale_user_has_language_code():
+    cfg = minimal_config(I18nConfig(default="ru", users={}))
+    upd = DummyUpdate(DummyUser(1, language_code="es"))
+    assert resolve_locale(upd, cfg) == "es"
+
+
+def test_resolve_locale_user_has_no_language_code():
+    cfg = minimal_config(I18nConfig(default="ru", users={}))
+    upd = DummyUpdate(DummyUser(1))
+    assert resolve_locale(upd, cfg) == "ru"
