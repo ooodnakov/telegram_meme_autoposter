@@ -7,6 +7,7 @@ from telegram_auto_poster.config import CONFIG
 from telegram_auto_poster.utils.caption import (
     extract_ocr_text,
     generate_caption,
+    generate_caption_from_text,
     get_tesseract_info,
 )
 
@@ -90,3 +91,65 @@ def test_generate_caption_translation_prompt(monkeypatch):
     monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
     generate_caption("dummy.jpg", "fr")
     assert "fr" in holder["model"].prompt
+
+
+def test_generate_caption_from_text_empty_input():
+    assert generate_caption_from_text("", "en") == ""
+    assert generate_caption_from_text("   ", "en") == ""
+
+
+def test_generate_caption_from_text_no_api_key(monkeypatch):
+    monkeypatch.setattr(CONFIG.gemini, "api_key", None)
+    assert generate_caption_from_text("test", "en") == ""
+
+
+def test_generate_caption_from_text_empty_api_key(monkeypatch):
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr(""))
+    assert generate_caption_from_text("test", "en") == ""
+
+
+def test_generate_caption_from_text_no_genai(monkeypatch):
+    import telegram_auto_poster.utils.caption as caption_module
+    monkeypatch.setattr(caption_module, "genai", None)
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+    assert generate_caption_from_text("test", "en") == ""
+
+
+def test_generate_caption_from_text_success(monkeypatch):
+    _patch_gemini(monkeypatch, "  Success caption  ")
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+    result = generate_caption_from_text("  Valid Text  ", "es")
+    assert result == "Success caption"
+
+
+def test_generate_caption_from_text_exception(monkeypatch):
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+
+    class FakeModel:
+        def __init__(self, name):
+            pass
+
+        def generate_content(self, prompt):
+            raise RuntimeError("API error")
+
+    fake_genai = types.SimpleNamespace(GenerativeModel=FakeModel)
+    import telegram_auto_poster.utils.caption as caption_module
+    monkeypatch.setattr(caption_module, "genai", fake_genai)
+
+    assert generate_caption_from_text("test", "en") == ""
+
+
+def test_generate_caption_from_text_empty_response(monkeypatch):
+    _patch_gemini(monkeypatch, "")
+    monkeypatch.setattr(CONFIG.gemini, "api_key", SecretStr("k"))
+    assert generate_caption_from_text("test", "en") == ""
+
+    # also test response object missing 'text' attr entirely
+    class NoTextModel:
+        def __init__(self, name): pass
+        def generate_content(self, prompt): return types.SimpleNamespace()
+
+    fake_genai = types.SimpleNamespace(GenerativeModel=NoTextModel)
+    import telegram_auto_poster.utils.caption as caption_module
+    monkeypatch.setattr(caption_module, "genai", fake_genai)
+    assert generate_caption_from_text("test", "en") == ""
