@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from telegram.ext import Application
 
 from telegram_auto_poster.bot.handlers import (
+    MediaProcessContext,
     process_media_group,
     process_photo,
     process_video,
@@ -297,21 +298,25 @@ class TelegramMemeClient:
                         await stats_module.stats.record_submission(source_name)
                     if media_type == "photo":
                         await process_photo(
-                            "New post found with image",
-                            path,
-                            basename,
-                            self.bot_chat_id,
-                            self.application,
-                            user_metadata={"source": source_name},
+                            MediaProcessContext(
+                                custom_text="New post found with image",
+                                input_path=path,
+                                original_name=basename,
+                                bot_chat_id=str(self.bot_chat_id),
+                                application=self.application,
+                                user_metadata={"source": source_name},
+                            )
                         )
                     elif media_type == "video":
                         await process_video(
-                            "New post found with video",
-                            path,
-                            basename,
-                            self.bot_chat_id,
-                            self.application,
-                            user_metadata={"source": source_name},
+                            MediaProcessContext(
+                                custom_text="New post found with video",
+                                input_path=path,
+                                original_name=basename,
+                                bot_chat_id=str(self.bot_chat_id),
+                                application=self.application,
+                                user_metadata={"source": source_name},
+                            )
                         )
             except Exception:
                 log.exception("Failed to handle message")
