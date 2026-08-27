@@ -12,6 +12,7 @@ from telegram.ext import ContextTypes
 
 import telegram_auto_poster.utils.db as db
 from telegram_auto_poster.bot.callbacks import (
+    BatchPreviewContext,
     list_batch_files,
     send_batch_preview,
     send_schedule_preview,
@@ -683,12 +684,14 @@ async def batch_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
         first_path = batch_files[0]
         await send_batch_preview(
-            context.bot,
-            update.effective_chat.id,
-            first_path,
-            0,
-            context.bot_data.get("target_channel_ids"),
-            bool(context.bot_data.get("prompt_target_channel")),
+            BatchPreviewContext(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                file_path=first_path,
+                index=0,
+                target_channels=context.bot_data.get("target_channel_ids"),
+                prompt_channel=bool(context.bot_data.get("prompt_target_channel")),
+            )
         )
     except Exception as e:
         logger.error(f"Error in batch_command: {e}")

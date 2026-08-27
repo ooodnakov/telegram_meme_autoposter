@@ -46,8 +46,8 @@ from telegram_auto_poster.utils.db import (
     add_scheduled_post,
     clear_event_history,
     decrement_batch_count,
-    get_batch_count,
     get_async_redis_client,
+    get_batch_count,
     get_event_history,
     get_event_history_count,
     get_scheduled_posts,
@@ -381,13 +381,9 @@ def _media_kind(path: str, mime: str | None = None) -> str:
     """Return ``image`` or ``video`` based on object path and mime type."""
 
     guessed_mime = mime or mimetypes.guess_type(path)[0]
-    if path.startswith(f"{VIDEOS_PATH}/") or path.startswith(
-        f"{TRASH_PATH}/{VIDEOS_PATH}/"
-    ):
+    if "/video" in path or "/videos/" in path:
         return "video"
-    if path.startswith(f"{PHOTOS_PATH}/") or path.startswith(
-        f"{TRASH_PATH}/{PHOTOS_PATH}/"
-    ):
+    if "/photo" in path or "/photos/" in path:
         return "image"
     if guessed_mime and guessed_mime.startswith("video/"):
         return "video"

@@ -1,3 +1,4 @@
+from telegram_auto_poster.bot.callbacks import BatchPreviewContext
 from types import SimpleNamespace
 
 import pytest
@@ -39,9 +40,8 @@ async def test_batch_browser_navigation_wraps(
 
     await batch_browser_callback(update, context)
 
-    preview.assert_awaited_once_with(
-        context.bot, 1, expected_path, expected_idx, None, False
-    )
+    preview.assert_awaited_once_with(BatchPreviewContext(bot=context.bot, chat_id=1, file_path=expected_path, index=expected_idx, target_channels=None, prompt_channel=False
+    ))
 
 
 @pytest.mark.asyncio
@@ -78,7 +78,7 @@ async def test_batch_browser_remove_shows_next(mocker: MockerFixture):
 
     delete.assert_awaited_once_with("p2", callbacks.BUCKET_MAIN)
     dec.assert_awaited_once_with(1)
-    preview.assert_awaited_once_with(context.bot, 1, "p3", 1, None, False)
+    preview.assert_awaited_once_with(BatchPreviewContext(bot=context.bot, chat_id=1, file_path="p3", index=1, target_channels=None, prompt_channel=False))
 
 
 @pytest.mark.asyncio
@@ -127,4 +127,4 @@ async def test_batch_browser_push_sends_and_shows_next(mocker: MockerFixture):
     send_media.assert_awaited_once_with(
         context.bot, [99], "/tmp/t.mp4", caption=None, supports_streaming=True
     )
-    preview.assert_awaited_once_with(context.bot, 1, "p1.mp4", 0, [99], False)
+    preview.assert_awaited_once_with(BatchPreviewContext(bot=context.bot, chat_id=1, file_path="p1.mp4", index=0, target_channels=[99], prompt_channel=False))
