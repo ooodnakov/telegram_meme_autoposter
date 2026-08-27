@@ -1,4 +1,5 @@
 import pytest
+from telegram_auto_poster.utils.storage import UploadMetadata
 from miniopy_async.error import MinioException
 from pytest_mock import MockerFixture
 from telegram_auto_poster.config import BUCKET_MAIN, PHOTOS_PATH
@@ -348,7 +349,7 @@ async def test_upload_file(storage, mock_minio_client, mock_redis_client, tmp_pa
     file = tmp_path / "test.jpg"
     file.write_text("content")
     await storage.upload_file(
-        str(file), user_id=123, chat_id=456, group_id="g3", source="src3"
+        str(file), metadata=UploadMetadata(user_id=123, chat_id=456, group_id="g3", source="src3")
     )
     mock_minio_client.fput_object.assert_awaited_once()
     kwargs = mock_minio_client.fput_object.await_args.kwargs
