@@ -87,3 +87,25 @@ async def test_clear_event_history(mock_async_redis):
 
     events = await db.get_event_history()
     assert events == []
+
+
+def test_remove_scheduled_post(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    # Add a scheduled post
+    db.add_scheduled_post(1234567890, "path/to/media.jpg")
+
+    # Ensure it's there
+    assert db.get_scheduled_time("path/to/media.jpg") == 1234567890
+    assert db.get_scheduled_posts() == [("path/to/media.jpg", 1234567890.0)]
+
+    # Remove it
+    db.remove_scheduled_post("path/to/media.jpg")
+
+    # Verify it's gone
+    assert db.get_scheduled_time("path/to/media.jpg") is None
+    assert db.get_scheduled_posts() == []
+
+    # Verify we can remove a non-existent post without errors
+    db.remove_scheduled_post("path/to/nonexistent.jpg")
