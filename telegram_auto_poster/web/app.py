@@ -381,12 +381,14 @@ def _media_kind(path: str, mime: str | None = None) -> str:
     """Return ``image`` or ``video`` based on object path and mime type."""
 
     guessed_mime = mime or mimetypes.guess_type(path)[0]
-    if path.startswith(f"{VIDEOS_PATH}/") or path.startswith(
-        f"{TRASH_PATH}/{VIDEOS_PATH}/"
+    if any(
+        path.startswith(prefix)
+        for prefix in (f"{VIDEOS_PATH}/", f"{TRASH_PATH}/{VIDEOS_PATH}/")
     ):
         return "video"
-    if path.startswith(f"{PHOTOS_PATH}/") or path.startswith(
-        f"{TRASH_PATH}/{PHOTOS_PATH}/"
+    if any(
+        path.startswith(prefix)
+        for prefix in (f"{PHOTOS_PATH}/", f"{TRASH_PATH}/{PHOTOS_PATH}/")
     ):
         return "image"
     if guessed_mime and guessed_mime.startswith("video/"):
