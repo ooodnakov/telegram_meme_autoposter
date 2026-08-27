@@ -63,6 +63,34 @@ def test_schedule_roundtrip(mocker):
     assert db.get_scheduled_time("foo") is None
 
 
+def test_get_scheduled_time(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    # Not scheduled
+    assert db.get_scheduled_time("missing_path") is None
+
+    # Scheduled
+    db.add_scheduled_post(1234567890, "existing_path")
+    assert db.get_scheduled_time("existing_path") == 1234567890
+
+
+def test_get_scheduled_posts_count(mocker):
+    fake = fakeredis.FakeRedis(decode_responses=True)
+    mocker.patch("telegram_auto_poster.utils.db.get_redis_client", return_value=fake)
+
+    assert db.get_scheduled_posts_count() == 0
+
+    db.add_scheduled_post(100, "post1")
+    db.add_scheduled_post(200, "post2")
+    db.add_scheduled_post(300, "post3")
+
+    assert db.get_scheduled_posts_count() == 3
+    assert db.get_scheduled_posts_count(min_score=150) == 2
+    assert db.get_scheduled_posts_count(max_score=250) == 2
+    assert db.get_scheduled_posts_count(min_score=150, max_score=250) == 1
+
+
 @pytest.mark.asyncio
 async def test_event_history_roundtrip(mock_async_redis):
     entry_one = {"action": "ok", "timestamp": "2024-01-01T00:00:00+00:00"}
