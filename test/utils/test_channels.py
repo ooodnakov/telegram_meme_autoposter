@@ -57,3 +57,7 @@ async def test_fetch_selected_chats_uses_fallback_when_key_missing(shared_valkey
     fetched = await channels.fetch_selected_chats(fallback=["@fallback", "@fallback"])
 
     assert fetched == ["@fallback"]
+
+
+def test_get_selected_chats_cache_key():
+    assert channels.get_selected_chats_cache_key() == channels.SELECTED_CHATS_KEY
