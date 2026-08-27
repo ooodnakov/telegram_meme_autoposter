@@ -361,6 +361,7 @@ async def comment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             context.bot_data.get("target_channel_ids"),
             bool(context.bot_data.get("prompt_target_channel")),
             comment_enabled=comment_enabled,
+            include_comment=True,
         )
     )
 
@@ -537,9 +538,16 @@ async def restore_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             restored_paths.append(await restore_from_trash(path))
 
         bot_data = context.application.bot_data
+        has_suggestion = False
+        for path in restored_paths:
+            metadata = await storage.get_submission_metadata(path)
+            if metadata and metadata.get("user_id"):
+                has_suggestion = True
+                break
         keyboard = approval_keyboard(
             bot_data.get("target_channel_ids"),
             bot_data.get("prompt_target_channel", False),
+            include_comment=has_suggestion,
         )
         text_lines = ["Post restored for review", *restored_paths]
         await _edit_message(query, "\n".join(text_lines), reply_markup=keyboard)

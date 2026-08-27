@@ -36,6 +36,7 @@ def approval_keyboard(
     target_channels: Iterable[str] | None = None,
     prompt_channel: bool = False,
     comment_enabled: bool = True,
+    include_comment: bool = True,
 ) -> InlineKeyboardMarkup:
     """Return the approval keyboard markup.
 
@@ -75,14 +76,15 @@ def approval_keyboard(
                 InlineKeyboardButton(_("No!"), callback_data=CALLBACK_NOTOK),
             ]
         )
-    rows.append(
-        [
-            InlineKeyboardButton(
-                f"comment {'✔️' if comment_enabled else '✖️'}",
-                callback_data=f"{CALLBACK_COMMENT}:{int(comment_enabled)}",
-            )
-        ]
-    )
+    if include_comment:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    f"comment {'✔️' if comment_enabled else '✖️'}",
+                    callback_data=f"{CALLBACK_COMMENT}:{int(comment_enabled)}",
+                )
+            ]
+        )
     return InlineKeyboardMarkup(rows)
 
 

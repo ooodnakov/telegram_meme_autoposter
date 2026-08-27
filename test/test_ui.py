@@ -22,6 +22,16 @@ def test_approval_keyboard_can_disable_comment():
     assert markup.inline_keyboard[-1][0].text == "comment ✖️"
 
 
+def test_approval_keyboard_can_hide_comment_for_channel_posts():
+    markup = approval_keyboard(include_comment=False)
+    callbacks = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert f"{CALLBACK_COMMENT}:0" not in callbacks
+    assert f"{CALLBACK_COMMENT}:1" not in callbacks
+    assert all(
+        "comment" not in btn.text for row in markup.inline_keyboard for btn in row
+    )
+
+
 def test_comment_enabled_from_message_defaults_on_for_legacy_markup():
     assert comment_enabled_from_message(SimpleNamespace(reply_markup=None)) is True
 

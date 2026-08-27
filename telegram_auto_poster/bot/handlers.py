@@ -292,6 +292,7 @@ async def _send_to_review(
     keyboard = approval_keyboard(
         application.bot_data.get("target_channel_ids"),
         application.bot_data.get("prompt_target_channel", False),
+        include_comment=bool(user_metadata),
     )
 
     temp_path, _ = await download_from_minio(
@@ -642,6 +643,7 @@ async def process_media_group(
             keyboard = approval_keyboard(
                 application.bot_data.get("target_channel_ids"),
                 application.bot_data.get("prompt_target_channel", False),
+                include_comment=bool(user_metadata),
             )
             summary_text = custom_text + "\nNew grouped post:\n" + "\n".join(sent_paths)
             await application.bot.send_message(
