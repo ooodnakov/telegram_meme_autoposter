@@ -1,0 +1,6 @@
+🧹 Refactor MediaProcessor to use ProcessContext dataclass
+
+🎯 **What:** Introduced a `ProcessContext` dataclass in `telegram_auto_poster/bot/handlers.py` and refactored the `MediaProcessor` protocol and implementations (`process_photo`, `process_video`) to use it instead of passing 8 separate parameters.
+💡 **Why:** Reduces parameter count for function calls and makes the codebase cleaner, more readable, and easier to maintain. This refactoring doesn't require architectural changes but significantly improves readability by using a parameter object context.
+✅ **Verification:** Verified by running `uv run pytest` tests, ensuring tests run and pass without syntax errors or undefined name errors. Also verified via `uv run ruff check` which confirmed lints pass.
+✨ **Result:** A more readable and maintainable codebase structure that simplifies parameter passing across media processing functions.
