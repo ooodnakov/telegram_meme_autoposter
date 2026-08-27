@@ -87,3 +87,21 @@ async def test_clear_event_history(mock_async_redis):
 
     events = await db.get_event_history()
     assert events == []
+
+
+def test_get_async_redis_client_imports_valkey(mocker):
+    mocker.patch("valkey.asyncio.Valkey", fakeredis.aioredis.FakeRedis)
+    mocker.patch.object(CONFIG.valkey.password, "get_secret_value", return_value=None)
+    mocker.patch.object(db, "_async_redis_client", None)
+    mocker.patch.object(db, "AsyncValkey", None)
+    client = db.get_async_redis_client()
+    assert isinstance(client, fakeredis.aioredis.FakeRedis)
+
+
+def test_get_async_redis_client_singleton(mocker):
+    mocker.patch("valkey.asyncio.Valkey", fakeredis.aioredis.FakeRedis)
+    mocker.patch.object(CONFIG.valkey.password, "get_secret_value", return_value=None)
+    mocker.patch.object(db, "_async_redis_client", None)
+    client1 = db.get_async_redis_client()
+    client2 = db.get_async_redis_client()
+    assert client1 is client2
