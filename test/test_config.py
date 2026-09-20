@@ -89,6 +89,41 @@ session_secret = secret
     assert conf.schedule.quiet_hours_end == 10
     assert conf.rate_limit.rate == 1
     assert conf.rate_limit.capacity == 5
+    assert conf.analytics.enabled is True
+    assert conf.analytics.refresh_interval_minutes == 60
+
+
+def test_custom_analytics_config(tmp_path, monkeypatch):
+    write_config(
+        tmp_path / "config.ini",
+        """
+[Telegram]
+api_id = 123
+api_hash = aaa
+username = test
+target_channels = @test
+[Bot]
+bot_token = token
+bot_username = user
+bot_chat_id = 1
+[Chats]
+selected_chats = @test
+luba_chat = @luba
+[Web]
+session_secret = secret
+[Analytics]
+enabled = false
+refresh_interval_minutes = 180
+""",
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.ini"))
+    sys.modules.pop("telegram_auto_poster.config", None)
+    config_module = importlib.import_module("telegram_auto_poster.config")
+
+    conf = config_module.load_config()
+
+    assert conf.analytics.enabled is False
+    assert conf.analytics.refresh_interval_minutes == 180
 
 
 def test_config_proxy_repr_does_not_expose_secrets(tmp_path, monkeypatch):

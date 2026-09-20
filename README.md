@@ -91,6 +91,9 @@ Key topics to start with:
 - Feedback to submitters on approval/rejection
 - Configurable trash bin for rejected posts with restore support
 - Daily stats and Valkey-backed metrics
+- Scheduled Telegram channel analytics snapshots with persistent history in Valkey
+  and a streaming JSON export at `/api/stats/telegram/history/export`. Collection is
+  configured through `[Analytics]` (`enabled`, `refresh_interval_minutes`).
 - React dashboard served by FastAPI for review/analytics
 - MinIO-backed storage for originals/processed media
 

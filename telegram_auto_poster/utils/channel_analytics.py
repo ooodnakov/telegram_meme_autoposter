@@ -23,6 +23,12 @@ def _cache_key() -> str:
     return _redis_key("cache", "telegram_channel_analytics")
 
 
+def _history_key() -> str:
+    """Return the sorted-set key containing all analytics snapshots."""
+
+    return _redis_key("history", "telegram_channel_analytics")
+
+
 def _refresh_request_key() -> str:
     """Return the Valkey key used to request an analytics refresh."""
 
@@ -369,6 +375,39 @@ async def get_cached_channel_analytics() -> dict[str, object] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
+async def get_channel_analytics_history(
+    *, offset: int = 0, limit: int | None = 100
+) -> list[dict[str, object]]:
+    """Return stored analytics snapshots, newest first.
+
+    History entries intentionally have no TTL: Valkey persistence therefore keeps
+    the complete series across application restarts. ``limit=None`` is intended
+    for data exports and returns every recorded snapshot.
+    """
+
+    client = get_async_redis_client()
+    end = -1 if limit is None else offset + max(limit, 0) - 1
+    if limit == 0:
+        return []
+    rows = await client.zrevrange(_history_key(), offset, end)
+    snapshots: list[dict[str, object]] = []
+    for raw in rows:
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(parsed, dict):
+            snapshots.append(parsed)
+    return snapshots
+
+
+async def get_channel_analytics_history_count() -> int:
+    """Return the number of permanently stored analytics snapshots."""
+
+    client = get_async_redis_client()
+    return int(await client.zcard(_history_key()))
+
+
 async def request_channel_analytics_refresh() -> str:
     """Request that the Telethon client force-refresh cached analytics."""
 
@@ -413,20 +452,21 @@ async def refresh_channel_analytics_cache(
     channels: Sequence[str],
     *,
     force: bool = False,
+    max_age_seconds: int = CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS,
 ) -> dict[str, object] | None:
     """Refresh the cached Telegram channel analytics when stale."""
 
     cache = get_async_redis_client()
     key = _cache_key()
     cached = await get_cached_channel_analytics()
-    ttl = await cache.ttl(key)
-    if (
-        not force
-        and cached
-        and isinstance(ttl, int)
-        and ttl > CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS
-    ):
-        return cached
+    if not force and cached:
+        try:
+            fetched_at = datetime.datetime.fromisoformat(str(cached["fetched_at"]))
+            age = (now_utc() - fetched_at).total_seconds()
+        except (KeyError, TypeError, ValueError):
+            age = max_age_seconds
+        if age < max_age_seconds:
+            return cached
 
     if not channels:
         return cached
@@ -458,9 +498,11 @@ async def refresh_channel_analytics_cache(
         ).isoformat(),
         "channels": channel_payloads,
     }
-    await cache.setex(
-        key,
-        CHANNEL_ANALYTICS_CACHE_TTL_SECONDS,
-        json.dumps(payload, default=str),
-    )
+    serialized = json.dumps(payload, default=str)
+    pipe = cache.pipeline()
+    pipe.setex(key, CHANNEL_ANALYTICS_CACHE_TTL_SECONDS, serialized)
+    # The member contains ``fetched_at``, making independently fetched snapshots
+    # unique while the score keeps chronological queries inexpensive.
+    pipe.zadd(_history_key(), {serialized: fetched_at.timestamp()})
+    await pipe.execute()
     return payload
