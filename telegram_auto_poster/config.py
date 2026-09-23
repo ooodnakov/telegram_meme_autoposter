@@ -56,6 +56,13 @@ class ScheduleConfig(BaseModel):
     quiet_hours_end: int = 10
 
 
+class AnalyticsConfig(BaseModel):
+    """Telegram analytics collection settings."""
+
+    enabled: bool = True
+    refresh_interval_minutes: int = Field(default=60, ge=5)
+
+
 class TrashConfig(BaseModel):
     """Retention configuration for trashed media."""
 
@@ -172,6 +179,7 @@ class Config(BaseModel):
     web: WebConfig
     chats: ChatsConfig
     schedule: ScheduleConfig = ScheduleConfig()
+    analytics: AnalyticsConfig = AnalyticsConfig()
     trash: TrashConfig = TrashConfig()
     minio: MinioConfig = MinioConfig()
     valkey: ValkeyConfig = ValkeyConfig()
@@ -201,6 +209,11 @@ ENV_MAP: dict[str, tuple[str, str | None]] = {
     "CHATS_LUBA_CHAT": ("chats", "luba_chat"),
     "SCHEDULE_QUIET_HOURS_START": ("schedule", "quiet_hours_start"),
     "SCHEDULE_QUIET_HOURS_END": ("schedule", "quiet_hours_end"),
+    "ANALYTICS_ENABLED": ("analytics", "enabled"),
+    "ANALYTICS_REFRESH_INTERVAL_MINUTES": (
+        "analytics",
+        "refresh_interval_minutes",
+    ),
     "TRASH_RETENTION_HOURS": ("trash", "retention_hours"),
     "MINIO_HOST": ("minio", "host"),
     "MINIO_PORT": ("minio", "port"),
@@ -261,6 +274,7 @@ def _load_ini(path: str) -> dict[str, Any]:
         "Telegram": ("telegram", TelegramConfig),
         "Web": ("web", WebConfig),
         "Schedule": ("schedule", ScheduleConfig),
+        "Analytics": ("analytics", AnalyticsConfig),
         "Trash": ("trash", TrashConfig),
         "Minio": ("minio", MinioConfig),
         "Valkey": ("valkey", ValkeyConfig),

@@ -21,7 +21,6 @@ from telegram_auto_poster.bot.handlers import (
 from telegram_auto_poster.config import Config
 from telegram_auto_poster.utils import stats as stats_module
 from telegram_auto_poster.utils.channel_analytics import (
-    CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS,
     get_requested_channel_analytics_refresh,
     mark_channel_analytics_refresh_completed,
     refresh_channel_analytics_cache,
@@ -71,6 +70,7 @@ class TelegramMemeClient:
         self._running = False
         self.rate_limiters: dict[int, RateLimiter] = {}
         self.rate_limit_config = config.rate_limit
+        self.analytics_config = config.analytics
 
         if self.application and hasattr(self.application, "bot_data"):
             self.application.bot_data["telethon_client"] = self.client
@@ -163,11 +163,14 @@ class TelegramMemeClient:
                         self.client,
                         self.target_channels,
                         force=force_refresh,
+                        max_age_seconds=self.analytics_config.refresh_interval_minutes
+                        * 60,
                     )
                     if request_id is not None:
                         await mark_channel_analytics_refresh_completed(request_id)
                     next_refresh_at = (
-                        time.monotonic() + CHANNEL_ANALYTICS_REFRESH_THRESHOLD_SECONDS
+                        time.monotonic()
+                        + self.analytics_config.refresh_interval_minutes * 60
                     )
             except asyncio.CancelledError:  # pragma: no cover - task cancellation
                 raise
@@ -327,8 +330,10 @@ class TelegramMemeClient:
                 await self.client.start()
                 await self._refresh_selected_chats(force=True)
                 logger.info("TelegramClient started successfully")
-                analytics_task = asyncio.create_task(
-                    self._channel_analytics_refresh_loop()
+                analytics_task = (
+                    asyncio.create_task(self._channel_analytics_refresh_loop())
+                    if self.analytics_config.enabled
+                    else None
                 )
                 # Resolve and log monitored channels after connecting
                 for ch in self.selected_chats:
@@ -346,8 +351,9 @@ class TelegramMemeClient:
                 try:
                     await self.client.run_until_disconnected()
                 finally:
-                    analytics_task.cancel()
-                    await asyncio.gather(analytics_task, return_exceptions=True)
+                    if analytics_task is not None:
+                        analytics_task.cancel()
+                        await asyncio.gather(analytics_task, return_exceptions=True)
             except asyncio.CancelledError:  # pragma: no cover - task cancellation
                 break
             except Exception as e:

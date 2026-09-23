@@ -15,7 +15,13 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, Form, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from miniopy_async.commonconfig import CopySource
@@ -33,7 +39,11 @@ from telegram_auto_poster.config import (
     TRASH_PATH,
     VIDEOS_PATH,
 )
-from telegram_auto_poster.utils.channel_analytics import get_cached_channel_analytics
+from telegram_auto_poster.utils.channel_analytics import (
+    get_cached_channel_analytics,
+    get_channel_analytics_history,
+    get_channel_analytics_history_count,
+)
 from telegram_auto_poster.utils.channels import (
     ensure_selected_chats_cached,
     fetch_selected_chats,
@@ -2045,6 +2055,61 @@ async def api_stats() -> JSONResponse:
     """Return analytics and runtime statistics."""
 
     return JSONResponse(await _get_stats_payload())
+
+
+@app.get("/api/stats/telegram/history")
+async def api_telegram_analytics_history(
+    page: int = 1, per_page: int = 100
+) -> JSONResponse:
+    """Return a paginated history of automatically collected Telegram stats."""
+
+    page = max(page, 1)
+    per_page = min(max(per_page, 1), 500)
+    count, items = await asyncio.gather(
+        get_channel_analytics_history_count(),
+        get_channel_analytics_history(offset=(page - 1) * per_page, limit=per_page),
+    )
+    return JSONResponse(
+        {
+            "items": items,
+            "page": page,
+            "per_page": per_page,
+            "total_items": count,
+            "total_pages": max(1, (count + per_page - 1) // per_page),
+        }
+    )
+
+
+@app.get("/api/stats/telegram/history/export")
+async def api_export_telegram_analytics_history() -> Response:
+    """Download the complete Telegram analytics history as a JSON document."""
+
+    exported_at = now_utc()
+    total = await get_channel_analytics_history_count()
+
+    async def stream_export():
+        yield '{"exported_at":'
+        yield json.dumps(exported_at.isoformat())
+        yield ',"snapshots":['
+        first = True
+        page_size = 100
+        for offset in range(0, total, page_size):
+            items = await get_channel_analytics_history(
+                offset=offset, limit=min(page_size, total - offset)
+            )
+            for item in items:
+                if not first:
+                    yield ","
+                yield json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+                first = False
+        yield "]}"
+
+    filename = f"telegram-analytics-{exported_at:%Y%m%dT%H%M%SZ}.json"
+    return StreamingResponse(
+        stream_export(),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/jobs")

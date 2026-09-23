@@ -9,6 +9,8 @@ from telethon import types
 from telegram_auto_poster.utils.channel_analytics import (
     CHANNEL_ANALYTICS_CACHE_TTL_SECONDS,
     get_cached_channel_analytics,
+    get_channel_analytics_history,
+    get_channel_analytics_history_count,
     get_completed_channel_analytics_refresh,
     get_requested_channel_analytics_refresh,
     mark_channel_analytics_refresh_completed,
@@ -119,23 +121,34 @@ async def test_refresh_channel_analytics_cache_serializes_broadcast_stats(
     assert payload["channels"][0]["kind"] == "broadcast"
     assert payload["channels"][0]["summary_metrics"][0]["key"] == "followers"
     assert payload["channels"][0]["summary_metrics"][0]["current"] == 1200.0
-    assert payload["channels"][0]["ratio_metrics"][0]["percentage"] == pytest.approx(35.0)
+    assert payload["channels"][0]["ratio_metrics"][0]["percentage"] == pytest.approx(
+        35.0
+    )
     assert payload["channels"][0]["graphs"][0]["series"][0]["label"] == "Followers"
     top_hours_graph = next(
-        graph for graph in payload["channels"][0]["graphs"] if graph["key"] == "top_hours"
+        graph
+        for graph in payload["channels"][0]["graphs"]
+        if graph["key"] == "top_hours"
     )
     assert len(top_hours_graph["points"]) == 24
     assert top_hours_graph["points"][0]["label"] == 0
     assert top_hours_graph["points"][-1]["label"] == 23
     assert top_hours_graph["points"][0]["y0"] == 220
     assert top_hours_graph["points"][0]["y1"] == 95
-    assert payload["channels"][0]["recent_posts"][0]["link"] == "https://t.me/mychannel/101"
+    assert (
+        payload["channels"][0]["recent_posts"][0]["link"]
+        == "https://t.me/mychannel/101"
+    )
 
     cached = await get_cached_channel_analytics()
     assert cached == payload
-    ttl = await analytics_redis.ttl("telegram_auto_poster:cache:telegram_channel_analytics")
+    ttl = await analytics_redis.ttl(
+        "telegram_auto_poster:cache:telegram_channel_analytics"
+    )
     assert ttl > 0
     assert ttl <= CHANNEL_ANALYTICS_CACHE_TTL_SECONDS
+    assert await get_channel_analytics_history_count() == 1
+    assert await get_channel_analytics_history() == [payload]
 
 
 @pytest.mark.asyncio
@@ -147,6 +160,36 @@ async def test_refresh_channel_analytics_cache_uses_existing_cache(analytics_red
 
     assert first == second
     assert client.calls == 1
+    assert await get_channel_analytics_history_count() == 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_channel_analytics_cache_uses_snapshot_age(analytics_redis):
+    client = DummyTelethonClient(_build_broadcast_stats())
+
+    await refresh_channel_analytics_cache(client, ["@mychannel"], force=True)
+    await refresh_channel_analytics_cache(client, ["@mychannel"], max_age_seconds=0)
+
+    assert client.calls == 2
+    assert await get_channel_analytics_history_count() == 2
+
+
+@pytest.mark.asyncio
+async def test_forced_refresh_appends_permanent_history(analytics_redis):
+    client = DummyTelethonClient(_build_broadcast_stats())
+
+    await refresh_channel_analytics_cache(client, ["@mychannel"], force=True)
+    await refresh_channel_analytics_cache(client, ["@mychannel"], force=True)
+
+    assert client.calls == 2
+    assert await get_channel_analytics_history_count() == 2
+    assert len(await get_channel_analytics_history(limit=None)) == 2
+    assert (
+        await analytics_redis.ttl(
+            "telegram_auto_poster:history:telegram_channel_analytics"
+        )
+        == -1
+    )
 
 
 @pytest.mark.asyncio

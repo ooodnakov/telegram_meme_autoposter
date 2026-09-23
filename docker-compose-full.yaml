@@ -16,8 +16,9 @@ services:
           [ -n "$VALKEY_PASSWORD" ] && echo "requirepass $VALKEY_PASSWORD";
           echo "appendonly yes";
           echo "appendfsync everysec";
-          echo "maxmemory 256mb";
-          echo "maxmemory-policy allkeys-lru";
+          # Analytics history must never be silently evicted. Capacity is
+          # governed by the persistent ./valkeydata volume.
+          echo "maxmemory-policy noeviction";
         } > /usr/local/etc/valkey/valkey.conf && \
         valkey-server /usr/local/etc/valkey/valkey.conf
       '
@@ -97,4 +98,3 @@ services:
 networks:
   app_net:
     driver: bridge
-
